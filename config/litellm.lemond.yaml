@@ -1,0 +1,27 @@
+# LiteLLM routes for Hindsight, backend: lemond on this machine (llama.cpp).
+# Selected by scripts/setup.sh when MEMORY_BACKEND=lemond (the default). See README "Model configuration".
+# Hindsight asks for the fixed aliases below; change the model behind an alias here, not in Hindsight.
+model_list:
+  - model_name: memory-retain
+    litellm_params:
+      model: openai/Gemma-4-E2B-it-GGUF
+      api_base: http://host.docker.internal:13305/v1
+      api_key: os.environ/LEMOND_API_KEY
+      # Gemma thinking adds tokens before the answer; retain only needs the extraction JSON.
+      # Passed through to lemond's chat template. Hindsight's per-request reasoning_effort cannot override it.
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+  - model_name: memory-reflect
+    litellm_params:
+      model: openai/Gemma-4-E2B-it-GGUF
+      api_base: http://host.docker.internal:13305/v1
+      api_key: os.environ/LEMOND_API_KEY
+  - model_name: memory-consolidate
+    litellm_params:
+      model: openai/Gemma-4-E2B-it-GGUF
+      api_base: http://host.docker.internal:13305/v1
+      api_key: os.environ/LEMOND_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

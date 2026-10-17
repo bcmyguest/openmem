@@ -4,7 +4,29 @@ name: personal-memory
 # Set HINDSIGHT_ENV_FILE to use an env file other than ~/.config/hindsight/hindsight.env.
 
 services:
+  # OpenAI-compatible proxy in front of the model server. Hindsight calls it at http://litellm:4000/v1 with the
+  # fixed aliases memory-retain, memory-reflect, memory-consolidate. Routes live in LITELLM_CONFIG (set by scripts/setup.sh).
+  # Internal network only: nothing is published to the host.
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.105.1
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file: ${LITELLM_ENV_FILE:-${HOME}/.config/hindsight/litellm.env}
+    volumes:
+      - ${LITELLM_CONFIG:?run scripts/setup.sh}:/app/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   hindsight:
+    depends_on:
+      litellm:
+        condition: service_healthy
     image: ghcr.io/vectorize-io/hindsight:latest
     # Embedded Postgres needs more than Docker's 64 MB default /dev/shm.
     shm_size: 1g
