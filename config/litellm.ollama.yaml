@@ -1,23 +1,33 @@
 # LiteLLM routes for Hindsight, backend: Ollama on a laptop.
 # Selected by scripts/setup.sh when MEMORY_BACKEND=ollama. See README "Model configuration".
 # Hindsight asks for the fixed aliases below; change the model behind an alias here, not in Hindsight.
+# Every alias disables Gemma thinking: thinking adds tokens before the answer, and at max_tokens 200 can leave content empty.
+# Sent as Ollama's top-level "think": false. Overrides Hindsight's per-request reasoning_effort.
 model_list:
   - model_name: memory-retain
     litellm_params:
       model: ollama_chat/gemma4:e2b
       api_base: http://host.docker.internal:11434
-      # Gemma thinking adds tokens before the answer; retain only needs the extraction JSON.
-      # Sent as Ollama's top-level "think": false. Overrides Hindsight's per-request reasoning_effort.
+      max_tokens: 4096
+      timeout: 300
       extra_body:
         think: false
   - model_name: memory-reflect
     litellm_params:
       model: ollama_chat/gemma4:e2b
       api_base: http://host.docker.internal:11434
+      max_tokens: 4096
+      timeout: 300
+      extra_body:
+        think: false
   - model_name: memory-consolidate
     litellm_params:
       model: ollama_chat/gemma4:e2b
       api_base: http://host.docker.internal:11434
+      max_tokens: 4096
+      timeout: 300
+      extra_body:
+        think: false
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

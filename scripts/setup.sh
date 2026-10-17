@@ -77,20 +77,23 @@ if [ "${migrate}" -eq 1 ]; then
     [ -n "${key}" ] || { echo "LITELLM_MASTER_KEY missing from ${litellm_env}" >&2; exit 1; }
     backup="${hindsight_env}.bak-$(date +%Y%m%d%H%M%S)"
     cp -p "${hindsight_env}" "${backup}"
-    keys='^HINDSIGHT_API_(LLM_BASE_URL|LLM_MODEL|LLM_API_KEY|RETAIN_LLM_MODEL|REFLECT_LLM_MODEL|CONSOLIDATION_LLM_MODEL|MENTAL_MODEL_REFRESH_LLM_MODEL)='
+    # Replace-or-append per key: a key listed here is dropped from the old file, then written once.
+    llm_lines=(
+        'HINDSIGHT_API_LLM_PROVIDER=openai'
+        'HINDSIGHT_API_LLM_BASE_URL=http://litellm:4000/v1'
+        'HINDSIGHT_API_LLM_MODEL=memory-reflect'
+        "HINDSIGHT_API_LLM_API_KEY=${key}"
+        'HINDSIGHT_API_RETAIN_LLM_MODEL=memory-retain'
+        'HINDSIGHT_API_REFLECT_LLM_MODEL=memory-reflect'
+        'HINDSIGHT_API_CONSOLIDATION_LLM_MODEL=memory-consolidate'
+        'HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_MODEL=memory-reflect'
+    )
+    keys_re="^($(printf '%s\n' "${llm_lines[@]}" | cut -d= -f1 | paste -sd'|' -))="
     new="${hindsight_env}.tmp"
     umask 077
     {
-        grep -v -E "${keys}" "${hindsight_env}" || true
-        printf '%s\n' \
-            'HINDSIGHT_API_LLM_PROVIDER=openai' \
-            'HINDSIGHT_API_LLM_BASE_URL=http://litellm:4000/v1' \
-            'HINDSIGHT_API_LLM_MODEL=memory-reflect' \
-            "HINDSIGHT_API_LLM_API_KEY=${key}" \
-            'HINDSIGHT_API_RETAIN_LLM_MODEL=memory-retain' \
-            'HINDSIGHT_API_REFLECT_LLM_MODEL=memory-reflect' \
-            'HINDSIGHT_API_CONSOLIDATION_LLM_MODEL=memory-consolidate' \
-            'HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_MODEL=memory-reflect'
+        grep -v -E "${keys_re}" "${hindsight_env}" || true
+        printf '%s\n' "${llm_lines[@]}"
     } > "${new}"
     chmod 600 "${new}"
     mv "${new}" "${hindsight_env}"
