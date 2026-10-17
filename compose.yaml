@@ -6,6 +6,8 @@ name: personal-memory
 services:
   hindsight:
     image: ghcr.io/vectorize-io/hindsight:latest
+    # Embedded Postgres needs more than Docker's 64 MB default /dev/shm.
+    shm_size: 1g
     env_file: ${HINDSIGHT_ENV_FILE:-${HOME}/.config/hindsight/hindsight.env}
     ports:
       - "127.0.0.1:8888:8888"
