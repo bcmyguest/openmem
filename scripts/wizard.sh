@@ -6,6 +6,7 @@
 #   ./setup --yes                accept every default, no prompts
 #   ./setup --dry-run [--yes]    print the actions; read-only checks run, nothing is written or started
 #   ./setup --yes --no-smoke     skip the smoke retain/recall (for scripted re-runs)
+#   ./setup --rebuild            rebuild the images even when their sources are unchanged
 #
 # PM_PROJECT sets the compose project name (default: personal-memory). PM_BACKEND (lemond|ollama|custom)
 # sets the default backend choice. The last line is "wizard: changed=N": files and containers this run altered.
@@ -35,10 +36,12 @@ LEMOND_DEFAULT_MODEL="Gemma-4-E2B-it-GGUF"
 OLLAMA_DEFAULT_MODEL="gemma4:e2b"
 CUSTOM_DEFAULT_BASE="http://host.docker.internal:8080/v1"
 NOTEBOOKLM_PKG="notebooklm-py[browser]==0.8.5"
+BUILD_HASH_FILE="${REPO}/.build-hash"   # "service sha256" per built image; git-ignored
 
 YES=0
 DRY=0
 SMOKE=1
+REBUILD=0
 BACKEND=""
 MODEL=""
 API_BASE=""
@@ -114,6 +117,7 @@ parse_args() {
             --yes|-y) YES=1 ;;
             --dry-run) DRY=1 ;;
             --no-smoke) SMOKE=0 ;;
+            --rebuild) REBUILD=1 ;;
             -h|--help) sed -n '2,10p' "${SCRIPT}" | sed 's/^# \{0,1\}//' ; exit 0 ;;
             *) die "unknown option: ${arg} (see --help)" ;;
         esac
@@ -494,6 +498,64 @@ render_index() {
     yaml_list exclude "$4"
 }
 
+# build_dockerfile SVC: the Dockerfile for a service the wizard builds, relative to REPO.
+build_dockerfile() {
+    case "$1" in
+        indexer) printf 'indexer/Dockerfile\n' ;;
+        *) die "the wizard does not build service $1" ;;
+    esac
+}
+
+# build_inputs SVC: every file the image build reads, relative to REPO: its Dockerfile, compose.yaml
+# (build args and context), and each COPY source (directories expanded to their files).
+build_inputs() {
+    local df src path
+    df="$(build_dockerfile "$1")"
+    printf '%s\n' "${df}" compose.yaml
+    mapfile -t srcs < <(awk '/^COPY[[:space:]]/ { n = 0; for (i = 2; i <= NF; i++) if ($i !~ /^--/) a[++n] = $i; for (i = 1; i < n; i++) print a[i] }' "${REPO}/${df}")
+    for src in "${srcs[@]}"; do
+        for path in ${REPO}/${src}; do
+            if [ -d "${path}" ]; then
+                (cd "${REPO}" && find "${path#"${REPO}/"}" -type f)
+            else
+                printf '%s\n' "${path#"${REPO}/"}"
+            fi
+        done
+    done
+}
+
+# build_hash SVC: sha256 over the content of every build input. A missing input fails the build check.
+build_hash() {
+    local files
+    mapfile -t files < <(build_inputs "$1" | sort -u)
+    (cd "${REPO}" && sha256sum -- "${files[@]}") | sha256sum | cut -d' ' -f1
+}
+
+# record_build_hash SVC HASH: replace the service's line in BUILD_HASH_FILE.
+record_build_hash() {
+    local svc="$1" hash="$2" tmp
+    tmp="$(mktemp "${BUILD_HASH_FILE}.XXXXXX")"
+    if [ -f "${BUILD_HASH_FILE}" ]; then awk -v s="${svc}" '$1 != s' "${BUILD_HASH_FILE}" > "${tmp}"; fi
+    printf '%s %s\n' "${svc}" "${hash}" >> "${tmp}"
+    mv "${tmp}" "${BUILD_HASH_FILE}"
+}
+
+# build_service SVC IMAGE: build only when the inputs changed, the image is missing, or --rebuild is set.
+build_service() {
+    local svc="$1" image="$2" hash stored=""
+    hash="$(build_hash "${svc}")"
+    if [ -f "${BUILD_HASH_FILE}" ]; then
+        stored="$(awk -v s="${svc}" '$1 == s { print $2 }' "${BUILD_HASH_FILE}")"
+    fi
+    if [ "${REBUILD}" -eq 0 ] && [ "${stored}" = "${hash}" ] && docker image inspect "${image}" >/dev/null 2>&1; then
+        ok "${svc} image unchanged; build skipped"
+        return 0
+    fi
+    act "build the ${svc} image (compose project ${PROJECT})" docker compose -p "${PROJECT}" build "${svc}"
+    if dry; then return 0; fi
+    record_build_hash "${svc}" "${hash}"
+}
+
 configure_index() {
     step "4. Sources to index"
     local root depth repos_csv excludes_csv tmp vault listing count
@@ -524,7 +586,7 @@ configure_index() {
 
     tmp="$(mktemp)"
     render_index "${root}" "${depth}" "${repos_csv}" "${excludes_csv}" > "${tmp}"
-    act "build the indexer image (compose project ${PROJECT})" docker compose -p "${PROJECT}" build indexer
+    build_service indexer personal-memory-indexer:local
     # The indexer validates the file with its own loader; --list fails on a bad config and prints the selection.
     listing="$(docker compose -p "${PROJECT}" run --rm --no-deps -T -v "${tmp}:/tmp/wizard-index.yml:ro" \
         indexer hindsight-project-index --config /tmp/wizard-index.yml --list)" \
@@ -635,7 +697,8 @@ smoke_test() {
 start_stack() {
     step "6. Start the stack"
     run_setup_sh
-    act "docker compose -p ${PROJECT} up -d --build" docker compose -p "${PROJECT}" up -d --build
+    build_service indexer personal-memory-indexer:local
+    act "docker compose -p ${PROJECT} up -d --no-build" docker compose -p "${PROJECT}" up -d --no-build
     wait_health
     if [ "${SMOKE}" -eq 1 ]; then smoke_test; else info "smoke test skipped (--no-smoke)"; fi
 }

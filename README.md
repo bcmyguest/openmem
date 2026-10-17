@@ -30,7 +30,10 @@ Flags:
 - `--yes`: accept every default without prompts.
 - `--dry-run`: print the actions and run only read-only checks. Nothing is written and no containers start.
 - `--no-smoke`: skip the smoke retain and recall. Use it for scripted re-runs.
+- `--rebuild`: rebuild the indexer image even when its sources are unchanged.
 - `PM_BACKEND=lemond|ollama|custom`: set the default backend choice (the wizard still asks unless `--yes`).
+
+The wizard builds the indexer image only when its inputs changed: its Dockerfile, `compose.yaml`, and every file its `COPY` lines read. The hash of those inputs lives in the git-ignored `.build-hash`. A rerun with no source change skips the build and starts the stack with `up -d --no-build`, so the containers are not recreated. Compose's own build cache does not decide this, because a cached build still yields a new image ID.
 
 The last line is `wizard: changed=N`, the number of config files and containers the run altered. A rerun on an unchanged setup prints `changed=0`.
 

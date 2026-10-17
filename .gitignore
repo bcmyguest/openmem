@@ -5,3 +5,4 @@ __pycache__/
 compose.override.yaml
 # Host UID/GID for compose, written by scripts/setup.sh.
 .env
+.build-hash
