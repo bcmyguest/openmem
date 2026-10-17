@@ -3,7 +3,7 @@
 Docker Compose setup for the local Hindsight coding-agent memory. It runs three services:
 
 - `litellm`: an OpenAI-compatible proxy (`ghcr.io/berriai/litellm:v1.105.1`) on the internal Docker network only. Hindsight sends every LLM call to it.
-- `hindsight`: the Hindsight API on `127.0.0.1:8888`, control plane on `127.0.0.1:9999`. Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
+- `hindsight`: the Hindsight API on `127.0.0.1:8888` (`HINDSIGHT_PORT`), control plane on `127.0.0.1:9999` (`HINDSIGHT_CP_PORT`). Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
 - `indexer`: indexes project repositories and Obsidian vaults into Hindsight and keeps them current.
 
 ## Prerequisites
@@ -13,7 +13,30 @@ Docker Compose setup for the local Hindsight coding-agent memory. It runs three 
   - lemond on this machine, `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`). It listens on all interfaces.
   - Or Ollama. It must listen on all interfaces: set `OLLAMA_HOST=0.0.0.0:11434` in its service environment.
 
-## Quick start
+## Quick start: `./setup`
+
+`./setup` (the wizard, `scripts/wizard.sh`) takes a fresh clone to a running stack. It asks for:
+
+1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
+2. Model backend: lemond when it answers on `127.0.0.1:13305`, else Ollama, else a custom OpenAI-compatible URL.
+3. Secrets and env files under `~/.config/hindsight/` (mode 600), then `scripts/setup.sh`.
+4. Source roots to index (default `~`, depth 3) and the Obsidian vaults it finds.
+5. Optional NotebookLM sync (default no).
+6. Start the stack, wait for health, and run a smoke retain and recall in a temporary bank.
+7. Optional coding-agent config link and plugin install (default no).
+
+Flags:
+
+- `--yes`: accept every default without prompts.
+- `--dry-run`: print the actions and run only read-only checks. Nothing is written and no containers start.
+
+Rerun `./setup` at any time. It shows current values as defaults and keeps what you do not change.
+
+Ports come from `HINDSIGHT_PORT` (default 8888) and `HINDSIGHT_CP_PORT` (default 9999), read from the environment or `.env`. The wizard writes the values it uses to `.env`. Compose binds them on `127.0.0.1` only.
+
+The manual steps below do the same work by hand.
+
+## Manual setup
 
 ```sh
 mkdir -p ~/.config/hindsight
@@ -22,7 +45,7 @@ chmod 600 ~/.config/hindsight/hindsight.env
 bash scripts/setup.sh                       # required before the first compose command
 bash scripts/setup.sh --migrate-env         # new hindsight.env: sets the LiteLLM key and aliases
 docker compose up -d                        # starts litellm, then hindsight and indexer
-curl -fsS http://127.0.0.1:8888/health
+curl -fsS http://127.0.0.1:8888/health   # or your HINDSIGHT_PORT
 ```
 
 `scripts/setup.sh` writes `HOST_UID`, `HOST_GID`, and `LITELLM_CONFIG` to `.env` (git-ignored, other lines kept), creates `~/.config/hindsight/litellm.env` if missing, then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.

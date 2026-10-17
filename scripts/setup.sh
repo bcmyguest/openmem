@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Writes HOST_UID, HOST_GID, and LITELLM_CONFIG to .env (git-ignored), keeping any other lines, then runs gen-masks.sh.
+# Exported HINDSIGHT_PORT / HINDSIGHT_CP_PORT are written too (defaults 8888 / 9999 when absent).
 # Run before the first `docker compose` command: compose refuses to parse the project without these values.
 #
 #   bash scripts/setup.sh                       # MEMORY_BACKEND=lemond (default)
@@ -49,12 +50,19 @@ else
 fi
 
 {
+    # Port keys are rewritten only when exported (the setup wizard does); otherwise existing lines are kept.
+    drop='^(HOST_UID|HOST_GID|LITELLM_CONFIG'
+    [ -n "${HINDSIGHT_PORT:-}" ] && drop+='|HINDSIGHT_PORT'
+    [ -n "${HINDSIGHT_CP_PORT:-}" ] && drop+='|HINDSIGHT_CP_PORT'
+    drop+=')='
     if [ -f "${env_file}" ]; then
-        grep -v -E '^(HOST_UID|HOST_GID|LITELLM_CONFIG)=' "${env_file}" || true
+        grep -v -E "${drop}" "${env_file}" || true
     fi
     echo "HOST_UID=$(id -u)"
     echo "HOST_GID=$(id -g)"
     echo "LITELLM_CONFIG=${litellm_config}"
+    [ -n "${HINDSIGHT_PORT:-}" ] && echo "HINDSIGHT_PORT=${HINDSIGHT_PORT}"
+    [ -n "${HINDSIGHT_CP_PORT:-}" ] && echo "HINDSIGHT_CP_PORT=${HINDSIGHT_CP_PORT}"
 } > "${tmp}"
 chmod 0644 "${tmp}"
 mv "${tmp}" "${env_file}"
