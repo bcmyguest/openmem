@@ -156,8 +156,12 @@ def doc_chunks(text: str, limit: int = 2400) -> list[tuple[str, str]]:
 
 
 def codegraph_files(repo: Path, apply: bool) -> set[str]:
-    if apply and (repo / ".codegraph").exists():
-        run("codegraph", "sync", str(repo))
+    if apply:
+        # A .codegraph/ dir without a database (e.g. only its .gitignore) needs init, not sync.
+        if (repo / ".codegraph/codegraph.db").exists():
+            run("codegraph", "sync", str(repo))
+        else:
+            run("codegraph", "init", str(repo))
     try:
         output = run("codegraph", "files", "--path", str(repo), "--format", "flat", "--json")
     except RuntimeError:
