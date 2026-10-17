@@ -16,7 +16,7 @@ model_list:
           enable_thinking: false
   - model_name: memory-reflect
     litellm_params:
-      model: openai/Gemma-4-E2B-it-GGUF
+      model: openai/gemma-4-E4B-it-GGUF-Q4_K_M
       api_base: http://host.docker.internal:13305/v1
       max_tokens: 4096
       timeout: 300
