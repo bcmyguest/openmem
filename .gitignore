@@ -1,3 +1,4 @@
+# Safety net only: the real env file lives outside the repo and must never be committed.
 config/hindsight.env
 __pycache__/
 .codegraph/
