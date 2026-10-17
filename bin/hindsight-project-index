@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""Index tracked project docs and CodeGraph structure into Hindsight."""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+SKIP_DIRS = {".cache", ".codegraph", ".decision", ".git", ".next", ".tasks", ".venv", "build", "dist", "node_modules", "target", "vendor"}
+SKIP_NAMES = {"auth.json", "credentials.json", "id_rsa", "id_ed25519"}
+DOC_SUFFIXES = {".md", ".mdx"}
+CODE_SUFFIXES = {".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".lua", ".py", ".rs", ".sh", ".ts", ".tsx"}
+HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+DEFAULT_STATE = Path.home() / ".cache/hindsight-project-index/state.json"
+AGENT_CONFIG = Path.home() / ".hindsight/coding-agent.json"
+
+
+def run(*args: str, cwd: Path | None = None) -> str:
+    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+    if result.returncode:
+        raise RuntimeError(f"{' '.join(args)}: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout
+
+
+def discover(root: Path) -> list[Path]:
+    repos = []
+    for child in root.iterdir():
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        for current, dirs, _files in os.walk(child):
+            here = Path(current)
+            if len(here.relative_to(root).parts) > 3:
+                dirs[:] = []
+                continue
+            if (here / ".git").exists():
+                repos.append(here)
+                dirs[:] = []
+                continue
+            dirs[:] = [name for name in dirs if name not in SKIP_DIRS and not name.startswith(".")]
+    nvim = root / ".config/nvim"
+    if (nvim / ".git").exists():
+        repos.append(nvim)
+    return sorted(repo for repo in set(repos) if subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0)
+
+
+def tracked_files(repo: Path) -> list[Path]:
+    raw = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=True).stdout
+    paths = []
+    for item in raw.split(b"\0"):
+        if not item:
+            continue
+        rel = Path(os.fsdecode(item))
+        if any(part in SKIP_DIRS for part in rel.parts) or rel.name in SKIP_NAMES:
+            continue
+        if rel.name.startswith(".env") or any(word in rel.name.lower() for word in ("secret", "credential", "private_key")):
+            continue
+        path = repo / rel
+        if path.is_file() and not path.is_symlink() and path.stat().st_size <= 128_000:
+            paths.append(rel)
+    return paths
+
+
+def doc_chunks(text: str, limit: int = 2400) -> list[tuple[str, str]]:
+    sections = []
+    stack: list[str] = []
+    body: list[str] = []
+
+    def flush() -> None:
+        content = "\n".join(body).strip()
+        if content:
+            sections.append((" / ".join(stack) or "Introduction", content))
+
+    for line in text.splitlines():
+        match = HEADING.match(line)
+        if match:
+            flush()
+            body = []
+            depth = len(match.group(1))
+            stack = stack[: depth - 1] + [match.group(2)]
+        else:
+            body.append(line)
+    flush()
+    chunks = []
+    for heading, content in sections:
+        paragraphs = re.split(r"\n\s*\n", content)
+        part = ""
+        for paragraph in paragraphs:
+            for segment in (paragraph[i : i + limit] for i in range(0, len(paragraph), limit)):
+                if part and len(part) + len(segment) + 2 > limit:
+                    chunks.append((heading, part))
+                    part = ""
+                part = f"{part}\n\n{segment}".strip()
+        if part:
+            chunks.append((heading, part))
+    return chunks
+
+
+def codegraph_files(repo: Path, apply: bool) -> set[str]:
+    if apply and (repo / ".codegraph").exists():
+        run("codegraph", "sync", str(repo))
+    try:
+        output = run("codegraph", "files", "--path", str(repo), "--format", "flat", "--json")
+    except RuntimeError:
+        if not apply:
+            return set()
+        run("codegraph", "init", str(repo))
+        output = run("codegraph", "files", "--path", str(repo), "--format", "flat", "--json")
+    return {row["path"] for row in json.loads(output) if row.get("nodeCount", 0) > 0}
+
+
+def codegraph_outline(connection: sqlite3.Connection, path: str) -> str:
+    symbols = list(connection.execute(
+        "SELECT id, kind, qualified_name, signature, docstring FROM nodes "
+        "WHERE file_path = ? AND kind != 'file' ORDER BY start_line LIMIT 150", (path,)
+    ))
+    if not symbols:
+        return ""
+    lines = ["Symbols:"]
+    for _id, kind, name, signature, docstring in symbols:
+        lines.append(f"- {kind} {name}{signature or ''}")
+        if docstring:
+            lines.append("  " + " ".join(docstring.split())[:240])
+    lines.append("Relationships:")
+    for relation, source, target, target_path in connection.execute(
+        "SELECT e.kind, s.qualified_name, t.qualified_name, t.file_path "
+        "FROM edges e JOIN nodes s ON s.id = e.source "
+        "JOIN nodes t ON t.id = e.target "
+        "WHERE s.file_path = ? AND e.kind IN ('calls', 'imports', 'references') "
+        "ORDER BY s.start_line LIMIT 150", (path,)
+    ):
+        lines.append(f"- {source} {relation} {target}" + (f" ({target_path})" if target_path != path else ""))
+    if lines[-1] == "Relationships:":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def source_documents(repo: Path, apply: bool) -> dict[str, dict[str, str]]:
+    files = tracked_files(repo)
+    indexed = codegraph_files(repo, apply) if any(p.suffix.lower() in CODE_SUFFIXES for p in files) else set()
+    database = repo / ".codegraph/codegraph.db"
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True) if database.exists() else None
+    documents = {}
+    for rel in files:
+        kind = "doc" if rel.suffix.lower() in DOC_SUFFIXES else "code" if rel.suffix.lower() in CODE_SUFFIXES else None
+        if kind is None:
+            continue
+        if kind == "code":
+            if rel.as_posix() not in indexed:
+                continue
+            outline = (codegraph_outline(connection, rel.as_posix()) if connection else
+                       run("codegraph", "node", "--path", str(repo), "--file", rel.as_posix(), "--symbols-only"))
+            if not outline or "_No indexed symbols" in outline:
+                continue
+            parts = [("symbols and dependents", outline)]
+        else:
+            try:
+                parts = doc_chunks((repo / rel).read_text(encoding="utf-8"))
+            except UnicodeError:
+                continue
+        for index, (heading, content) in enumerate(parts):
+            label = f"{kind}:{rel.as_posix()}:{heading}:{index}"
+            doc_id = "project-index:v1:" + hashlib.sha256(label.encode()).hexdigest()[:32]
+            payload = f"Project: {repo.name}\nSource: {rel.as_posix()}\nSection: {heading}\n\n{content}"
+            documents[doc_id] = {"content": payload, "path": rel.as_posix(), "kind": kind, "digest": hashlib.sha256(payload.encode()).hexdigest()}
+    if connection:
+        connection.close()
+    return documents
+
+
+def request(url: str, method: str, payload: dict | None = None) -> dict:
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"Content-Type": "application/json"} if data is not None else {}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=300) as response:
+            body = response.read()
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"{method} {url}: HTTP {error.code}: {error.read().decode(errors='replace')[:300]}") from error
+    return json.loads(body) if body else {}
+
+
+def ensure_strategy(endpoint: str) -> None:
+    strategy = {"retain_extraction_mode": "chunks", "retain_chunk_size": 3000}
+    try:
+        response = request(endpoint + "/config", "GET")
+    except RuntimeError as error:
+        if "HTTP 404:" not in str(error):
+            raise
+        request(endpoint, "PUT", {})
+        response = request(endpoint + "/config", "GET")
+    config = response.get("config", response)
+    strategies = config.get("retain_strategies") or {}
+    updates = {}
+    if strategies.get("project-index") != strategy:
+        updates["retain_strategies"] = {**strategies, "project-index": strategy}
+    if config.get("enable_auto_consolidation") is not False:
+        updates["enable_auto_consolidation"] = False
+    if updates:
+        request(endpoint + "/config", "PATCH", {"updates": updates})
+
+
+def save_state(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(state, indent=2, sort_keys=True))
+    temp.replace(path)
+
+
+def bank_id(repo: Path) -> str:
+    config = json.loads(AGENT_CONFIG.read_text()) if AGENT_CONFIG.exists() else {}
+    mappings = config.get("mapPathToBank", {})
+    for prefix, bank in sorted(mappings.items(), key=lambda item: len(item[0]), reverse=True):
+        path = Path(prefix).expanduser().resolve()
+        if repo == path or path in repo.parents:
+            return bank
+    return "coding-agent::" + repo.name
+
+
+def sync(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
+    bank = bank_id(repo)
+    documents = source_documents(repo, apply)
+    if kind:
+        documents = {key: value for key, value in documents.items() if value["kind"] == kind}
+    old = state.get(str(repo), {})
+    changed = {key: value for key, value in documents.items() if old.get(key) != value["digest"]}
+    if limit is not None:
+        changed = dict(list(changed.items())[:limit])
+    stale = set(old) - set(documents) if limit is None and kind is None else set()
+    if apply:
+        endpoint = f"{base_url.rstrip('/')}/v1/default/banks/{urllib.parse.quote(bank, safe='')}"
+        if changed:
+            ensure_strategy(endpoint)
+        for doc_id, value in changed.items():
+            item = {"content": value["content"], "document_id": doc_id, "context": f"Project {repo.name} {value['kind']} source", "metadata": {"path": value["path"], "kind": value["kind"]}, "timestamp": "unset", "strategy": "project-index"}
+            request(endpoint + "/memories", "POST", {"items": [item], "async": False})
+            old[doc_id] = value["digest"]
+            state[str(repo)] = old
+            save_state(state_path, state)
+        for doc_id in sorted(stale):
+            request(endpoint + "/documents/" + urllib.parse.quote(doc_id, safe=""), "DELETE")
+            old.pop(doc_id)
+            save_state(state_path, state)
+        state[str(repo)] = old
+    return len(changed), len(stale)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--repo", type=Path, action="append", help="index only these repositories (repeatable)")
+    parser.add_argument("--url", default="http://127.0.0.1:8888")
+    parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
+    parser.add_argument("--limit", type=int, help="at most N changed documents per repository; disables deletion")
+    parser.add_argument("--kind", choices=("doc", "code"), help="index only documentation or code; disables deletion")
+    parser.add_argument("--apply", action="store_true", help="write to Hindsight and initialize CodeGraph if needed")
+    args = parser.parse_args()
+    repos = [path.expanduser().resolve() for path in args.repo] if args.repo else discover(args.home.expanduser().resolve())
+    state = json.loads(args.state.read_text()) if args.state.exists() else {}
+    for repo in repos:
+        try:
+            changed, stale = sync(repo, args.url, state, args.state, args.apply, args.limit, args.kind)
+            print(f"{repo}: {changed} to retain, {stale} stale" + (" (applied)" if args.apply else " (dry run)"))
+            if args.apply:
+                save_state(args.state, state)
+        except (OSError, RuntimeError, urllib.error.URLError) as error:
+            print(f"{repo}: {error}", file=sys.stderr)
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

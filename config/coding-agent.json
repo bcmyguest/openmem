@@ -1,0 +1,11 @@
+{
+  "serverMode": "self-hosted",
+  "apiUrl": "http://127.0.0.1:8888",
+  "optInOnly": true,
+  "optInPaths": [
+    "/home/example"
+  ],
+  "mapPathToBank": {
+    "/home/example/Documents/sample-project": "coding-agent::documents-sample-project"
+  }
+}
