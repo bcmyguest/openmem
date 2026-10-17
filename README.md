@@ -29,6 +29,10 @@ Flags:
 
 - `--yes`: accept every default without prompts.
 - `--dry-run`: print the actions and run only read-only checks. Nothing is written and no containers start.
+- `--no-smoke`: skip the smoke retain and recall. Use it for scripted re-runs.
+- `PM_BACKEND=lemond|ollama|custom`: set the default backend choice (the wizard still asks unless `--yes`).
+
+The last line is `wizard: changed=N`, the number of config files and containers the run altered. A rerun on an unchanged setup prints `changed=0`.
 
 Rerun `./setup` at any time. It shows current values as defaults and keeps what you do not change.
 

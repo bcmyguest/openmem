@@ -119,6 +119,7 @@ test_idempotent() {
     check "first run: compose up and --list called" bash -c "grep -q 'up -d --build' '${log}' && grep -q -- '--list' '${log}'"
     check "first run: smoke test deleted bank" grep -q 'DELETE.*wizard-smoke' "${log}"
     check "first run: smoke recall passed" grep -q 'retain and recall worked' "${WORK}/run1.out"
+    check "first run: change count above zero" grep -Eq '^wizard: changed=[1-9]' "${WORK}/run1.out"
 
     local sums_before baks_before
     sums_before="$(sha256sum "${hs}/hindsight.env" "${hs}/litellm.env" "${hs}/index.yml" "${hs}/wizard.conf" | sort)"
@@ -128,6 +129,7 @@ test_idempotent() {
     check "second run exits 0" [ "${rc}" -eq 0 ]
     check "second run keeps hindsight.env" grep -q 'kept .*hindsight.env' "${WORK}/run2.out"
     check "second run keeps index.yml" grep -q 'kept .*index.yml' "${WORK}/run2.out"
+    check "second run: change count zero" grep -qx 'wizard: changed=0' "${WORK}/run2.out"
     check "second run: secret and config bytes unchanged" bash -c \
         "[ \"\$(sha256sum '${hs}/hindsight.env' '${hs}/litellm.env' '${hs}/index.yml' '${hs}/wizard.conf' | sort)\" = \"${sums_before}\" ]"
     check "second run: no new backup files" [ "$(find "${hs}" -name '*.bak*' | wc -l)" = "${baks_before}" ]
