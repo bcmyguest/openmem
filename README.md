@@ -25,7 +25,20 @@ docker compose up -d                        # starts litellm, then hindsight and
 curl -fsS http://127.0.0.1:8888/health
 ```
 
-`scripts/setup.sh` writes `HOST_UID`, `HOST_GID`, and `LITELLM_CONFIG` to `.env` (git-ignored, other lines kept), creates `~/.config/hindsight/litellm.env` if missing, then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID and can write the `.codegraph/` directories it creates in your repositories. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
+`scripts/setup.sh` writes `HOST_UID`, `HOST_GID`, and `LITELLM_CONFIG` to `.env` (git-ignored, other lines kept), creates `~/.config/hindsight/litellm.env` if missing, then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
+
+The indexer mounts `$HOME` read-only. Its only writable path is the named volume `indexer-state`, mounted at `$HOME/.cache/hindsight-project-index` (`state.json` and its lock). The one-off `indexer-state-init` service runs as root, gives that volume to your UID, and exits before the indexer starts. Existing repositories' `.codegraph/` directories are left in place; delete them yourself if you no longer want them.
+
+Moving from the previous read-write mount, seed the volume from the host state file once, so the switch does not re-retain every document:
+
+```bash
+docker compose stop indexer
+docker compose run --rm --no-deps indexer-state-init   # creates the volume and gives it to your UID
+docker run --rm --user "$HOST_UID:$HOST_GID" -v "$HOME/.cache/hindsight-project-index:/src:ro" \
+  -v personal-memory_indexer-state:/dst personal-memory-indexer:local cp /src/state.json /dst/
+```
+
+Check the volume name with `docker volume ls` if the project name differs.
 
 `scripts/gen-masks.sh` writes `compose.override.yaml` (git-ignored). It hides secret paths under `$HOME` from the indexer: `~/.ssh`, `~/.gnupg`, `~/.config/hindsight`, and others, plus the Codex and Claude credential files. Only paths that exist at generation time get a mask, so rerun the script when a new secret directory appears. Without the override, the indexer sees those paths. If `~/.config/hindsight/index.yml` exists, the override bind-mounts it to `/etc/hindsight/index.yml` and sets `HINDSIGHT_INDEX_CONFIG` to that path, because `~/.config/hindsight` is masked inside the container. Rerun `setup.sh` after creating or removing that file.
 
@@ -110,7 +123,7 @@ The indexer indexes each source once at startup, then keeps it current:
 - Obsidian vaults: any folder containing `.obsidian/` within a root's depth, plus `vaults.paths`. Each uses the bank `obsidian::<slug>` unless `banks` maps it. Changes are watched with inotify. A vault is re-indexed after `vault_quiet_seconds` (default 30) without changes. Dot-prefixed paths are ignored.
 - Git repositories: the outermost repositories under each `roots` entry, plus `repos`. The indexer polls each one every `poll_seconds` (default 60). A poll fingerprints `HEAD` and the tracked-file status (`git status --porcelain -uno`). After one poll with an unchanged fingerprint, the repository is re-indexed. Edits to an already-modified tracked file change no fingerprint until `HEAD` or the status changes. Repositories with a persistent error re-run on each poll.
 - Source discovery: sources are re-listed every `relist_seconds` (default 600), so new repositories and vaults are picked up without a restart.
-- Repositories also get CodeGraph runs, which create `.codegraph/` directories.
+- Code files get a tree-sitter outline (signatures, doc comments, imports) instead of a CodeGraph run. Parsing runs in-process; grammars are prefetched into the image at `/opt/tree-sitter-grammars`, so indexing needs no network. Supported languages: Python, JavaScript, TypeScript, TSX, Go, Rust, Java, C, C++, C#, Ruby, Lua, Bash, PHP. Known gaps: Go type declarations and TypeScript type aliases are not captured, and files with syntax errors give partial outlines. Outlines are re-retained once after this change, and the old CodeGraph-based code documents are deleted as stale.
 - `optInPaths` filters sources. A missing file means no filter; an empty list means nothing is indexed.
 - Automatic consolidation is disabled for the whole indexed bank, not only for indexed documents.
 - Document IDs include the absolute source path. The first run after this change re-retains every document, which costs extraction time on the model server.
