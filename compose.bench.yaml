@@ -1,0 +1,11 @@
+# HAL-Predictor bench: also publish Hindsight on the docker0 gateway so bridge-network
+# fabro sandboxes reach it via host.docker.internal:8888. Loopback binding is kept.
+# Not applied. Apply by recreating only the hindsight service:
+#   cd ~/personal-memory && docker compose -f compose.yaml -f compose.override.yaml -f compose.bench.yaml up -d hindsight
+# The explicit -f list keeps compose.override.yaml, which compose skips when -f is given.
+services:
+  hindsight:
+    ports: !override
+      - "127.0.0.1:${HINDSIGHT_PORT:-8888}:8888"
+      - "127.0.0.1:${HINDSIGHT_CP_PORT:-9999}:9999"
+      - "172.17.0.1:${HINDSIGHT_PORT:-8888}:8888"
