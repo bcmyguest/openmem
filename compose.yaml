@@ -86,6 +86,40 @@ services:
       - indexer-state:/state
     restart: "no"
 
+  # Opt-in: docker compose --profile notebooklm up -d notebooklm. Syncs NotebookLM notebooks into Hindsight banks.
+  # Login is on the host (README "NotebookLM"); the storage under ~/.config/notebooklm is bind-mounted read-write.
+  notebooklm:
+    profiles: ["notebooklm"]
+    build:
+      context: .
+      dockerfile: sync/Dockerfile
+    image: personal-memory-notebooklm:local
+    # Host UID/GID from .env, written by scripts/setup.sh; the bind-mounted login storage must stay host-owned.
+    user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
+    environment:
+      HINDSIGHT_URL: http://hindsight:8888
+      NOTEBOOKLM_HOME: /data/notebooklm
+    volumes:
+      - type: bind
+        source: ${HOME}/.config/notebooklm
+        target: /data/notebooklm
+        bind:
+          create_host_path: false
+      # Per-machine override (only the keys you change). Create the file before starting; compose does not create it.
+      - type: bind
+        source: ${NOTEBOOKLM_OVERRIDE:-${HOME}/.config/hindsight/notebooklm.yml}
+        target: /etc/notebooklm/override.yml
+        read_only: true
+        bind:
+          create_host_path: false
+      # Writable sync state (state.json). The image creates it 0777, so Docker copies that mode into the new volume.
+      - notebooklm-state:/data/state
+    depends_on:
+      hindsight:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   hindsight-data:
   indexer-state:
+  notebooklm-state:
