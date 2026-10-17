@@ -91,7 +91,7 @@ def make_filter(roots: list[Path]):
         root = root_for(path, roots)
         if root is None:
             return False
-        # Dot-prefixed paths cover .git, .obsidian, .trash, .codegraph, .venv, and dotfile caches.
+        # Dot-prefixed paths cover .git, .obsidian, .trash, .venv, and dotfile caches.
         return not any(part.startswith(".") or part in IGNORED_DIRS for part in path.relative_to(root).parts)
 
     return keep

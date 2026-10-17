@@ -1,4 +1,4 @@
-"""Doc ID namespacing and the stale-deletion guard for bin/hindsight-project-index."""
+"""Doc ID namespacing, code outline documents and stale deletion for bin/hindsight-project-index."""
 
 import importlib.machinery
 import importlib.util
@@ -29,22 +29,22 @@ def make_repo(path: Path) -> Path:
 
 
 def test_same_relative_path_in_two_repos_gets_distinct_doc_ids(indexer, tmp_path):
-    first = indexer.source_documents(make_repo(tmp_path / "a" / "proj"), apply=False)[0]
-    second = indexer.source_documents(make_repo(tmp_path / "b" / "proj"), apply=False)[0]
+    first = indexer.source_documents(make_repo(tmp_path / "a" / "proj"))
+    second = indexer.source_documents(make_repo(tmp_path / "b" / "proj"))
     assert first and second
     assert not set(first) & set(second)
 
 
-def test_stale_guard_keeps_code_and_unknown_documents(indexer, tmp_path, capsys):
-    source = tmp_path / "repo"
-    state = {
-        str(source): {"code-id": "d1", "doc-id": "d2", "legacy-id": "d3"},
-        indexer.kinds_key(source): {"code-id": "code", "doc-id": "doc"},
-    }
-    # Guarded run: only the known-prose document may be deleted; the code and legacy entries stay.
-    changed, stale = indexer.sync(source, "bank", {}, "http://unused", state, tmp_path / "state.json", False, None, None, guard_code=True)
-    assert stale == 1
-    assert "keeping code documents" in capsys.readouterr().err
+def test_code_files_become_outline_documents_and_unknown_suffixes_are_skipped(indexer, tmp_path):
+    repo = make_repo(tmp_path / "proj")
+    (repo / "app.py").write_text("def handler(event):\n    return event\n")
+    (repo / "notes.txt").write_text("not code\n")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    documents = indexer.source_documents(repo)
+    code = [value for value in documents.values() if value["kind"] == "code"]
+    assert [value["path"] for value in code] == ["app.py"]
+    assert "- L1 def handler(event):" in code[0]["content"]
+    assert all(value["path"] != "notes.txt" for value in documents.values())
 
 
 def test_unguarded_sync_counts_all_stale_documents(indexer, tmp_path):

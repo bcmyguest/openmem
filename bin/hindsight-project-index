@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Index tracked project docs, CodeGraph structure and Obsidian vaults into Hindsight."""
+"""Index tracked project docs, tree-sitter code outlines and Obsidian vaults into Hindsight."""
 
 import argparse
 import fcntl
@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import urllib.error
@@ -15,13 +14,13 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import code_outline
 import index_config
 
 
 SKIP_NAMES = {"auth.json", "credentials.json", "id_rsa", "id_ed25519"}
 VAULT_SKIP_DIRS = {".obsidian", ".trash"}
 DOC_SUFFIXES = {".md", ".mdx"}
-CODE_SUFFIXES = {".c", ".cc", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".jsx", ".lua", ".py", ".rs", ".sh", ".ts", ".tsx"}
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 WIKILINK = re.compile(r"!?\[\[([^\]|#\n]+)[^\]\n]*\]\]")
 INLINE_TAG = re.compile(r"(?<![\w/#&])#([A-Za-z][\w/-]*)")
@@ -34,13 +33,6 @@ class HttpError(RuntimeError):
     def __init__(self, method: str, url: str, status: int, body: str):
         super().__init__(f"{method} {url}: HTTP {status}: {body}")
         self.status = status
-
-
-def run(*args: str, cwd: Path | None = None) -> str:
-    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
-    if result.returncode:
-        raise RuntimeError(f"{' '.join(args)}: {result.stderr.strip() or result.stdout.strip()}")
-    return result.stdout
 
 
 def scan_root(root: Path, depth: int, skip_dirs: frozenset[str], want_vaults: bool) -> tuple[list[Path], list[Path]]:
@@ -155,69 +147,18 @@ def doc_chunks(text: str, limit: int = 2400) -> list[tuple[str, str]]:
     return chunks
 
 
-def codegraph_files(repo: Path, apply: bool) -> set[str]:
-    if apply:
-        # A .codegraph/ dir without a database (e.g. only its .gitignore) needs init, not sync.
-        if (repo / ".codegraph/codegraph.db").exists():
-            run("codegraph", "sync", str(repo))
-        else:
-            run("codegraph", "init", str(repo))
-    try:
-        output = run("codegraph", "files", "--path", str(repo), "--format", "flat", "--json")
-    except RuntimeError:
-        if not apply:
-            return set()
-        run("codegraph", "init", str(repo))
-        output = run("codegraph", "files", "--path", str(repo), "--format", "flat", "--json")
-    return {row["path"] for row in json.loads(output) if row.get("nodeCount", 0) > 0}
-
-
-def codegraph_outline(connection: sqlite3.Connection, path: str) -> str:
-    symbols = list(connection.execute(
-        "SELECT id, kind, qualified_name, signature, docstring FROM nodes "
-        "WHERE file_path = ? AND kind != 'file' ORDER BY start_line LIMIT 150", (path,)
-    ))
-    if not symbols:
-        return ""
-    lines = ["Symbols:"]
-    for _id, kind, name, signature, docstring in symbols:
-        lines.append(f"- {kind} {name}{signature or ''}")
-        if docstring:
-            lines.append("  " + " ".join(docstring.split())[:240])
-    lines.append("Relationships:")
-    for relation, source, target, target_path in connection.execute(
-        "SELECT e.kind, s.qualified_name, t.qualified_name, t.file_path "
-        "FROM edges e JOIN nodes s ON s.id = e.source "
-        "JOIN nodes t ON t.id = e.target "
-        "WHERE s.file_path = ? AND e.kind IN ('calls', 'imports', 'references') "
-        "ORDER BY s.start_line LIMIT 150", (path,)
-    ):
-        lines.append(f"- {source} {relation} {target}" + (f" ({target_path})" if target_path != path else ""))
-    if lines[-1] == "Relationships:":
-        lines.pop()
-    return "\n".join(lines)
-
-
-def source_documents(repo: Path, apply: bool, config: index_config.Config | None = None) -> tuple[dict[str, dict], bool]:
-    """Return the repository's documents and whether it has code files but CodeGraph indexed none (mid-sync)."""
-    files = tracked_files(repo, config)
-    has_code = any(p.suffix.lower() in CODE_SUFFIXES for p in files)
-    indexed = codegraph_files(repo, apply) if has_code else set()
-    database = repo / ".codegraph/codegraph.db"
-    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True) if database.exists() else None
+def source_documents(repo: Path, config: index_config.Config | None = None) -> dict[str, dict]:
+    """Return the repository's prose chunks and tree-sitter code outlines, keyed by stable document ID."""
     documents = {}
-    for rel in files:
-        kind = "doc" if rel.suffix.lower() in DOC_SUFFIXES else "code" if rel.suffix.lower() in CODE_SUFFIXES else None
+    for rel in tracked_files(repo, config):
+        kind = "doc" if rel.suffix.lower() in DOC_SUFFIXES else "code" if code_outline.language_for(rel.as_posix()) else None
         if kind is None:
             continue
         if kind == "code":
-            if rel.as_posix() not in indexed:
+            outline = code_outline.outline(rel.as_posix(), (repo / rel).read_bytes())
+            if not outline:
                 continue
-            outline = (codegraph_outline(connection, rel.as_posix()) if connection else
-                       run("codegraph", "node", "--path", str(repo), "--file", rel.as_posix(), "--symbols-only"))
-            if not outline or "_No indexed symbols" in outline:
-                continue
-            parts = [("symbols and dependents", outline)]
+            parts = [("outline", outline)]
         else:
             try:
                 parts = doc_chunks((repo / rel).read_text(encoding="utf-8"))
@@ -235,9 +176,7 @@ def source_documents(repo: Path, apply: bool, config: index_config.Config | None
                 "context": f"Project {repo.name} {kind} source",
                 "metadata": {"path": rel.as_posix(), "kind": kind},
             }
-    if connection:
-        connection.close()
-    return documents, has_code and not indexed
+    return documents
 
 
 def slugify(name: str) -> str:
@@ -377,7 +316,7 @@ def kinds_key(source: Path) -> str:
     return f"{source}::kinds"
 
 
-def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, guard_code: bool = False) -> tuple[int, int]:
+def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
     if kind:
         documents = {key: value for key, value in documents.items() if value["kind"] == kind}
     old = state.get(str(source), {})
@@ -386,10 +325,6 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
     if limit is not None:
         changed = dict(list(changed.items())[:limit])
     stale = set(old) - set(documents) if limit is None and kind is None else set()
-    if guard_code and stale:
-        # CodeGraph reports no indexed files, so the code documents are missing for a reason other than deletion. Keep every stale document not known to be prose.
-        print(f"{source}: CodeGraph reported no indexed files; keeping code documents this run", file=sys.stderr)
-        stale -= {doc_id for doc_id in stale if kinds.get(doc_id) != "doc"}
     if apply:
         endpoint = f"{base_url.rstrip('/')}/v1/default/banks/{urllib.parse.quote(bank, safe='')}"
         if changed:
@@ -420,8 +355,7 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
 
 
 def sync_repo(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    documents, code_unindexed = source_documents(repo, apply, config)
-    return sync(repo, bank_id(repo, config), documents, base_url, state, state_path, apply, limit, kind, guard_code=code_unindexed)
+    return sync(repo, bank_id(repo, config), source_documents(repo, config), base_url, state, state_path, apply, limit, kind)
 
 
 def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
@@ -459,7 +393,7 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--limit", type=int, help="at most N changed documents per source; disables deletion")
     parser.add_argument("--kind", choices=("doc", "code"), help="index only documentation or code in repositories; disables deletion")
-    parser.add_argument("--apply", action="store_true", help="write to Hindsight and initialize CodeGraph if needed")
+    parser.add_argument("--apply", action="store_true", help="write to Hindsight")
     parser.add_argument("--list", action="store_true", help="print the selected sources as 'kind<TAB>path' and exit")
     args = parser.parse_args()
 
