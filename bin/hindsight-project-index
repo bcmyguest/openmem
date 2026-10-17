@@ -2,6 +2,7 @@
 """Index tracked project docs, CodeGraph structure and Obsidian vaults into Hindsight."""
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -149,9 +150,11 @@ def codegraph_outline(connection: sqlite3.Connection, path: str) -> str:
     return "\n".join(lines)
 
 
-def source_documents(repo: Path, apply: bool) -> dict[str, dict]:
+def source_documents(repo: Path, apply: bool) -> tuple[dict[str, dict], bool]:
+    """Return the repository's documents and whether it has code files but CodeGraph indexed none (mid-sync)."""
     files = tracked_files(repo)
-    indexed = codegraph_files(repo, apply) if any(p.suffix.lower() in CODE_SUFFIXES for p in files) else set()
+    has_code = any(p.suffix.lower() in CODE_SUFFIXES for p in files)
+    indexed = codegraph_files(repo, apply) if has_code else set()
     database = repo / ".codegraph/codegraph.db"
     connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True) if database.exists() else None
     documents = {}
@@ -173,7 +176,7 @@ def source_documents(repo: Path, apply: bool) -> dict[str, dict]:
             except UnicodeError:
                 continue
         for index, (heading, content) in enumerate(parts):
-            label = f"{kind}:{rel.as_posix()}:{heading}:{index}"
+            label = f"{kind}:{repo.as_posix()}:{rel.as_posix()}:{heading}:{index}"
             doc_id = "project-index:v1:" + hashlib.sha256(label.encode()).hexdigest()[:32]
             payload = f"Project: {repo.name}\nSource: {rel.as_posix()}\nSection: {heading}\n\n{content}"
             documents[doc_id] = {
@@ -186,7 +189,7 @@ def source_documents(repo: Path, apply: bool) -> dict[str, dict]:
             }
     if connection:
         connection.close()
-    return documents
+    return documents, has_code and not indexed
 
 
 def slugify(name: str) -> str:
@@ -244,7 +247,7 @@ def vault_documents(vault: Path) -> dict[str, dict]:
             tags = list(dict.fromkeys(frontmatter_tags + INLINE_TAG.findall(body)))
             links = sorted({target.strip() for target in WIKILINK.findall(body) if target.strip()})
             for index, (heading, content) in enumerate(doc_chunks(body)):
-                label = f"note:{rel}:{heading}:{index}"
+                label = f"note:{vault.as_posix()}:{rel}:{heading}:{index}"
                 doc_id = "obsidian-index:v1:" + hashlib.sha256(label.encode()).hexdigest()[:32]
                 payload = f"Vault: {vault.name}\nSource: {rel}\nSection: {heading}\n\n{content}"
                 metadata = {"path": rel, "kind": "note"}
@@ -293,6 +296,13 @@ def ensure_strategy(endpoint: str) -> None:
         request(endpoint + "/config", "PATCH", {"updates": updates})
 
 
+def acquire_state_lock(state_path: Path):
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = state_path.with_name(state_path.name + ".lock").open("w")
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    return handle
+
+
 def save_state(path: Path, state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
@@ -310,14 +320,23 @@ def bank_id(repo: Path) -> str:
     return "coding-agent::" + repo.name
 
 
-def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
+def kinds_key(source: Path) -> str:
+    return f"{source}::kinds"
+
+
+def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, guard_code: bool = False) -> tuple[int, int]:
     if kind:
         documents = {key: value for key, value in documents.items() if value["kind"] == kind}
     old = state.get(str(source), {})
+    kinds = state.get(kinds_key(source), {})
     changed = {key: value for key, value in documents.items() if old.get(key) != value["digest"]}
     if limit is not None:
         changed = dict(list(changed.items())[:limit])
     stale = set(old) - set(documents) if limit is None and kind is None else set()
+    if guard_code and stale:
+        # CodeGraph reports no indexed files, so the code documents are missing for a reason other than deletion. Keep every stale document not known to be prose.
+        print(f"{source}: CodeGraph reported no indexed files; keeping code documents this run", file=sys.stderr)
+        stale -= {doc_id for doc_id in stale if kinds.get(doc_id) != "doc"}
     if apply:
         endpoint = f"{base_url.rstrip('/')}/v1/default/banks/{urllib.parse.quote(bank, safe='')}"
         if changed:
@@ -328,18 +347,23 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
                 item["tags"] = value["tags"]
             request(endpoint + "/memories", "POST", {"items": [item], "async": False})
             old[doc_id] = value["digest"]
+            kinds[doc_id] = value["kind"]
             state[str(source)] = old
+            state[kinds_key(source)] = kinds
             save_state(state_path, state)
         for doc_id in sorted(stale):
             request(endpoint + "/documents/" + urllib.parse.quote(doc_id, safe=""), "DELETE")
             old.pop(doc_id)
+            kinds.pop(doc_id, None)
             save_state(state_path, state)
         state[str(source)] = old
+        state[kinds_key(source)] = kinds
     return len(changed), len(stale)
 
 
 def sync_repo(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
-    return sync(repo, bank_id(repo), source_documents(repo, apply), base_url, state, state_path, apply, limit, kind)
+    documents, code_unindexed = source_documents(repo, apply)
+    return sync(repo, bank_id(repo), documents, base_url, state, state_path, apply, limit, kind, guard_code=code_unindexed)
 
 
 def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None) -> tuple[int, int]:
@@ -348,6 +372,7 @@ def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply:
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
     if not config.exists():
+        print(f"warning: {config} not found; indexing every source under --home", file=sys.stderr)
         return None
     paths = json.loads(config.read_text()).get("optInPaths")
     if paths is None:
@@ -393,6 +418,8 @@ def main() -> int:
             print(f"{kind}\t{path}")
         return 0
 
+    # Held until exit: the watcher and manual runs must not overwrite each other's state file.
+    state_lock = acquire_state_lock(args.state) if args.apply else None
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     failed = 0
     for kind, path in sources:
@@ -406,9 +433,9 @@ def main() -> int:
             print(f"{path}: {changed} to retain, {stale} stale" + (" (applied)" if args.apply else " (dry run)"))
             if args.apply:
                 save_state(args.state, state)
-        except (OSError, RuntimeError, urllib.error.URLError, subprocess.CalledProcessError, sqlite3.Error, json.JSONDecodeError) as error:
+        except Exception as error:  # one failing source must not abort the others
             failed += 1
-            print(f"{path}: {error}", file=sys.stderr)
+            print(f"{path}: {type(error).__name__}: {error}", file=sys.stderr)
     if failed:
         print(f"{failed} source(s) failed", file=sys.stderr)
     return 1 if failed else 0

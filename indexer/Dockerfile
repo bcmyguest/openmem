@@ -2,6 +2,9 @@
 FROM python:3.12-slim
 
 ARG CODEGRAPH_VERSION=v1.6.2
+# Pinned digests of the release tarballs for CODEGRAPH_VERSION. Update both when bumping the version.
+ARG CODEGRAPH_SHA256_X64=ef0af416092128fb1ccc723786000b7edf4a6971fe604acd08bf966e4f37b828
+ARG CODEGRAPH_SHA256_ARM64=c8c6be292be21d00dea26bad8b28d434731cf612fb8cc475dc10f5b3038b5b64
 ARG TARGETARCH=amd64
 
 # CodeGraph ships as a self-contained bundle with its own Node runtime, so no Node install is needed.
@@ -11,8 +14,8 @@ RUN apt-get update \
 
 RUN set -eux; \
     case "${TARGETARCH}" in \
-        amd64) arch=x64 ;; \
-        arm64) arch=arm64 ;; \
+        amd64) arch=x64; pinned="${CODEGRAPH_SHA256_X64}" ;; \
+        arm64) arch=arm64; pinned="${CODEGRAPH_SHA256_ARM64}" ;; \
         *) echo "no codegraph bundle for ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     asset="codegraph-linux-${arch}.tar.gz"; \
@@ -21,6 +24,7 @@ RUN set -eux; \
     cd "${work}"; \
     curl -fsSLO "${base}/${asset}"; \
     curl -fsSLO "${base}/SHA256SUMS"; \
+    echo "${pinned}  ${asset}" | sha256sum -c -; \
     grep " ${asset}\$" SHA256SUMS | sha256sum -c -; \
     tar -xzf "${asset}" -C /opt; \
     ln -s "/opt/codegraph-linux-${arch}/bin/codegraph" /usr/local/bin/codegraph; \

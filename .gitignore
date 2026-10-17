@@ -2,3 +2,4 @@
 config/hindsight.env
 __pycache__/
 .codegraph/
+compose.override.yaml
