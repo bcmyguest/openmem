@@ -14,7 +14,7 @@ model_list:
         think: false
   - model_name: memory-reflect
     litellm_params:
-      model: ollama_chat/gemma4:e2b
+      model: ollama_chat/gemma4:e4b
       api_base: http://host.docker.internal:11434
       max_tokens: 4096
       timeout: 300

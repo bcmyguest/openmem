@@ -81,13 +81,25 @@ Hindsight never names a model server. It calls the LiteLLM proxy at `http://lite
 | Alias | Hindsight operation |
 | --- | --- |
 | `memory-retain` | retain (extraction on ingest) |
-| `memory-reflect` | reflect, the base `HINDSIGHT_API_LLM_MODEL`, and mental-model refresh |
+| `memory-reflect` | reflect, the base `HINDSIGHT_API_LLM_MODEL`, and mental-model refresh. Needs a model that makes tool calls |
 | `memory-consolidate` | consolidation |
 
-Shipped routes, all Gemma 4 E2B:
+Shipped routes:
 
-- `config/litellm.lemond.yaml`: `openai/Gemma-4-E2B-it-GGUF` at `http://host.docker.internal:13305/v1` (lemond).
-- `config/litellm.ollama.yaml`: `ollama_chat/gemma4:e2b` at `http://host.docker.internal:11434` (Ollama).
+- `config/litellm.lemond.yaml`: `memory-reflect` is `openai/gemma-4-E4B-it-GGUF-Q4_K_M` (unsloth Q4_K_M, pulled into lemond); `memory-retain` and `memory-consolidate` stay on `openai/Gemma-4-E2B-it-GGUF` at `http://host.docker.internal:13305/v1` (lemond).
+- `config/litellm.ollama.yaml`: `memory-reflect` is `ollama_chat/gemma4:e4b` at `http://host.docker.internal:11434` (Ollama); the other two aliases stay on `ollama_chat/gemma4:e2b`. The `gemma4:e4b` tag needs a newer Ollama than 0.20.3 (HTTP 412 on pull), so this route is not verified on this host.
+
+Why reflect uses E4B: Gemma 4 E2B returned no usable tool call on Hindsight reflect (`finish_reason=length`). Measured on a three-fact test bank with the same query, through LiteLLM and lemond:
+
+| Candidate | Direct tool call | Hindsight reflect |
+| --- | --- | --- |
+| `unsloth/gemma-4-E4B-it-GGUF:Q4_K_M` | pass, 6.5 s | HTTP 200, 29.1 s, grounded answer |
+| `unsloth/Qwen3.5-4B-GGUF:Q4_K_M` | pass, 6.9 s | HTTP 200, 43.7 s, grounded answer |
+| `NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB` (already in lemond) | not run | lemond fails to load the GGUF: `blk.1.ffn_gate_inp.weight` shape mismatch, llama-server exits |
+
+Qwen3.5-4B also passes, but Gemma E4B answers faster. The official `google/` org publishes no E4B GGUF, so the GGUF comes from `unsloth/`.
+
+Planned: switch memory-reflect to Nemotron 3.5 Bolt E4B when released (Oct 23, 2026). No E4B repo exists yet on `nvidia/` or Ollama, so the alias stays on the candidates above.
 
 Thinking is disabled on all three aliases (`memory-retain`, `memory-reflect`, `memory-consolidate`) in the route itself: `chat_template_kwargs.enable_thinking: false` on lemond, `think: false` on Ollama. These override the `reasoning_effort` that Hindsight sends per request (for example `HINDSIGHT_API_RETAIN_LLM_REASONING_EFFORT=low`), which a route default cannot. At `max_tokens` 200 a thinking reply can finish with empty content.
 
