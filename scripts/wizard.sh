@@ -5,8 +5,11 @@
 #   ./setup                      interactive
 #   ./setup --yes                accept every default, no prompts
 #   ./setup --dry-run [--yes]    print the actions; read-only checks run, nothing is written or started
+#   ./setup --yes --no-smoke     skip the smoke retain/recall (for scripted re-runs)
 #
-# PM_PROJECT sets the compose project name (default: personal-memory). Test against a scratch HOME:
+# PM_PROJECT sets the compose project name (default: personal-memory). PM_BACKEND (lemond|ollama|custom)
+# sets the default backend choice. The last line is "wizard: changed=N": files and containers this run altered.
+# Test against a scratch HOME:
 #   HOME=/tmp/wiz-home PM_PROJECT=pm-wizard-test ./setup --yes
 set -euo pipefail
 
@@ -35,6 +38,7 @@ NOTEBOOKLM_PKG="notebooklm-py[browser]==0.8.5"
 
 YES=0
 DRY=0
+SMOKE=1
 BACKEND=""
 MODEL=""
 API_BASE=""
@@ -109,6 +113,7 @@ parse_args() {
         case "${arg}" in
             --yes|-y) YES=1 ;;
             --dry-run) DRY=1 ;;
+            --no-smoke) SMOKE=0 ;;
             -h|--help) sed -n '2,10p' "${SCRIPT}" | sed 's/^# \{0,1\}//' ; exit 0 ;;
             *) die "unknown option: ${arg} (see --help)" ;;
         esac
@@ -380,6 +385,13 @@ choose_backend() {
         ollama) default_num=2 ;;
         custom) default_num=3 ;;
     esac
+    case "${PM_BACKEND:-}" in
+        "") ;;
+        lemond) default_num=1 ;;
+        ollama) default_num=2 ;;
+        custom) default_num=3 ;;
+        *) die "PM_BACKEND must be lemond, ollama or custom" ;;
+    esac
 
     info "1) lemond   2) ollama   3) custom OpenAI-compatible URL"
     ask choice "Model backend (1-3)" "${default_num}"
@@ -625,7 +637,7 @@ start_stack() {
     run_setup_sh
     act "docker compose -p ${PROJECT} up -d --build" docker compose -p "${PROJECT}" up -d --build
     wait_health
-    smoke_test
+    if [ "${SMOKE}" -eq 1 ]; then smoke_test; else info "smoke test skipped (--no-smoke)"; fi
 }
 
 link_agent_config() {
@@ -750,8 +762,22 @@ summary() {
     info "Reset: docker compose -p ${PROJECT} down -v           (deletes the memory database)"
 }
 
+# snapshot: one sorted "path sha256" line per managed config file and "container ID" per running container.
+# main diffs the snapshots taken before and after a run to count what changed.
+snapshot() {
+    local f
+    {
+        for f in "${HS_DIR}"/* "${REPO}/.env" "${REPO}/compose.override.yaml"; do
+            if [ -f "${f}" ]; then printf '%s %s\n' "${f}" "$(sha256sum "${f}" | cut -d' ' -f1)"; fi
+        done
+        docker compose -p "${PROJECT}" ps -q 2>/dev/null | sed 's/^/container /' || true
+    } | sort
+}
+
 main() {
+    local before after changed
     parse_args "$@"
+    before="$(snapshot)"
     if dry; then info "dry run: no files are written and no containers start"; fi
     check_preflight
     choose_backend
@@ -761,6 +787,9 @@ main() {
     start_stack
     setup_coding_agents
     summary
+    after="$(snapshot)"
+    changed="$(comm -13 <(printf '%s\n' "${before}") <(printf '%s\n' "${after}") | grep -c . || true)"
+    printf 'wizard: changed=%s\n' "${changed}"
 }
 
 main "$@"
