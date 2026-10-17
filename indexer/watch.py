@@ -11,17 +11,30 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+import index_config
+
 
 INDEXER = "hindsight-project-index"
-POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "60"))
-VAULT_QUIET_SECONDS = 30
-LIST_SECONDS = 600
 MAX_BACKOFF_SECONDS = 600
 IGNORED_DIRS = {"node_modules", "build", "dist", "target", "vendor", "__pycache__"}
 DRY_RUN = os.environ.get("INDEXER_DRY_RUN") == "1"
+
+
+def timings(settings: index_config.Config, environ: Mapping[str, str]) -> tuple[int, int, int]:
+    """Return (poll, vault quiet, relist) seconds. Environment variables override index.yml."""
+    return (
+        int(environ.get("POLL_SECONDS", settings.poll_seconds)),
+        int(environ.get("VAULT_QUIET_SECONDS", settings.vault_quiet_seconds)),
+        int(environ.get("RELIST_SECONDS", settings.relist_seconds)),
+    )
+
+
+# Loaded at import, so an invalid config stops the watcher before it starts.
+POLL_SECONDS, VAULT_QUIET_SECONDS, LIST_SECONDS = timings(index_config.load(), os.environ)
 
 
 @dataclass(frozen=True)

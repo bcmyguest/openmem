@@ -101,3 +101,12 @@ def test_failed_index_is_retried_on_next_stable_poll(watch):
     # The run failed, so mark_indexed is not called; the fingerprint is still unindexed and stable.
     state, should = watch.step(state, "b")
     assert should is True
+
+
+def test_timings_come_from_config_and_environment_overrides_it(watch, tmp_path):
+    import index_config
+
+    settings = index_config.parse({"poll_seconds": 5, "vault_quiet_seconds": 7, "relist_seconds": 9}, source="test")
+
+    assert watch.timings(settings, {}) == (5, 7, 9)
+    assert watch.timings(settings, {"POLL_SECONDS": "11", "RELIST_SECONDS": "13"}) == (11, 7, 13)

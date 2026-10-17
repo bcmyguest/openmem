@@ -19,12 +19,14 @@ mkdir -p ~/.config/hindsight
 cp config/hindsight.env.example ~/.config/hindsight/hindsight.env
 chmod 600 ~/.config/hindsight/hindsight.env
 $EDITOR ~/.config/hindsight/hindsight.env   # set HINDSIGHT_API_LLM_API_KEY and the model settings
-bash scripts/gen-masks.sh                   # required before the first start
+bash scripts/setup.sh                       # required before the first compose command
 docker compose up -d
 curl -fsS http://127.0.0.1:8888/health
 ```
 
-`scripts/gen-masks.sh` writes `compose.override.yaml` (git-ignored). It hides secret paths under `$HOME` from the indexer: `~/.ssh`, `~/.gnupg`, `~/.config/hindsight`, and others, plus the Codex and Claude credential files. Only paths that exist at generation time get a mask, so rerun the script when a new secret directory appears. Without the override, the indexer sees those paths.
+`scripts/setup.sh` writes `HOST_UID` and `HOST_GID` to `.env` (git-ignored, other lines kept), then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID and can write the `.codegraph/` directories it creates in your repositories. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
+
+`scripts/gen-masks.sh` writes `compose.override.yaml` (git-ignored). It hides secret paths under `$HOME` from the indexer: `~/.ssh`, `~/.gnupg`, `~/.config/hindsight`, and others, plus the Codex and Claude credential files. Only paths that exist at generation time get a mask, so rerun the script when a new secret directory appears. Without the override, the indexer sees those paths. If `~/.config/hindsight/index.yml` exists, the override bind-mounts it to `/etc/hindsight/index.yml` and sets `HINDSIGHT_INDEX_CONFIG` to that path, because `~/.config/hindsight` is masked inside the container. Rerun `setup.sh` after creating or removing that file.
 
 `compose.yaml` reads the env file from `$HINDSIGHT_ENV_FILE`, defaulting to `~/.config/hindsight/hindsight.env`. That file holds a secret and stays out of the repository; `.gitignore` lists it as a safety net.
 
@@ -45,16 +47,43 @@ ln -s ~/personal-memory/config/coding-agent.json ~/.hindsight/coding-agent.json
 
 The indexer indexes each source once at startup, then keeps it current:
 
-- Obsidian vaults: `~/Documents/Personal`, `~/Documents/Work`, and `~/Documents/Acme Notes`. Each uses the bank `obsidian::<slug>`. Changes are watched with inotify. A vault is re-indexed after 30 seconds without changes. Dot-prefixed paths are ignored.
-- Git repositories: discovered under `$HOME`. The indexer polls each one every `POLL_SECONDS` (default 60). A poll fingerprints `HEAD` and the tracked-file status (`git status --porcelain -uno`). After one poll with an unchanged fingerprint, the repository is re-indexed. Edits to an already-modified tracked file change no fingerprint until `HEAD` or the status changes. Repositories with a persistent error re-run on each poll.
-- Source discovery: sources are re-listed every 600 seconds, so new repositories and vaults are picked up without a restart.
+- Obsidian vaults: any folder containing `.obsidian/` within a root's depth, plus `vaults.paths`. Each uses the bank `obsidian::<slug>` unless `banks` maps it. Changes are watched with inotify. A vault is re-indexed after `vault_quiet_seconds` (default 30) without changes. Dot-prefixed paths are ignored.
+- Git repositories: the outermost repositories under each `roots` entry, plus `repos`. The indexer polls each one every `poll_seconds` (default 60). A poll fingerprints `HEAD` and the tracked-file status (`git status --porcelain -uno`). After one poll with an unchanged fingerprint, the repository is re-indexed. Edits to an already-modified tracked file change no fingerprint until `HEAD` or the status changes. Repositories with a persistent error re-run on each poll.
+- Source discovery: sources are re-listed every `relist_seconds` (default 600), so new repositories and vaults are picked up without a restart.
 - Repositories also get CodeGraph runs, which create `.codegraph/` directories.
 - `optInPaths` filters sources. A missing file means no filter; an empty list means nothing is indexed.
 - Automatic consolidation is disabled for the whole indexed bank, not only for indexed documents.
 - Document IDs include the absolute source path. The first run after this change re-retains every document, which costs extraction time on the model server.
 - Concurrent `--apply` runs (the watcher and a manual run) serialize through a lock on `state.json.lock`.
 
-Set `INDEXER_DRY_RUN=1` to log the commands the watcher would run without executing them.
+Set `INDEXER_DRY_RUN=1` to log the commands the watcher would run without executing them. The environment variables `POLL_SECONDS`, `VAULT_QUIET_SECONDS`, and `RELIST_SECONDS` override the timings in `index.yml`.
+
+### Source config: `index.yml`
+
+`config/index.yml` in the repository is the default. The indexer reads the first of these that exists:
+
+1. `--config PATH` (manual runs and `--list`)
+2. `$HINDSIGHT_INDEX_CONFIG`
+3. `~/.config/hindsight/index.yml` (per machine; the container sees it through `scripts/setup.sh`'s mount)
+4. `config/index.yml` (baked into the image at `/opt/config/index.yml`; rebuild after changing it)
+
+A file found this way replaces the default entirely. Keys it omits take the built-in values, which match `config/index.yml`. Unknown keys and wrong types fail at startup with the file, key, and reason. `~` expands; a bare `~` in YAML is null, which means home under `roots[].path`.
+
+| Key | Meaning |
+| --- | --- |
+| `roots` | `[{path, depth}]`. Repositories are the outermost git repositories found within `depth` levels (default 3). |
+| `repos` | Extra repositories, outside the roots or not. Each must be a git repository. |
+| `vaults.auto` | `true` (default) finds any folder with `.obsidian/` within a root's depth. |
+| `vaults.paths` | Extra vault folders. |
+| `exclude` | Glob patterns on absolute paths. A matching source is skipped. |
+| `banks` | Absolute path prefix to bank id; the longest prefix wins. Applies to repos and vaults. Unmatched repos fall back to `~/.hindsight/coding-agent.json` `mapPathToBank`, then `coding-agent::<name>`. |
+| `max_file_kb` | Largest indexed file, in kilobytes (1 KB = 1000 bytes). Default 128. |
+| `skip_dirs` | Directory names not descended into. Dot-prefixed directories are always skipped. |
+| `poll_seconds`, `vault_quiet_seconds`, `relist_seconds` | Watcher timings. |
+
+`optInPaths` in `~/.hindsight/coding-agent.json` still filters sources after discovery.
+
+Check the result with `--list` before a first `--apply`. Excluded sources are reported on stderr.
 
 Manual runs. The script defaults to a dry run; `--apply` writes:
 

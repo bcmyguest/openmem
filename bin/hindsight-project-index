@@ -15,8 +15,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import index_config
 
-SKIP_DIRS = {".cache", ".codegraph", ".decision", ".git", ".next", ".tasks", ".venv", "build", "dist", "node_modules", "target", "vendor"}
+
 SKIP_NAMES = {"auth.json", "credentials.json", "id_rsa", "id_ed25519"}
 VAULT_SKIP_DIRS = {".obsidian", ".trash"}
 DOC_SUFFIXES = {".md", ".mdx"}
@@ -27,8 +28,12 @@ INLINE_TAG = re.compile(r"(?<![\w/#&])#([A-Za-z][\w/-]*)")
 DEFAULT_URL = "http://127.0.0.1:8888"
 DEFAULT_STATE = Path.home() / ".cache/hindsight-project-index/state.json"
 AGENT_CONFIG = Path.home() / ".hindsight/coding-agent.json"
-# Obsidian vaults indexed when neither --repo nor --vault is given. Missing directories are skipped.
-OBSIDIAN_VAULTS = [Path.home() / "Documents/Personal", Path.home() / "Documents/Work", Path.home() / "Documents/Acme Notes"]
+
+
+class HttpError(RuntimeError):
+    def __init__(self, method: str, url: str, status: int, body: str):
+        super().__init__(f"{method} {url}: HTTP {status}: {body}")
+        self.status = status
 
 
 def run(*args: str, cwd: Path | None = None) -> str:
@@ -38,40 +43,79 @@ def run(*args: str, cwd: Path | None = None) -> str:
     return result.stdout
 
 
-def discover(root: Path) -> list[Path]:
-    repos = []
+def scan_root(root: Path, depth: int, skip_dirs: frozenset[str], want_vaults: bool) -> tuple[list[Path], list[Path]]:
+    """Return the outermost git repositories and, when want_vaults, the .obsidian folders within depth levels of root."""
+    repos: list[Path] = []
+    vaults: list[Path] = []
+    if not root.is_dir():
+        print(f"{root}: root not found, skipped", file=sys.stderr)
+        return repos, vaults
     for child in root.iterdir():
         if not child.is_dir() or child.name.startswith("."):
             continue
         for current, dirs, _files in os.walk(child):
             here = Path(current)
-            if len(here.relative_to(root).parts) > 3:
+            if len(here.relative_to(root).parts) > depth:
                 dirs[:] = []
                 continue
-            if (here / ".git").exists():
+            is_repo = (here / ".git").exists()
+            is_vault = want_vaults and (here / ".obsidian").is_dir()
+            if is_repo:
                 repos.append(here)
+            if is_vault:
+                vaults.append(here)
+            if is_repo or is_vault:
                 dirs[:] = []
                 continue
-            dirs[:] = [name for name in dirs if name not in SKIP_DIRS and not name.startswith(".")]
-    nvim = root / ".config/nvim"
-    if (nvim / ".git").exists():
-        repos.append(nvim)
-    return sorted(repo for repo in set(repos) if subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0)
+            dirs[:] = [name for name in dirs if name not in skip_dirs and not name.startswith(".")]
+    return repos, vaults
 
 
-def tracked_files(repo: Path) -> list[Path]:
+def is_git_repo(path: Path) -> bool:
+    return subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def discover(config: index_config.Config) -> tuple[list[Path], list[Path]]:
+    """Return the repositories and vaults the config selects, before opt-in and exclude filtering."""
+    repos: set[Path] = set(config.repos)
+    vaults: set[Path] = set(config.vault_paths)
+    for root in config.roots:
+        found_repos, found_vaults = scan_root(root.path, root.depth, config.skip_dirs, config.vault_auto)
+        repos.update(found_repos)
+        vaults.update(found_vaults)
+    selected_repos = []
+    for repo in sorted(repos):
+        if is_git_repo(repo):
+            selected_repos.append(repo)
+        else:
+            print(f"{repo}: not a git repository, skipped", file=sys.stderr)
+    selected_vaults = []
+    for vault in sorted(vaults):
+        if vault.is_dir():
+            selected_vaults.append(vault)
+        else:
+            print(f"{vault}: vault not found, skipped", file=sys.stderr)
+    return selected_repos, selected_vaults
+
+
+def _config(config: index_config.Config | None) -> index_config.Config:
+    return config if config is not None else index_config.parse(None)
+
+
+def tracked_files(repo: Path, config: index_config.Config | None = None) -> list[Path]:
+    config = _config(config)
     raw = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=True).stdout
     paths = []
     for item in raw.split(b"\0"):
         if not item:
             continue
         rel = Path(os.fsdecode(item))
-        if any(part in SKIP_DIRS for part in rel.parts) or rel.name in SKIP_NAMES:
+        if any(part in config.skip_dirs for part in rel.parts) or rel.name in SKIP_NAMES:
             continue
         if rel.name.startswith(".env") or any(word in rel.name.lower() for word in ("secret", "credential", "private_key")):
             continue
         path = repo / rel
-        if path.is_file() and not path.is_symlink() and path.stat().st_size <= 128_000:
+        if path.is_file() and not path.is_symlink() and path.stat().st_size <= config.max_file_bytes:
             paths.append(rel)
     return paths
 
@@ -150,9 +194,9 @@ def codegraph_outline(connection: sqlite3.Connection, path: str) -> str:
     return "\n".join(lines)
 
 
-def source_documents(repo: Path, apply: bool) -> tuple[dict[str, dict], bool]:
+def source_documents(repo: Path, apply: bool, config: index_config.Config | None = None) -> tuple[dict[str, dict], bool]:
     """Return the repository's documents and whether it has code files but CodeGraph indexed none (mid-sync)."""
-    files = tracked_files(repo)
+    files = tracked_files(repo, config)
     has_code = any(p.suffix.lower() in CODE_SUFFIXES for p in files)
     indexed = codegraph_files(repo, apply) if has_code else set()
     database = repo / ".codegraph/codegraph.db"
@@ -196,8 +240,8 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def vault_bank(vault: Path) -> str:
-    return "obsidian::" + slugify(vault.name)
+def vault_bank(vault: Path, config: index_config.Config | None = None) -> str:
+    return _config(config).bank_for(vault) or "obsidian::" + slugify(vault.name)
 
 
 def split_frontmatter(text: str) -> tuple[list[str], str]:
@@ -226,7 +270,8 @@ def split_frontmatter(text: str) -> tuple[list[str], str]:
     return [tag for tag in cleaned if tag], body
 
 
-def vault_documents(vault: Path) -> dict[str, dict]:
+def vault_documents(vault: Path, config: index_config.Config | None = None) -> dict[str, dict]:
+    config = _config(config)
     documents = {}
     for current, dirs, files in os.walk(vault):
         dirs[:] = [name for name in dirs if name not in VAULT_SKIP_DIRS]
@@ -236,7 +281,7 @@ def vault_documents(vault: Path) -> dict[str, dict]:
                 continue
             if name.startswith(".env") or any(word in name.lower() for word in ("secret", "credential", "private_key")):
                 continue
-            if path.stat().st_size > 128_000:
+            if path.stat().st_size > config.max_file_bytes:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
@@ -272,7 +317,7 @@ def request(url: str, method: str, payload: dict | None = None) -> dict:
         with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=300) as response:
             body = response.read()
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f"{method} {url}: HTTP {error.code}: {error.read().decode(errors='replace')[:300]}") from error
+        raise HttpError(method, url, error.code, error.read().decode(errors="replace")[:300]) from error
     return json.loads(body) if body else {}
 
 
@@ -280,8 +325,8 @@ def ensure_strategy(endpoint: str) -> None:
     strategy = {"retain_extraction_mode": "chunks", "retain_chunk_size": 3000}
     try:
         response = request(endpoint + "/config", "GET")
-    except RuntimeError as error:
-        if "HTTP 404:" not in str(error):
+    except HttpError as error:
+        if error.status != 404:
             raise
         request(endpoint, "PUT", {})
         response = request(endpoint + "/config", "GET")
@@ -310,9 +355,13 @@ def save_state(path: Path, state: dict) -> None:
     temp.replace(path)
 
 
-def bank_id(repo: Path) -> str:
-    config = json.loads(AGENT_CONFIG.read_text()) if AGENT_CONFIG.exists() else {}
-    mappings = config.get("mapPathToBank", {})
+def bank_id(repo: Path, config: index_config.Config | None = None) -> str:
+    # Order: index.yml banks, then the coding-agent plugin's mapPathToBank, then the repository name.
+    configured = _config(config).bank_for(repo)
+    if configured:
+        return configured
+    agent = json.loads(AGENT_CONFIG.read_text()) if AGENT_CONFIG.exists() else {}
+    mappings = agent.get("mapPathToBank", {})
     for prefix, bank in sorted(mappings.items(), key=lambda item: len(item[0]), reverse=True):
         path = Path(prefix).expanduser().resolve()
         if repo == path or path in repo.parents:
@@ -352,7 +401,12 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
             state[kinds_key(source)] = kinds
             save_state(state_path, state)
         for doc_id in sorted(stale):
-            request(endpoint + "/documents/" + urllib.parse.quote(doc_id, safe=""), "DELETE")
+            try:
+                request(endpoint + "/documents/" + urllib.parse.quote(doc_id, safe=""), "DELETE")
+            except HttpError as error:
+                # 404: already gone (deleted server-side or never retained). Drop it from the manifest anyway.
+                if error.status != 404:
+                    raise
             old.pop(doc_id)
             kinds.pop(doc_id, None)
             save_state(state_path, state)
@@ -361,13 +415,13 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
     return len(changed), len(stale)
 
 
-def sync_repo(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
-    documents, code_unindexed = source_documents(repo, apply)
-    return sync(repo, bank_id(repo), documents, base_url, state, state_path, apply, limit, kind, guard_code=code_unindexed)
+def sync_repo(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, config: index_config.Config | None = None) -> tuple[int, int]:
+    documents, code_unindexed = source_documents(repo, apply, config)
+    return sync(repo, bank_id(repo, config), documents, base_url, state, state_path, apply, limit, kind, guard_code=code_unindexed)
 
 
-def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None) -> tuple[int, int]:
-    return sync(vault, vault_bank(vault), vault_documents(vault), base_url, state, state_path, apply, limit, None)
+def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
+    return sync(vault, vault_bank(vault, config), vault_documents(vault, config), base_url, state, state_path, apply, limit, None)
 
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
@@ -384,17 +438,17 @@ def opted_in(path: Path, allowed: list[Path] | None) -> bool:
     return allowed is None or any(path == root or root in path.parents for root in allowed)
 
 
-def selected_sources(args: argparse.Namespace) -> list[tuple[str, Path]]:
+def selected_sources(args: argparse.Namespace, config: index_config.Config) -> list[tuple[str, Path]]:
     # Explicit --repo or --vault narrows the run to exactly those sources.
     if args.repo or args.vault:
         return [("repo", path) for path in args.repo or []] + [("vault", path) for path in args.vault or []]
-    home = args.home.expanduser().resolve()
-    return [("repo", repo) for repo in discover(home)] + [("vault", vault) for vault in OBSIDIAN_VAULTS if vault.is_dir()]
+    repos, vaults = discover(config)
+    return [("repo", repo) for repo in repos] + [("vault", vault) for vault in vaults]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--config", type=Path, help="index.yml to use (default: $HINDSIGHT_INDEX_CONFIG, ~/.config/hindsight/index.yml, then config/index.yml)")
     parser.add_argument("--repo", type=Path, action="append", help="index only these repositories (repeatable)")
     parser.add_argument("--vault", type=Path, action="append", help="index an Obsidian vault (repeatable); with --repo or --vault, only the named sources run")
     parser.add_argument("--url", default=os.environ.get("HINDSIGHT_URL", DEFAULT_URL), help="Hindsight API base URL (default: $HINDSIGHT_URL, then %(default)s)")
@@ -405,14 +459,21 @@ def main() -> int:
     parser.add_argument("--list", action="store_true", help="print the selected sources as 'kind<TAB>path' and exit")
     args = parser.parse_args()
 
+    try:
+        config = index_config.load(args.config)
+    except index_config.ConfigError as error:
+        print(f"config error: {error}", file=sys.stderr)
+        return 2
     allowed = load_opt_in_paths(AGENT_CONFIG)
     sources = []
-    for kind, path in selected_sources(args):
+    for kind, path in selected_sources(args, config):
         path = path.expanduser().resolve()
-        if opted_in(path, allowed):
-            sources.append((kind, path))
-        else:
+        if not opted_in(path, allowed):
             print(f"{path}: skipped (outside optInPaths in {AGENT_CONFIG})")
+        elif config.is_excluded(path):
+            print(f"{path}: skipped (matches exclude in {config.source})", file=sys.stderr)
+        else:
+            sources.append((kind, path))
     if args.list:
         for kind, path in sources:
             print(f"{kind}\t{path}")
@@ -427,9 +488,9 @@ def main() -> int:
             continue
         try:
             if kind == "repo":
-                changed, stale = sync_repo(path, args.url, state, args.state, args.apply, args.limit, args.kind)
+                changed, stale = sync_repo(path, args.url, state, args.state, args.apply, args.limit, args.kind, config)
             else:
-                changed, stale = sync_vault(path, args.url, state, args.state, args.apply, args.limit)
+                changed, stale = sync_vault(path, args.url, state, args.state, args.apply, args.limit, config)
             print(f"{path}: {changed} to retain, {stale} stale" + (" (applied)" if args.apply else " (dry run)"))
             if args.apply:
                 save_state(args.state, state)

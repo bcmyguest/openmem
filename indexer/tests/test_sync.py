@@ -52,3 +52,45 @@ def test_unguarded_sync_counts_all_stale_documents(indexer, tmp_path):
     state = {str(source): {"code-id": "d1", "doc-id": "d2"}, indexer.kinds_key(source): {"code-id": "code", "doc-id": "doc"}}
     _, stale = indexer.sync(source, "bank", {}, "http://unused", state, tmp_path / "state.json", False, None, None)
     assert stale == 2
+
+
+def stale_state(source: Path) -> dict:
+    return {str(source): {"gone-id": "d1"}, indexer_kinds(source): {"gone-id": "doc"}}
+
+
+def indexer_kinds(source: Path) -> str:
+    return f"{source}::kinds"
+
+
+def test_delete_404_counts_as_removed_and_drops_manifest_entry(indexer, tmp_path, monkeypatch):
+    source = tmp_path / "repo"
+    state_path = tmp_path / "state.json"
+    state = stale_state(source)
+    calls = []
+
+    def fake_request(url, method, payload=None):
+        calls.append((method, url))
+        raise indexer.HttpError(method, url, 404, "Document not found")
+
+    monkeypatch.setattr(indexer, "request", fake_request)
+
+    changed, stale = indexer.sync(source, "bank", {}, "http://unused", state, state_path, True, None, None)
+
+    assert (changed, stale) == (0, 1)
+    assert calls and calls[0][0] == "DELETE"
+    assert "gone-id" not in state[str(source)]
+    assert "gone-id" not in state[indexer_kinds(source)]
+
+
+def test_delete_500_still_fails(indexer, tmp_path, monkeypatch):
+    source = tmp_path / "repo"
+    state = stale_state(source)
+
+    def fake_request(url, method, payload=None):
+        raise indexer.HttpError(method, url, 500, "boom")
+
+    monkeypatch.setattr(indexer, "request", fake_request)
+
+    with pytest.raises(indexer.HttpError, match="HTTP 500"):
+        indexer.sync(source, "bank", {}, "http://unused", state, tmp_path / "state.json", True, None, None)
+    assert "gone-id" in state[str(source)]
