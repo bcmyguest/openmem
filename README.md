@@ -82,7 +82,9 @@ Shipped routes, all Gemma 4 E2B:
 - `config/litellm.lemond.yaml`: `openai/Gemma-4-E2B-it-GGUF` at `http://host.docker.internal:13305/v1` (lemond).
 - `config/litellm.ollama.yaml`: `ollama_chat/gemma4:e2b` at `http://host.docker.internal:11434` (Ollama).
 
-`memory-retain` turns Gemma's thinking off in the route itself: `chat_template_kwargs.enable_thinking: false` on lemond, `think: false` on Ollama. These override the `reasoning_effort` that Hindsight sends per request (for example `HINDSIGHT_API_RETAIN_LLM_REASONING_EFFORT=low`), which a route default cannot. The other aliases keep the model's default thinking. At `max_tokens` 200 a thinking reply can finish with empty content, so check reflect and consolidate before relying on them.
+Thinking is disabled on all three aliases (`memory-retain`, `memory-reflect`, `memory-consolidate`) in the route itself: `chat_template_kwargs.enable_thinking: false` on lemond, `think: false` on Ollama. These override the `reasoning_effort` that Hindsight sends per request (for example `HINDSIGHT_API_RETAIN_LLM_REASONING_EFFORT=low`), which a route default cannot. At `max_tokens` 200 a thinking reply can finish with empty content.
+
+Output is capped at two levels. Each alias sets `max_tokens: 4096` and `timeout: 300` in its `litellm_params`. That value applies only when the client omits `max_tokens`; a client-sent larger value overrides it (tested: 8893 tokens generated against a 100000 request), so it is a default, not a ceiling. Hindsight enforces the real limit with `HINDSIGHT_API_{RETAIN,REFLECT,CONSOLIDATION}_MAX_COMPLETION_TOKENS` in `hindsight.env` (retain 4096, reflect and consolidation 2048). Retain must exceed its 3000-token chunk size or Hindsight refuses to start.
 
 Selection, in order:
 
