@@ -1,0 +1,11 @@
+[Unit]
+Description=Index local Git projects into Hindsight
+Requires=hindsight.service
+After=hindsight.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hindsight-project-index --apply
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=infinity

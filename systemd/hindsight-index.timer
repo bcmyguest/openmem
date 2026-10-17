@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Hindsight project index daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+Unit=hindsight-index.service
+
+[Install]
+WantedBy=timers.target
