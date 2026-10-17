@@ -1,56 +1,71 @@
 # Local Hindsight memory
 
-Source files for the local Hindsight coding-agent memory on this machine. Live paths are symlinks into this repository, created by `install.sh`.
+Docker Compose setup for the local Hindsight coding-agent memory. It runs two services:
 
-## Layout
+- `hindsight`: the Hindsight API on `127.0.0.1:8888`, control plane on `127.0.0.1:9999`. Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
+- `indexer`: indexes project repositories and Obsidian vaults into Hindsight, then re-indexes on change.
 
-| Repository file | Live path |
-| --- | --- |
-| `bin/hindsight-project-index` | `~/.local/bin/hindsight-project-index` |
-| `systemd/hindsight.service` | `~/.config/systemd/user/hindsight.service` |
-| `systemd/hindsight-index.service` | `~/.config/systemd/user/hindsight-index.service` |
-| `systemd/hindsight-index.timer` | `~/.config/systemd/user/hindsight-index.timer` |
-| `config/coding-agent.json` | `~/.hindsight/coding-agent.json` |
+## Prerequisites
 
-`config/hindsight.env.example` is a template. The real env file, `~/.config/hindsight/hindsight.env` (mode 600), holds a secret and is not in this repository. `.gitignore` excludes it.
+- Docker with Compose v2.
+- An OpenAI-compatible model server for extraction:
+  - lemond on this machine at `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`).
+  - Elsewhere, Ollama. Its host must listen on all interfaces (`OLLAMA_HOST=0.0.0.0:11434`).
 
-## Install
-
-Prerequisites:
-
-- `hindsight-api`: `uv tool install hindsight-api`
-- Client plugin: `npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode`
-- lemond serving the extraction model at `127.0.0.1:13305/v1`
-- `codegraph` on `PATH` (the project indexer initializes and syncs it)
-
-Then run:
+## Quick start
 
 ```sh
-./install.sh
-```
-
-The script is idempotent. It refuses to replace a live regular file that differs from its repository copy. It creates `~/.config/hindsight/hindsight.env` from the example only when that file is missing, then set `HINDSIGHT_API_LLM_API_KEY` in it. It finishes with `systemctl --user daemon-reload`. It does not enable, start, or restart units. On a fresh machine, enable them with:
-
-```sh
-systemctl --user enable --now hindsight.service hindsight-index.timer
-```
-
-## Overview
-
-Hindsight runs as a user service (`hindsight.service`) on `127.0.0.1:8888`. It stores its embedded database in the user's home directory. Its extraction model is served by lemond at `127.0.0.1:13305/v1`; embeddings and reranking run locally in Hindsight. The user service reads `~/.config/hindsight/hindsight.env`. Startup skips the LLM connection probe so the API can serve stored memories while lemond is restarting; conversation extraction still requires lemond. Hindsight sends one LLM request at a time to fit lemond's local serving slot.
-
-The first-party coding-agents connector is registered for Claude Code, Codex, and OpenCode. Its shared configuration is `~/.hindsight/coding-agent.json`; it is opted in for paths under `/home/example`. Each repository uses a `coding-agent::<repo-name>` bank, so the three agents recall the same project conversations. The independent `/home/example/Documents/sample-project` checkout maps to `coding-agent::documents-sample-project` to avoid a name collision. The connector also ingests Git history and a codebase survey as sessions start. Hindsight is a derived memory store; repository source files remain authoritative.
-
-`~/.local/bin/hindsight-project-index` adds project content to those same banks. It discovers outermost Git repositories under `/home/example` to a depth of three directories, plus `~/.config/nvim`. It reads tracked files only, skips credentials, generated directories, files over 128 KB, and `.decision/` and `.tasks/`. Markdown is split by headings and paragraphs into short chunks. CodeGraph supplies each indexed source file's symbols and call, import, and reference relationships; the script initializes or syncs CodeGraph when applying, then reads its local graph database for bulk extraction. Hindsight stores these project chunks using a separate `project-index` strategy, leaving conversation extraction settings intact. Automatic observation consolidation is disabled on indexed banks to keep bulk imports from overloading lemond; ordinary retain and recall still work. Stable document IDs allow changed content to replace earlier copies; the progress manifest is `~/.cache/hindsight-project-index/state.json`.
-
-```sh
-systemctl --user status hindsight.service
+mkdir -p ~/.config/hindsight
+cp config/hindsight.env.example ~/.config/hindsight/hindsight.env
+chmod 600 ~/.config/hindsight/hindsight.env
+$EDITOR ~/.config/hindsight/hindsight.env   # set HINDSIGHT_API_LLM_API_KEY and the model settings
+docker compose up -d
 curl -fsS http://127.0.0.1:8888/health
-hindsight-project-index --repo ~/.config/nvim --limit 5       # dry run
-hindsight-project-index --repo ~/.config/nvim --limit 5 --apply # incremental pilot
-hindsight-project-index --apply                               # all discovered repos
 ```
 
-`--limit N` processes at most N changed documents per repository per run and disables removal of stale index documents. Re-run it to make progress; a full run also removes stale documents that this indexer previously wrote. The script saves progress after each successful retain. For one repository, pass `--repo PATH`; repeat `--repo` for several.
+`compose.yaml` reads the env file from `$HINDSIGHT_ENV_FILE`, defaulting to `~/.config/hindsight/hindsight.env`. That file holds a secret and stays out of the repository; `.gitignore` lists it as a safety net.
 
-`hindsight-index.timer` runs a full refresh daily at 03:30; `hindsight-index.service` is its resumable, low-priority worker. Inspect it with `systemctl --user status hindsight-index.service` and `journalctl --user -u hindsight-index.service`. CodeGraph indexing creates disposable `.codegraph/` directories in repositories that did not already have one.
+To switch models, edit `HINDSIGHT_API_LLM_BASE_URL`, `HINDSIGHT_API_LLM_MODEL`, and `HINDSIGHT_API_LLM_API_KEY` in the env file, then run `docker compose up -d hindsight`. The example includes a commented Ollama block (`qwen3.5:4b` at `http://host.docker.internal:11434/v1`).
+
+## Coding-agent plugin (external)
+
+The client plugin is installed separately, not by this repository:
+
+```sh
+npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode
+ln -s ~/personal-memory/config/coding-agent.json ~/.hindsight/coding-agent.json
+```
+
+`config/coding-agent.json` sets the plugin options, including `optInPaths` (`/home/example`). The indexer reads the same file, through the `$HOME` mount.
+
+## Indexing
+
+The indexer runs one full pass at startup. After that, each source is re-indexed once its files have been quiet for 30 seconds.
+
+- Repositories: discovered under `$HOME`. The indexer reads tracked files and runs CodeGraph in each one, which creates `.codegraph/` directories.
+- Obsidian vaults: `~/Documents/Personal`, `~/Documents/Work`, and `~/Documents/Acme Notes`. Each uses the bank `obsidian::<slug>`.
+- `optInPaths` filters sources. A missing file means no filter; an empty list means nothing is indexed.
+- Automatic consolidation is disabled for the whole indexed bank, not only for indexed documents.
+- Watch limits: dot-prefixed paths are ignored (including `.git`). Repositories created after startup are picked up only after `docker compose restart indexer`.
+
+Manual runs (the script defaults to a dry run; `--apply` writes):
+
+```sh
+hindsight-project-index --list                 # selected sources
+hindsight-project-index --repo PATH --apply    # one repository
+hindsight-project-index --vault PATH --apply   # one vault
+```
+
+## Logs
+
+```sh
+docker compose logs -f indexer
+docker compose logs -f hindsight
+```
+
+## Stop and reset
+
+```sh
+docker compose down      # stop; keeps hindsight-data
+docker compose down -v   # stop and delete the memory database
+```
