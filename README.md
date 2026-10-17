@@ -1,14 +1,15 @@
 # Local Hindsight memory
 
-Docker Compose setup for the local Hindsight coding-agent memory. It runs two services:
+Docker Compose setup for the local Hindsight coding-agent memory. It runs three services:
 
+- `litellm`: an OpenAI-compatible proxy (`ghcr.io/berriai/litellm:v1.105.1`) on the internal Docker network only. Hindsight sends every LLM call to it.
 - `hindsight`: the Hindsight API on `127.0.0.1:8888`, control plane on `127.0.0.1:9999`. Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
 - `indexer`: indexes project repositories and Obsidian vaults into Hindsight and keeps them current.
 
 ## Prerequisites
 
 - Docker with Compose v2.
-- An OpenAI-compatible model server for extraction:
+- A model server behind the LiteLLM proxy:
   - lemond on this machine, `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`). It listens on all interfaces.
   - Or Ollama. It must listen on all interfaces: set `OLLAMA_HOST=0.0.0.0:11434` in its service environment.
 
@@ -18,19 +19,78 @@ Docker Compose setup for the local Hindsight coding-agent memory. It runs two se
 mkdir -p ~/.config/hindsight
 cp config/hindsight.env.example ~/.config/hindsight/hindsight.env
 chmod 600 ~/.config/hindsight/hindsight.env
-$EDITOR ~/.config/hindsight/hindsight.env   # set HINDSIGHT_API_LLM_API_KEY and the model settings
 bash scripts/setup.sh                       # required before the first compose command
-docker compose up -d
+bash scripts/setup.sh --migrate-env         # new hindsight.env: sets the LiteLLM key and aliases
+docker compose up -d                        # starts litellm, then hindsight and indexer
 curl -fsS http://127.0.0.1:8888/health
 ```
 
-`scripts/setup.sh` writes `HOST_UID` and `HOST_GID` to `.env` (git-ignored, other lines kept), then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID and can write the `.codegraph/` directories it creates in your repositories. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
+`scripts/setup.sh` writes `HOST_UID`, `HOST_GID`, and `LITELLM_CONFIG` to `.env` (git-ignored, other lines kept), creates `~/.config/hindsight/litellm.env` if missing, then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID and can write the `.codegraph/` directories it creates in your repositories. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
 
 `scripts/gen-masks.sh` writes `compose.override.yaml` (git-ignored). It hides secret paths under `$HOME` from the indexer: `~/.ssh`, `~/.gnupg`, `~/.config/hindsight`, and others, plus the Codex and Claude credential files. Only paths that exist at generation time get a mask, so rerun the script when a new secret directory appears. Without the override, the indexer sees those paths. If `~/.config/hindsight/index.yml` exists, the override bind-mounts it to `/etc/hindsight/index.yml` and sets `HINDSIGHT_INDEX_CONFIG` to that path, because `~/.config/hindsight` is masked inside the container. Rerun `setup.sh` after creating or removing that file.
 
 `compose.yaml` reads the env file from `$HINDSIGHT_ENV_FILE`, defaulting to `~/.config/hindsight/hindsight.env`. That file holds a secret and stays out of the repository; `.gitignore` lists it as a safety net.
 
-To switch models, edit `HINDSIGHT_API_LLM_BASE_URL`, `HINDSIGHT_API_LLM_MODEL`, and `HINDSIGHT_API_LLM_API_KEY` in the env file, then run `docker compose up -d hindsight`. The default model is `Gemma-4-E2B-it-GGUF` served by lemond. The example includes a commented Ollama block (`qwen3.5:4b` at `http://host.docker.internal:11434/v1`).
+## Model configuration
+
+Hindsight never names a model server. It calls the LiteLLM proxy at `http://litellm:4000/v1` with three fixed aliases, and the proxy's YAML maps each alias to a model:
+
+| Alias | Hindsight operation |
+| --- | --- |
+| `memory-retain` | retain (extraction on ingest) |
+| `memory-reflect` | reflect, the base `HINDSIGHT_API_LLM_MODEL`, and mental-model refresh |
+| `memory-consolidate` | consolidation |
+
+Shipped routes, all Gemma 4 E2B:
+
+- `config/litellm.lemond.yaml`: `openai/Gemma-4-E2B-it-GGUF` at `http://host.docker.internal:13305/v1` (lemond).
+- `config/litellm.ollama.yaml`: `ollama_chat/gemma4:e2b` at `http://host.docker.internal:11434` (Ollama).
+
+`memory-retain` turns Gemma's thinking off in the route itself: `chat_template_kwargs.enable_thinking: false` on lemond, `think: false` on Ollama. These override the `reasoning_effort` that Hindsight sends per request (for example `HINDSIGHT_API_RETAIN_LLM_REASONING_EFFORT=low`), which a route default cannot. The other aliases keep the model's default thinking. At `max_tokens` 200 a thinking reply can finish with empty content, so check reflect and consolidate before relying on them.
+
+Selection, in order:
+
+1. `~/.config/hindsight/litellm.yaml`, if it exists. A per-machine override that replaces the shipped routes entirely. It is mounted read-only into the proxy.
+2. Otherwise `config/litellm.$MEMORY_BACKEND.yaml`, where `MEMORY_BACKEND` is `lemond` (default) or `ollama`.
+
+The choice is written to `.env` as `LITELLM_CONFIG` when `scripts/setup.sh` runs. After changing `MEMORY_BACKEND`, an override file, or a route, rerun `setup.sh` and then `docker compose up -d litellm`. For a laptop on Ollama:
+
+```sh
+MEMORY_BACKEND=ollama bash scripts/setup.sh
+docker compose up -d litellm
+```
+
+Secrets live in `~/.config/hindsight/litellm.env` (mode 600, created by `setup.sh`): `LITELLM_MASTER_KEY`, a random key that Hindsight also uses as its `HINDSIGHT_API_LLM_API_KEY`, and `LEMOND_API_KEY` (a placeholder; lemond ignores it). Routes read keys with `os.environ/NAME`, so the YAML holds no secrets.
+
+Adding a hosted model: add the provider key to `litellm.env`, for example `ANTHROPIC_API_KEY=...`, then point an alias at it in the YAML:
+
+```yaml
+  - model_name: memory-reflect
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+```
+
+Hindsight sends the same alias name for every provider, so changing a model never touches `hindsight.env`.
+
+Verify a route from a throwaway container on the compose network, without publishing the proxy:
+
+```sh
+docker compose exec litellm python3 -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness').read())"
+```
+
+### Migrating an existing `hindsight.env`
+
+An older `hindsight.env` calls lemond or Ollama directly. Move it to the proxy once:
+
+```sh
+bash scripts/setup.sh --migrate-env   # backs up hindsight.env, rewrites only the LLM lines, prints no values
+docker compose up -d                  # recreates hindsight so it reads the new env
+```
+
+The migration sets `HINDSIGHT_API_LLM_PROVIDER=openai`, `HINDSIGHT_API_LLM_BASE_URL=http://litellm:4000/v1`, the `*_LLM_MODEL` aliases, and `HINDSIGHT_API_LLM_API_KEY` to the LiteLLM master key. Other lines stay as they are. `setup.sh` prints a reminder when it finds a direct model URL.
+
+To switch models or a route later, edit the LiteLLM YAML (or `litellm.yaml` override) and run `docker compose up -d litellm`. Hindsight needs no change.
 
 ## Coding-agent plugin (external)
 
