@@ -1,0 +1,36 @@
+# Project indexer config. The indexer reads the first of: --config PATH, $HINDSIGHT_INDEX_CONFIG,
+# ~/.config/hindsight/index.yml, this file. A per-machine file replaces this one entirely; keys it omits
+# take the built-in values, which match this file. Paths are absolute or start with ~ (a bare ~ is null
+# in YAML, which also means home under roots[].path).
+
+# Git repositories: walk each root to `depth` levels and index the outermost repositories found.
+roots:
+  - path: ~
+    depth: 3
+
+# Extra repositories, indexed even when no root reaches them.
+repos:
+  - ~/.config/nvim
+
+vaults:
+  auto: true     # any folder within a root's depth that contains .obsidian/
+  paths: []      # extra vault folders
+
+# Glob patterns on absolute paths. A source that matches is skipped.
+exclude: []
+
+# Absolute path prefix -> Hindsight bank id. The longest matching prefix wins; applies to repos and vaults.
+# Unmatched repositories fall back to ~/.hindsight/coding-agent.json mapPathToBank, then coding-agent::<name>.
+banks:
+  ~/Documents/sample-project: coding-agent::documents-sample-project
+
+# Largest file indexed, in kilobytes (1 KB = 1000 bytes).
+max_file_kb: 128
+
+# Directory names never descended into (dot-prefixed directories are always skipped).
+skip_dirs: [.cache, .codegraph, .decision, .git, .next, .tasks, .venv, build, dist, node_modules, target, vendor]
+
+# Watcher timings, in seconds. Environment variables POLL_SECONDS, VAULT_QUIET_SECONDS and RELIST_SECONDS override them.
+poll_seconds: 60
+vault_quiet_seconds: 30
+relist_seconds: 600

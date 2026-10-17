@@ -31,15 +31,23 @@ RUN set -eux; \
     cd /; \
     rm -rf "${work}"
 
-RUN pip install --no-cache-dir watchfiles==1.3.0
+RUN pip install --no-cache-dir watchfiles==1.3.0 pyyaml==6.0.3
+
+# The compose user is the host's UID/GID, which may have no passwd entry here. Trust every repository owner, since
+# the indexer only reads them and the owner is the host user.
+RUN git config --system safe.directory '*'
 
 COPY bin/hindsight-project-index /usr/local/bin/hindsight-project-index
-COPY indexer/watch.py /opt/indexer/watch.py
+COPY indexer/watch.py indexer/index_config.py /opt/indexer/
+# Shipped default config. index_config.py finds it at ../config/index.yml relative to itself.
+COPY config/index.yml /opt/config/index.yml
 RUN chmod 0755 /usr/local/bin/hindsight-project-index /opt/indexer/watch.py
 
-# $HOME is bind-mounted, so ignore the host's ~/.local site-packages (they would shadow the pinned watchfiles).
+# $HOME is bind-mounted, so ignore the host's ~/.local site-packages (they would shadow the pinned packages).
+# PYTHONPATH makes index_config importable from both the indexer script and watch.py.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONNOUSERSITE=1 \
+    PYTHONPATH=/opt/indexer \
     HINDSIGHT_URL=http://hindsight:8888
 
 CMD ["python3", "/opt/indexer/watch.py"]
