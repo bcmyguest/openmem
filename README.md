@@ -168,6 +168,50 @@ docker compose run --rm --no-deps indexer hindsight-project-index --vault PATH -
 
 `--no-deps` avoids starting the `hindsight` service, which the indexer depends on. `PATH` is the host path, which the container also sees.
 
+## NotebookLM
+
+Opt-in. Syncs notebooks, sources, notes, and (optionally) chats from Google NotebookLM into Hindsight banks named `notebooklm::<notebook slug>`. Each notebook gets one bank; duplicate titles get an ID suffix. The service runs only under the `notebooklm` compose profile, so `docker compose up` never starts it.
+
+Risks:
+
+- The default `client` backend uses the unofficial `notebooklm-py` library (pinned to 0.8.5). Google can change or block it at any time, and the sync then fails until the library is updated.
+- The stored login is a Google session cookie set. Anyone who reads `~/.config/notebooklm` can act on that Google account. The directory is bind-mounted read-write into the sync container only, and masked from the indexer.
+- Source text and notes are copied into the Hindsight banks on this machine, where Hindsight's model server processes them.
+
+Login (on the host, once; re-run when Google expires the session). The commands below are not run by this repository:
+
+```sh
+mkdir -p ~/.config/notebooklm
+uv tool install 'notebooklm-py[browser]==0.8.5'
+uv tool run --from 'notebooklm-py[browser]==0.8.5' python -m playwright install chromium
+NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm login        # or: ... login --browser-cookies chrome
+NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm auth check --test --json
+```
+
+`login` opens a browser for the Google sign-in and saves `profiles/default/storage_state.json` under `NOTEBOOKLM_HOME`. `auth check --test` confirms the stored session works. The `playwright install` step is needed only if the login reports a missing browser; it is not run by this repository.
+
+Enable and start:
+
+1. Create `~/.config/hindsight/notebooklm.yml` with only the keys you change, for example:
+
+   ```yaml
+   enabled: true
+   interval_minutes: 60        # default 60
+   include_notebooks: ["Work*"] # fnmatch globs, case-insensitive; empty means all
+   ```
+
+   Compose refuses to start if this file is missing; create it first (`touch` is enough when there are no changes). Keys merge with `config/notebooklm.yml`; lists and scalars replace the shipped value.
+2. Start the service from the repository:
+
+   ```sh
+   docker compose --profile notebooklm up -d notebooklm
+   docker compose --profile notebooklm logs -f notebooklm
+   ```
+
+Without a login, the service logs the login commands and retries every 15 minutes. With `enabled: false` it sleeps and checks again hourly.
+
+Enterprise backend (`backend: enterprise`): the documented NotebookLM Enterprise REST API lists recently viewed notebooks only. It returns no source or note text, so this backend syncs notebook metadata only. It is untested against a live Enterprise project.
+
 ## Logs
 
 ```sh

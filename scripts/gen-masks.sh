@@ -7,7 +7,7 @@ set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="${repo}/compose.override.yaml"
-dirs=(.ssh .gnupg .config/hindsight .aws .config/gcloud .kube .docker .mozilla .config/google-chrome .config/chromium .password-store .local/share/keyrings)
+dirs=(.ssh .gnupg .config/hindsight .config/notebooklm .notebooklm .aws .config/gcloud .kube .docker .mozilla .config/google-chrome .config/chromium .password-store .local/share/keyrings)
 files=(.codex/auth.json .claude/.credentials.json)
 
 tmpfs_lines=()

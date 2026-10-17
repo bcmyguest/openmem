@@ -1,0 +1,33 @@
+# NotebookLM sync (opt-in: docker compose --profile notebooklm up -d notebooklm).
+# Per-machine override: ~/.config/hindsight/notebooklm.yml. Put only the keys you change there;
+# mappings merge key by key, lists and scalars replace the shipped value.
+
+enabled: false
+
+# client: unofficial notebooklm-py client, uses the browser login stored in ~/.config/notebooklm.
+# enterprise: documented NotebookLM Enterprise REST API (notebook list only; see README).
+backend: client
+
+interval_minutes: 60
+
+# Hindsight bank per notebook: <bank_prefix>::<slug of notebook title>.
+bank_prefix: notebooklm
+
+# Title globs (fnmatch, case-insensitive). include empty means every notebook.
+include_notebooks: []
+exclude_notebooks: []
+
+include:
+  notes: true
+  sources: true   # source list, URLs, full text and guide summary where the client returns them
+  chats: false    # saved chat question/answer history
+
+client:
+  # Empty uses NOTEBOOKLM_HOME (set to /data/notebooklm in the container).
+  storage_path: ""
+
+enterprise:
+  project_number: ""          # numeric project number, required for backend: enterprise
+  location: global            # global | us | eu
+  service_account_file: ""    # path inside the container; empty uses Application Default Credentials
+  notebook_limit: 500         # listRecentlyViewed page size, 1..500
