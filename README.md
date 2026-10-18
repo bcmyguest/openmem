@@ -11,14 +11,14 @@ Docker Compose setup for the local Hindsight coding-agent memory. It runs three 
 - Docker with Compose v2.
 - A model server behind the LiteLLM proxy:
   - lemond on this machine, `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`). It listens on all interfaces.
-  - Or Ollama. It must listen on all interfaces: set `OLLAMA_HOST=0.0.0.0:11434` in its service environment.
+  - Or Ollama. Bind it to the Docker bridge gateway, not `0.0.0.0`: set `OLLAMA_HOST=172.17.0.1:11434` in its service environment (find the gateway with `docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`). `host.docker.internal` resolves to that address, so the litellm container reaches Ollama there, while the LAN cannot. Start Ollama after `docker.service` so the bridge exists. `OLLAMA_HOST=0.0.0.0:11434` also works but exposes Ollama to the LAN, which the unauthenticated API should not be.
 
 ## Quick start: `./setup`
 
 `./setup` (the wizard, `scripts/wizard.sh`) takes a fresh clone to a running stack. It asks for:
 
 1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
-2. Model backend: lemond when it answers on `127.0.0.1:13305`, else Ollama, else a custom OpenAI-compatible URL.
+2. Model backend: lemond (default) when it answers on `127.0.0.1:13305`. Models come from lemonade (unsloth GGUFs); the wizard runs `lemonade pull` for any model the LiteLLM config names that lemond has not downloaded. Ollama is optional, and a custom OpenAI-compatible URL is also available.
 3. Secrets and env files under `~/.config/hindsight/` (mode 600), then `scripts/setup.sh`.
 4. Source roots to index (default `~`, depth 3) and the Obsidian vaults it finds.
 5. Optional NotebookLM sync (default no).
@@ -95,7 +95,7 @@ Hindsight never names a model server. It calls the LiteLLM proxy at `http://lite
 Shipped routes:
 
 - `config/litellm.lemond.yaml`: `memory-reflect` is `openai/gemma-4-E4B-it-GGUF-Q4_K_M` (unsloth Q4_K_M, pulled into lemond); `memory-retain` and `memory-consolidate` stay on `openai/Gemma-4-E2B-it-GGUF` at `http://host.docker.internal:13305/v1` (lemond).
-- `config/litellm.ollama.yaml`: `memory-reflect` is `ollama_chat/gemma4:e4b` at `http://host.docker.internal:11434` (Ollama); the other two aliases stay on `ollama_chat/gemma4:e2b`. The `gemma4:e4b` tag needs a newer Ollama than 0.20.3 (HTTP 412 on pull), so this route is not verified on this host.
+- `config/litellm.ollama.yaml` (optional, `MEMORY_BACKEND=ollama` only): `memory-reflect` is `ollama_chat/gemma4:e4b` at `http://host.docker.internal:11434` (Ollama); the other two aliases stay on `ollama_chat/gemma4:e2b`. The `gemma4:e4b` tag needs a newer Ollama than 0.20.3 (HTTP 412 on pull), so this route is not verified on this host.
 
 Why reflect uses E4B: Gemma 4 E2B returned no usable tool call on Hindsight reflect (`finish_reason=length`). Measured on a three-fact test bank with the same query, through LiteLLM and lemond:
 
@@ -118,7 +118,7 @@ Selection, in order:
 1. `~/.config/hindsight/litellm.yaml`, if it exists. A per-machine override that replaces the shipped routes entirely. It is mounted read-only into the proxy.
 2. Otherwise `config/litellm.$MEMORY_BACKEND.yaml`, where `MEMORY_BACKEND` is `lemond` (default) or `ollama`.
 
-The choice is written to `.env` as `LITELLM_CONFIG` when `scripts/setup.sh` runs. After changing `MEMORY_BACKEND`, an override file, or a route, rerun `setup.sh` and then `docker compose up -d litellm`. For a laptop on Ollama:
+The choice is written to `.env` as `LITELLM_CONFIG` when `scripts/setup.sh` runs. After changing `MEMORY_BACKEND`, an override file, or a route, rerun `setup.sh` and then `docker compose up -d litellm`. Optional Ollama route (not the default):
 
 ```sh
 MEMORY_BACKEND=ollama bash scripts/setup.sh

@@ -44,6 +44,7 @@ SMOKE=1
 REBUILD=0
 BACKEND=""
 MODEL=""
+REFLECT_MODEL=""   # empty: the shipped memory-reflect route stays
 API_BASE=""
 LEMOND_JSON=""
 LEMOND_NAMES=""
@@ -157,11 +158,14 @@ show_models() {
     if [ -n "$1" ]; then printf '%s\n' "$1" | sed 's/^/      /'; fi
 }
 
+# ollama_bind_ok: Ollama listens on the Docker bridge gateway or on a wildcard, so the litellm container can reach it.
 ollama_bind_ok() {
     command -v ss >/dev/null 2>&1 || return 0
-    local listing
+    local listing gateway
+    gateway="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || true)"
+    gateway="${gateway:-172.17.0.1}"
     listing="$(ss -ltn 2>/dev/null | awk '{print $4}')"
-    grep -q -E '^(\*|0\.0\.0\.0|\[::\]):11434$' <<<"${listing}"
+    grep -q -E "^(\*|0\.0\.0\.0|\[::\]|${gateway//./\.}):11434$" <<<"${listing}"
 }
 
 port_free() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
@@ -227,8 +231,8 @@ check_preflight() {
 
 ollama_warn_bind() {
     warn "Ollama listens on loopback only, so the litellm container cannot reach it."
-    info "Fix: set OLLAMA_HOST=0.0.0.0:11434 for the Ollama service (systemd: sudo systemctl edit ollama,"
-    info "     add [Service] Environment=\"OLLAMA_HOST=0.0.0.0:11434\", then sudo systemctl restart ollama)."
+    info "Fix: set OLLAMA_HOST=<docker bridge gateway, usually 172.17.0.1>:11434 for the Ollama service, then restart it."
+    info "     Find the gateway: docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'. See README, Prerequisites."
 }
 
 choose_lemond() {
@@ -241,6 +245,35 @@ choose_lemond() {
         warn "${LEMOND_DEFAULT_MODEL} is not listed by lemond"
     fi
     ask MODEL "lemond model id" "${default_model}"
+    ask_reflect_model
+    pull_lemond_models
+}
+
+# lemond_downloaded_names: ids lemond reports as downloaded (show_all lists registry entries with a flag).
+lemond_downloaded_names() {
+    fetch "${LEMOND_BASE}/api/v1/models?show_all=true" | python3 -I -c 'import json,sys
+for m in json.load(sys.stdin).get("data", []):
+    if m.get("downloaded"): print(m.get("id", ""))' 2>/dev/null || true
+}
+
+# pull_lemond_models: pulls each distinct model the LiteLLM config for this run names (openai/ prefix stripped)
+# that lemond has not downloaded. Exact name match; a pull runs only for a missing model.
+pull_lemond_models() {
+    local name downloaded
+    if [ -z "${LEMOND_JSON}" ]; then return 0; fi
+    downloaded="$(lemond_downloaded_names)"
+    while IFS= read -r name; do
+        [ -n "${name}" ] || continue
+        if grep -Fqx "${name}" <<<"${downloaded}"; then continue; fi
+        warn "${name} is not downloaded in lemond"
+        if confirm "Run lemonade pull ${name} now?" y; then
+            if command -v lemonade >/dev/null 2>&1; then
+                act "lemonade pull ${name}" lemonade pull "${name}"
+            else
+                warn "lemonade is not on PATH: run 'lemonade pull ${name}' on this host"
+            fi
+        fi
+    done < <(litellm_config | sed -n 's|^ *model: openai/||p' | sort -u)
 }
 
 choose_ollama() {
@@ -253,16 +286,37 @@ choose_ollama() {
         ollama_warn_bind
     fi
     ask MODEL "Ollama model" "${default_model}"
-    if [ -n "${OLLAMA_JSON}" ] && ! grep -qx "${MODEL}" <<<"${OLLAMA_NAMES}"; then
-        warn "${MODEL} is not pulled yet"
-        if confirm "Run ollama pull ${MODEL} now?" y; then
+    ask_reflect_model
+    pull_ollama_models
+}
+
+# ask_reflect_model: a separate reflect model, or "shipped" for the shipped route. Blank keeps the saved answer.
+ask_reflect_model() {
+    local answer
+    ask answer "Separate reflect model (type shipped for the shipped reflect route)" \
+        "${PM_REFLECT_MODEL:-$(stored_or "${BACKEND}" MEMORY_REFLECT_MODEL "")}"
+    case "${answer}" in
+        ""|shipped) REFLECT_MODEL="" ;;
+        *) REFLECT_MODEL="${answer}" ;;
+    esac
+}
+
+# pull_ollama_models: pulls each distinct Ollama model that the LiteLLM config for this run names and that is missing.
+pull_ollama_models() {
+    local name
+    if [ -z "${OLLAMA_JSON}" ]; then return 0; fi
+    while IFS= read -r name; do
+        [ -n "${name}" ] || continue
+        if grep -Fqx "${name}" <<<"${OLLAMA_NAMES}"; then continue; fi
+        warn "${name} is not pulled yet"
+        if confirm "Run ollama pull ${name} now?" y; then
             if command -v ollama >/dev/null 2>&1; then
-                act "ollama pull ${MODEL}" ollama pull "${MODEL}"
+                act "ollama pull ${name}" ollama pull "${name}"
             else
-                warn "ollama is not on PATH: run 'ollama pull ${MODEL}' on this host"
+                warn "ollama is not on PATH: run 'ollama pull ${name}' on this host"
             fi
         fi
-    fi
+    done < <(litellm_config | sed -n 's|^ *model: ollama_chat/||p' | sort -u)
 }
 
 choose_custom() {
@@ -297,16 +351,46 @@ render_override() {
     printf '%s\n' "general_settings:" "  master_key: os.environ/LITELLM_MASTER_KEY"
 }
 
+# render_shipped LITELLM_MODEL REFLECT_LITELLM_MODEL: config/litellm.BACKEND.yaml with the chosen URL and models.
+# Retain and consolidate take LITELLM_MODEL. Reflect keeps its shipped model unless REFLECT_LITELLM_MODEL is set.
+render_shipped() {
+    local src="${REPO}/config/litellm.${BACKEND}.yaml"
+    printf '%s\n' "# Written by ./setup from config/litellm.${BACKEND}.yaml. Replaces the shipped routes while this file exists." \
+        "# Delete it, or rerun ./setup with the shipped models, to use the shipped routes again."
+    awk -v base="${API_BASE}" -v model="$1" -v reflect="$2" '
+        /^  - model_name: / { name = $3 }
+        /^      api_base: /  { print "      api_base: " base; next }
+        /^      model: /     {
+            if (name != "memory-reflect") { print "      model: " model }
+            else if (reflect != "") { print "      model: " reflect }
+            else { print }
+            next
+        }
+        { print }
+    ' "${src}"
+}
+
+# litellm_config: the LiteLLM YAML this run serves, on stdout.
+litellm_config() {
+    local prefix="openai/" reflect=""
+    if [ "${BACKEND}" = ollama ]; then prefix="ollama_chat/"; fi
+    if [ "${BACKEND}" = custom ]; then
+        render_override "${prefix}${MODEL}"
+        return 0
+    fi
+    if [ -n "${REFLECT_MODEL}" ]; then reflect="${prefix}${REFLECT_MODEL}"; fi
+    render_shipped "${prefix}${MODEL}" "${reflect}"
+}
+
 write_override() {
-    local litellm_model="openai/${MODEL}" tmp
-    if [ "${BACKEND}" = ollama ]; then litellm_model="ollama_chat/${MODEL}"; fi
+    local tmp
     if dry; then
-        info "[dry-run] write ${LITELLM_OVERRIDE}: all aliases -> ${litellm_model} at ${API_BASE}, thinking off"
+        info "[dry-run] write ${LITELLM_OVERRIDE} from config/litellm.${BACKEND}.yaml: retain and consolidate -> ${MODEL}, reflect -> ${REFLECT_MODEL:-shipped}, at ${API_BASE}"
         return 0
     fi
     ensure_hs_dir
     tmp="$(mktemp "${HS_DIR}/.litellm.yaml.XXXXXX")"
-    render_override "${litellm_model}" > "${tmp}"
+    litellm_config > "${tmp}"
     chmod 644 "${tmp}"
     if [ -f "${LITELLM_OVERRIDE}" ]; then
         if cmp -s "${tmp}" "${LITELLM_OVERRIDE}"; then
@@ -346,7 +430,7 @@ apply_route() {
         lemond) shipped="${LEMOND_DEFAULT_MODEL}" ;;
         ollama) shipped="${OLLAMA_DEFAULT_MODEL}" ;;
     esac
-    if [ "${BACKEND}" != custom ] && [ "${MODEL}" = "${shipped}" ]; then
+    if [ "${BACKEND}" != custom ] && [ "${MODEL}" = "${shipped}" ] && [ -z "${REFLECT_MODEL}" ]; then
         remove_override_if_asked
     else
         write_override
@@ -359,13 +443,13 @@ save_conf() {
         return 0
     fi
     ensure_hs_dir
-    printf 'MEMORY_BACKEND=%s\nMEMORY_MODEL=%s\nMEMORY_API_BASE=%s\n' "${BACKEND}" "${MODEL}" "${API_BASE}" > "${WIZARD_CONF}"
+    printf 'MEMORY_BACKEND=%s\nMEMORY_MODEL=%s\nMEMORY_API_BASE=%s\nMEMORY_REFLECT_MODEL=%s\n' "${BACKEND}" "${MODEL}" "${API_BASE}" "${REFLECT_MODEL}" > "${WIZARD_CONF}"
     chmod 644 "${WIZARD_CONF}"
 }
 
 choose_backend() {
     step "2. Model backend"
-    local default_num=3 choice
+    local default_num=1 choice
     LEMOND_JSON="$(fetch "${LEMOND_BASE}/v1/models")"
     OLLAMA_JSON="$(fetch "${OLLAMA_BASE}/api/tags")"
     LEMOND_NAMES="$(list_names <<<"${LEMOND_JSON}")"
@@ -373,14 +457,12 @@ choose_backend() {
     if [ -n "${LEMOND_JSON}" ]; then
         ok "lemond answers on ${LEMOND_BASE}"
         show_models "${LEMOND_NAMES}"
-        default_num=1
     else
         info "lemond: not answering on ${LEMOND_BASE}"
     fi
     if [ -n "${OLLAMA_JSON}" ]; then
         ok "Ollama answers on ${OLLAMA_BASE}"
         show_models "${OLLAMA_NAMES}"
-        if [ -z "${LEMOND_JSON}" ]; then default_num=2; fi
     else
         info "Ollama: not answering on ${OLLAMA_BASE}"
     fi

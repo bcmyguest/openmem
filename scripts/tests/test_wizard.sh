@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/wizard.sh with stub docker, curl, ollama, and npx on PATH and a scratch HOME.
+# Tests for scripts/wizard.sh with stub docker, curl, ollama, lemonade, and npx on PATH and a scratch HOME.
 # Runs against a copy of the repo, so setup.sh's compose.override.yaml and .env never land in the checkout.
 # Never touches the live stack or the real ~/.config/hindsight.
 set -euo pipefail
@@ -37,7 +37,7 @@ STUB
 #!/usr/bin/env bash
 echo "curl $*" >> "${STUB_LOG}"
 case "$*" in
-    */v1/models*) echo '{"object":"list","data":[{"id":"Gemma-4-E2B-it-GGUF"}]}' ;;
+    */v1/models*) echo '{"object":"list","data":[{"id":"Gemma-4-E2B-it-GGUF","downloaded":true},{"id":"gemma-4-E4B-it-GGUF-Q4_K_M","downloaded":true}]}' ;;
     */api/tags*) exit 7 ;;
     */memories/recall*) echo '{"results":[{"text":"The project codename is heron."}]}' ;;
     *) echo '{}' ;;
@@ -47,6 +47,11 @@ STUB
     cat > "${dir}/ollama" <<'STUB'
 #!/usr/bin/env bash
 echo "ollama $*" >> "${STUB_LOG}"
+exit 0
+STUB
+    cat > "${dir}/lemonade" <<'STUB'
+#!/usr/bin/env bash
+echo "lemonade $*" >> "${STUB_LOG}"
 exit 0
 STUB
     cat > "${dir}/npx" <<'STUB'
@@ -69,7 +74,7 @@ make_home() {
 run_wizard() {
     local home="$1" copy="$2" log="$3" out="$4"; shift 4
     env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
-        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit PM_REFLECT_MODEL="${PM_REFLECT_MODEL:-}" HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
         bash "${copy}/scripts/wizard.sh" "$@" > "${out}" 2>&1
 }
 
@@ -157,8 +162,34 @@ test_build_cache() {
     check "--rebuild: indexer rebuilt without source change" grep -q 'compose -p pm-wizard-unit build indexer' "${log}.5"
 }
 
+# route_model ALIAS FILE: the litellm model string of one route in a LiteLLM YAML file.
+route_model() {
+    awk -v n="$1" '/^  - model_name: / { f = ($3 == n) } f && /^      model: / { sub(/^      model: /, ""); print; exit }' "$2"
+}
+
+# (d) a custom retain model keeps the shipped reflect route; PM_REFLECT_MODEL sets a separate one.
+test_reflect_route() {
+    local home="${WORK}/home-idem" copy="${WORK}/copy-idem" log="${WORK}/reflect.log"
+    local ovr="${home}/.config/hindsight/litellm.yaml" rc=0
+    sed -i 's/^MEMORY_MODEL=.*/MEMORY_MODEL=Custom-Retain-GGUF/' "${home}/.config/hindsight/wizard.conf"
+    run_wizard "${home}" "${copy}" "${log}" "${WORK}/reflect1.out" --yes || rc=$?
+    check "custom retain model: wizard exits 0" [ "${rc}" -eq 0 ]
+    check "custom retain model: override written" [ -f "${ovr}" ]
+    check "custom retain model: retain route uses it" [ "$(route_model memory-retain "${ovr}")" = "openai/Custom-Retain-GGUF" ]
+    check "custom retain model: consolidate uses it" [ "$(route_model memory-consolidate "${ovr}")" = "openai/Custom-Retain-GGUF" ]
+    check "custom retain model: reflect keeps shipped model" [ "$(route_model memory-reflect "${ovr}")" = "openai/gemma-4-E4B-it-GGUF-Q4_K_M" ]
+    check "custom retain model: shipped thinking flag kept" grep -q 'enable_thinking: false' "${ovr}"
+
+    rc=0
+    PM_REFLECT_MODEL=Other-Reflect-GGUF run_wizard "${home}" "${copy}" "${log}.2" "${WORK}/reflect2.out" --yes || rc=$?
+    check "separate reflect model: wizard exits 0" [ "${rc}" -eq 0 ]
+    check "separate reflect model: reflect route uses it" [ "$(route_model memory-reflect "${ovr}")" = "openai/Other-Reflect-GGUF" ]
+    check "separate reflect model: retain unchanged" [ "$(route_model memory-retain "${ovr}")" = "openai/Custom-Retain-GGUF" ]
+}
+
 test_dry_run
 test_idempotent
+test_reflect_route
 test_build_cache
 
 if [ "${FAILS}" -eq 0 ]; then
