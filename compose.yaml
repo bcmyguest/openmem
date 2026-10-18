@@ -33,7 +33,8 @@ services:
     depends_on:
       litellm:
         condition: service_healthy
-    image: ghcr.io/vectorize-io/hindsight:latest
+    # Pinned to the digest running before the pin (org.opencontainers.image.version 1.0.0). Bump deliberately.
+    image: ghcr.io/vectorize-io/hindsight@sha256:a88678c038b0e4340822b02a5efc566c56d8176b5bffa731bc433fd37f978e4c
     # Embedded Postgres needs more than Docker's 64 MB default /dev/shm.
     shm_size: 1g
     env_file: ${HINDSIGHT_ENV_FILE:-${HOME}/.config/hindsight/hindsight.env}
