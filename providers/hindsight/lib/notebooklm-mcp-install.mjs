@@ -16,9 +16,10 @@ export function notebooklmMcpScriptPath(repoRoot) {
 /**
  * @param {Record<string, any>} mcp
  * @param {string} scriptPath absolute path to cli/notebooklm-mcp.mjs
+ * @param {{ agentJson?: string }} [opts]
  * @returns {{ mcp: Record<string, any>, changed: boolean, skipped?: string }}
  */
-export function mergeNotebooklmMcpServer(mcp, scriptPath) {
+export function mergeNotebooklmMcpServer(mcp, scriptPath, opts = {}) {
   const out = { ...mcp };
   const servers = { ...(mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {}) };
   // Absolute node + explicit config path: Cursor Agent's PATH may resolve a different
@@ -26,9 +27,9 @@ export function mergeNotebooklmMcpServer(mcp, scriptPath) {
   // make the process exit before handshake ("Connection closed").
   const nodeBin = process.execPath;
   const agentJson =
+    opts.agentJson ||
     process.env.HINDSIGHT_CODING_AGENT_JSON ||
-    path.join(process.env.HOME || path.dirname(scriptPath), ".hindsight", "coding-agent.json");
-  // When called from installNotebooklmMcp, prefer ctx paths via env set by caller.
+    path.join(process.env.HOME || "", ".hindsight", "coding-agent.json");
   const next = {
     type: "stdio",
     command: nodeBin,
@@ -100,7 +101,9 @@ export async function installNotebooklmMcp(ctx, h) {
   // Guard: never clobber unrelated servers (merge only adds/updates "notebooklm").
   const beforeHindsight = existing.mcpServers?.hindsight;
   const beforeCodegraph = existing.mcpServers?.codegraph;
-  const { mcp, changed, skipped } = mergeNotebooklmMcpServer(existing, script);
+  const { mcp, changed, skipped } = mergeNotebooklmMcpServer(existing, script, {
+    agentJson: path.resolve(agentPath),
+  });
   if (beforeHindsight && mcp.mcpServers?.hindsight !== beforeHindsight) {
     h.warn("refusing to alter hindsight MCP entry");
     return;
