@@ -1,0 +1,47 @@
+# mem0 compose fragment (URL-only mode). Layered over compose.yaml; the wizard passes both, then `up -d`:
+#   docker compose -f compose.yaml -f providers/mem0/compose.yaml --profile mem0 up -d
+# Add `-f compose.override.yaml` when you use the generated secret masks (Compose skips that file once -f is given).
+#
+# URL-only: this fragment defines NO service. The indexer talks to a mem0 REST server you already run (usually on
+# the host, or on another machine); nothing here starts, builds or pulls a mem0 container. The reason is that the
+# current self-hosted mem0 server (JWT/API-key auth, dashboard, Postgres + pgvector) has no current published image:
+# `mem0/mem0-api-server:latest` on Docker Hub predates the auth. A mem0 service is a documented follow-up: build
+# `server/` from a pinned mem0 git ref next to `pgvector/pgvector:pg17`, pinned and verified. Until then there is no
+# `mem0` profile service, so `--profile mem0` only selects this fragment; it starts the provider-neutral indexer
+# and its state-init step and nothing else.
+#
+# What the base compose.yaml gives you:
+#   - `indexer` and `indexer-state-init` have no profile and no provider dependency, so they start for every
+#     provider. This fragment points the indexer at the mem0 server.
+#   - `litellm` and `hindsight` carry the profile "hindsight" and do not start under this profile.
+# Compose still interpolates every service before it filters by profile, so the stack .env needs LITELLM_CONFIG
+# even though litellm never runs here. scripts/setup.mjs (providers/mem0/lib/stack-env.mjs) writes an inert value.
+#
+# Loopback caveat (Linux): host.docker.internal resolves to the docker bridge gateway, not to the host's 127.0.0.1.
+# A mem0 server bound only to 127.0.0.1 is therefore NOT reachable from the indexer container. Bind it to 0.0.0.0
+# or to the docker bridge IP, or give MEM0_API_URL a real hostname. An https://localhost URL is rewritten to
+# https://host.docker.internal, which will not match the server certificate name (use a hostname the certificate
+# covers). ./setup prints a note when MEM0_API_URL is a loopback address.
+#
+# Stack .env keys read here (written by ./setup):
+#   MEM0_INDEXER_URL  the server as the indexer container sees it. The wizard derives it from MEM0_API_URL (the host
+#                     view) by rewriting localhost, 127.0.0.1, 0.0.0.0 and [::1] to host.docker.internal.
+#   MEM0_ENV_FILE     optional; default ~/.config/personal-memory/mem0.env. Holds ONLY MEM0_API_KEY=... for the
+#                     indexer (mode 600, outside the repo). Not needed when the server runs with AUTH_DISABLED.
+#                     mem0's own server secrets (JWT_SECRET, ADMIN_API_KEY, embedder keys) are the operator's concern
+#                     and never go through this stack.
+
+services:
+  indexer:
+    environment:
+      # Selects indexer/sinks/mem0.py and gives it the server URL (container view, not the host view).
+      MEMORY_SINK: mem0
+      MEMORY_API_URL: ${MEM0_INDEXER_URL:?run ./setup (mem0 API URL)}
+    # required: false lets `config` and `up` run before the key file exists (Compose 2.24+).
+    env_file:
+      - path: ${MEM0_ENV_FILE:-${HOME}/.config/personal-memory/mem0.env}
+        required: false
+    # Reach a server on the host through host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # No depends_on: the server is external, and the indexer's watcher retries until it answers.

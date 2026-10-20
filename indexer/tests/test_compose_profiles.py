@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = "pm-test-sink-compose"
 HINDSIGHT_SERVICES = {"hindsight", "litellm", "indexer", "indexer-state-init"}

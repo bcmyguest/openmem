@@ -13,13 +13,12 @@ JSON, exactly as before.
 
 import json
 import threading
-from email import policy
-from email.parser import BytesParser
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-
 
 Route = Callable[[str, str, Any], tuple[int, Any]]
 

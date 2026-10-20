@@ -15,6 +15,8 @@ const dirs = [
   ".ssh",
   ".gnupg",
   ".config/hindsight",
+  // Provider env files with API keys (mem0.env, ...). The indexer never reads it.
+  ".config/personal-memory",
   ".config/notebooklm",
   ".notebooklm",
   ".aws",

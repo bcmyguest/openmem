@@ -1,20 +1,26 @@
 {
   "id": "cognee",
   "label": "Cognee",
-  "status": "planned",
-  "notes": "Self-hosted graph/RAG memory; sink + compose profile in Wave 2.",
+  "status": "experimental",
+  "notes": "Self-hosted graph/RAG memory run as a pinned cognee/cognee image (single container, SQLite + LanceDB + Ladybug) on a loopback port in single-user mode (no authentication). Ingestion is asynchronous: the indexer adds documents, then requests cognify once per changed dataset, so a document is searchable only after the graph is built, which needs a working LLM key. Experimental until a first live run against the real image.",
   "settings": {
     "nativeDocs": "https://docs.cognee.ai/",
-    "nativeConfigPaths": [],
+    "nativeConfigPaths": [
+      "~/.config/personal-memory/cognee.env",
+      "~/.config/personal-memory/cognee-indexer.env"
+    ],
     "wizardOwns": [
-      "compose profile and API URL (TBD)",
+      "compose profile 'cognee', the loopback host port (COGNEE_PORT, default 8766) and the stack .env entries",
+      "LLM_API_KEY and optional LLM_* / EMBEDDING_* settings in cognee.env (mode 600, outside the repo)",
+      "the smoke test (health, dataset, multipart add, list, delete; recall is skipped because ingestion is asynchronous)",
       "index.yml sources (shared indexer)",
-      "Cognee dataset mapping from indexer banks (TBD)"
+      "Cognee dataset mapping from indexer banks (the indexer sink maps each bank to a dataset)"
     ]
   },
   "compose": {
-    "services": [],
-    "healthService": null,
+    "services": ["cognee", "indexer"],
+    "healthService": "cognee",
+    "logServices": ["cognee"],
     "healthPath": "/health",
     "hostPortEnv": "COGNEE_PORT",
     "defaultHostPort": 8766,
@@ -23,6 +29,7 @@
   },
   "indexer": {
     "apiUrlEnv": "COGNEE_API_URL",
+    "sink": "cognee",
     "sinkDriver": "cognee-rest"
   },
   "codingAgent": {
@@ -35,11 +42,14 @@
   },
   "wizard": {
     "smokeBank": "wizard-smoke",
-    "retainMethod": null,
-    "retainPath": null,
-    "recallMethod": null,
-    "recallPath": null,
-    "deleteMethod": null,
-    "deletePath": null
+    "retainMethod": "POST",
+    "retainPath": "/api/v1/add",
+    "retainBody": "multipart/form-data: datasetName=wizard_smoke, data=wizard-smoke.md (done by the smoke hook)",
+    "recallMethod": "POST",
+    "recallPath": "/api/v1/search",
+    "recallBody": "{\"searchType\":\"GRAPH_COMPLETION\",\"query\":\"What is the project codename?\",\"datasets\":[\"wizard_smoke\"]}",
+    "recallHint": "check {compose} logs cognee and LLM_API_KEY",
+    "deleteMethod": "DELETE",
+    "deletePath": "/api/v1/datasets/{bank}"
   }
 }

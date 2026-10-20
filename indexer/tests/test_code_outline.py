@@ -1,9 +1,7 @@
 """Tree-sitter outlines for code documents (indexer/code_outline.py)."""
 
-import pytest
-
 import code_outline
-
+import pytest
 
 PYTHON = b"""import os
 from pathlib import Path

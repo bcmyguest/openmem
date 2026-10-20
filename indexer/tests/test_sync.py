@@ -6,9 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 import sinks
-
 
 SCRIPT = Path(__file__).resolve().parents[2] / "bin" / "hindsight-project-index"
 

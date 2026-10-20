@@ -277,6 +277,24 @@ def kinds_key(source: Path) -> str:
     return f"{source}::kinds"
 
 
+# Banks whose sink flush() has not completed. A distinct top-level key (source keys are absolute paths, so it
+# cannot collide). It exists only while a flush is pending and only for sinks that define flush(), so a state
+# file written for a sink without flush() (Hindsight) never contains it.
+PENDING_FLUSH_KEY = "::flush-pending"
+
+
+def pending_flush_banks(state: dict) -> set[str]:
+    return set(state.get(PENDING_FLUSH_KEY, []))
+
+
+def set_pending_flush(state: dict, state_path: Path, banks: set[str]) -> None:
+    if banks:
+        state[PENDING_FLUSH_KEY] = sorted(banks)
+    else:
+        state.pop(PENDING_FLUSH_KEY, None)
+    save_state(state_path, state)
+
+
 def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
     if kind:
         documents = {key: value for key, value in documents.items() if value["kind"] == kind}
@@ -287,8 +305,16 @@ def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, 
         changed = dict(list(changed.items())[:limit])
     stale = set(old) - set(documents) if limit is None and kind is None else set()
     if apply:
+        # Optional flush hook (async-ingest sinks). A flush still pending from an earlier run is retried here.
+        flushable = callable(getattr(sink, "flush", None))
+        flush_due = flushable and bank in pending_flush_banks(state)
         if changed:
             sink.prepare(bank)
+        if flushable and (changed or stale) and not flush_due:
+            # Recorded before the first write: the per-document saves below persist digests, so without the
+            # marker a failed flush would never be retried.
+            set_pending_flush(state, state_path, pending_flush_banks(state) | {bank})
+            flush_due = True
         for doc_id, value in changed.items():
             sink.retain(bank, doc_id, value["content"], tags=value.get("tags"), metadata=value["metadata"], context=value["context"])
             old[doc_id] = value["digest"]
@@ -302,9 +328,10 @@ def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, 
             old.pop(doc_id)
             kinds.pop(doc_id, None)
             save_state(state_path, state)
-        if changed or stale:
-            # Optional hook for async-ingest sinks: start processing once per bank batch, not per document.
+        if flush_due:
+            # Once per bank batch, not per document. The marker is cleared only after a successful flush.
             sinks.flush_sink(sink, bank)
+            set_pending_flush(state, state_path, pending_flush_banks(state) - {bank})
         state[str(source)] = old
         state[kinds_key(source)] = kinds
     return len(changed), len(stale)
@@ -394,7 +421,7 @@ def main() -> int:
             print(f"sink error: {error}", file=sys.stderr)
             return 2
     # Held until exit: the watcher and manual runs must not overwrite each other's state file.
-    state_lock = acquire_state_lock(args.state) if args.apply else None
+    _state_lock = acquire_state_lock(args.state) if args.apply else None  # held until exit
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     failed = 0
     for kind, path in sources:

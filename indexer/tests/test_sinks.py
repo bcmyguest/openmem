@@ -7,13 +7,11 @@ import sys
 from pathlib import Path
 
 import pytest
-
 import sinks
 import sinks.hindsight as hindsight_sink
 from hindsight_stub import build_fixture, hindsight_route, run_scenario
 from sink_contract import run_sink_contract
 from stub_server import serving
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "bin" / "hindsight-project-index"

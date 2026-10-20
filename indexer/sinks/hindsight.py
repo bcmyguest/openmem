@@ -13,7 +13,6 @@ from collections.abc import Mapping
 
 from sinks import Capabilities, SinkError
 
-
 DEFAULT_URL = "http://127.0.0.1:8888"
 STRATEGY = "project-index"
 

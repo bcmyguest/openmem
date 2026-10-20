@@ -1,10 +1,8 @@
 """index.yml schema, defaults, validation and override precedence for indexer/index_config.py."""
 
-from pathlib import Path
-
-import pytest
 
 import index_config
+import pytest
 
 
 @pytest.fixture
