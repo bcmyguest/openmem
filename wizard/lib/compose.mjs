@@ -2,6 +2,22 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
+ * Compose profiles for the active provider + optional extras (Ollama, NotebookLM).
+ *
+ * @param {{ memoryProvider?: { compose?: { profile?: string } }, extraComposeProfiles?: string[] }} ctx
+ * @returns {string[]}
+ */
+export function composeProfiles(ctx) {
+  const compose = ctx.memoryProvider?.compose || {};
+  const profiles = [];
+  if (compose.profile) profiles.push(compose.profile);
+  for (const p of ctx.extraComposeProfiles || []) {
+    if (typeof p === "string" && p && !profiles.includes(p)) profiles.push(p);
+  }
+  return profiles;
+}
+
+/**
  * Arguments for `docker` that run a compose subcommand for the active provider.
  *
  * Every compose call in the wizard goes through here so the manifest's
@@ -11,7 +27,9 @@ import path from "node:path";
  * compose.yaml, compose.override.yaml (when present), then the extra files.
  *
  * Extra profiles (compose Ollama, NotebookLM) come from `ctx.extraComposeProfiles`.
- * A `--profile` flag replaces `COMPOSE_PROFILES`, so every needed profile is named here.
+ * Docker Compose unions CLI `--profile` with `COMPOSE_PROFILES` from `.env`, so
+ * `composeSpawnOptions` overrides that env var to the same list — otherwise `.env`
+ * can start NotebookLM while the wizard intentionally omitted it (e.g. during smoke).
  *
  * @param {{ project: string, repoRoot: string, memoryProvider?: { compose?: { profile?: string, files?: string[] } }, extraComposeProfiles?: string[] }} ctx
  * @param {...string} rest the compose subcommand and its arguments
@@ -28,12 +46,7 @@ export function composeArgs(ctx, ...rest) {
     }
     for (const f of extra) args.push("-f", f);
   }
-  const profiles = [];
-  if (compose.profile) profiles.push(compose.profile);
-  for (const p of ctx.extraComposeProfiles || []) {
-    if (typeof p === "string" && p && !profiles.includes(p)) profiles.push(p);
-  }
-  for (const p of profiles) args.push("--profile", p);
+  for (const p of composeProfiles(ctx)) args.push("--profile", p);
   return [...args, ...rest];
 }
 
@@ -42,7 +55,16 @@ export function composeCommandText(ctx, ...rest) {
   return `docker ${composeArgs(ctx, ...rest).join(" ")}`;
 }
 
-/** spawn options for compose calls: compose files are resolved in the stack root. */
+/**
+ * Spawn options for compose calls: cwd is the stack root; COMPOSE_PROFILES matches
+ * the `--profile` flags so `.env` cannot enable extra profiles behind the wizard's back.
+ */
 export function composeSpawnOptions(ctx) {
-  return { cwd: ctx.repoRoot };
+  return {
+    cwd: ctx.repoRoot,
+    env: {
+      ...process.env,
+      COMPOSE_PROFILES: composeProfiles(ctx).join(","),
+    },
+  };
 }

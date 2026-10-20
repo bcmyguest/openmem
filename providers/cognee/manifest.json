@@ -35,7 +35,7 @@
   "codingAgent": {
     "pluginPackage": null,
     "configTemplate": null,
-    "notes": "No plugin package. setupCodingAgent prints how to call Cognee REST (health, add, cognify, search) on the loopback COGNEE_PORT."
+    "notes": "No plugin package. setupCodingAgent prints REST paths and registers the read-only Cognee MCP (cognee_health / cognee_search) in ~/.cursor/mcp.json."
   },
   "wizardHooks": {
     "module": "wizard.mjs",

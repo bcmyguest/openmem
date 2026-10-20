@@ -30,8 +30,14 @@ export function summary(ctx) {
   } else configFiles.push(`  config/litellm.${ctx.backend}.yaml (shipped routes)`);
   const litellmUp = composeCommandText(ctx, "up", "-d", "litellm");
   const notes = [
+    `Control plane (banks, ops, LLM queue): http://127.0.0.1:${ctx.portCp}`,
     `Reflect needs a capable model (memory-reflect alias). On a weak or remote LLM, edit ${ctx.litellmOverride} and point memory-reflect at Meridian, an OpenAI-compatible host, or a stronger local model — then: ${litellmUp}`,
     `Change later: rerun ./setup. For a route-only edit, run: ${litellmUp}`,
   ];
+  if (ctx.smokeFailed) {
+    notes.unshift(
+      `Smoke retain/recall did not finish — stack is up; fix the model/LLM queue via http://127.0.0.1:${ctx.portCp} then re-run setup or: curl the wizard-smoke retain against ${ctx.hindsightUrl}`,
+    );
+  }
   return { running, configFiles, notes, logServices: ["hindsight", "litellm"] };
 }

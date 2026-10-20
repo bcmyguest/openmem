@@ -48,7 +48,10 @@
     "recallPath": "/v1/default/banks/{bank}/memories/recall",
     "recallBody": "{\"query\":\"What is the project codename?\"}",
     "recallMustMatch": "heron",
-    "recallHint": "check the model route ({compose} logs litellm)",
+    "smokeRetainTimeoutSec": 90,
+    "smokeRecallTimeoutSec": 60,
+    "retainHint": "Open {controlPlane} (ops queue) and {api}/docs. LLM is shared (one retain at a time): cancel other banks' pending retains, or stop coding-agent/NotebookLM sync while smoking. If Ollama shows size_vram=0 it is on CPU — use GPU/ROCm or a faster model in ~/.config/hindsight/litellm.yaml, then: {compose} up -d litellm. Logs: {logs}",
+    "recallHint": "Open {controlPlane}; check memory-retain/reflect routes ({compose} logs litellm). Logs: {logs}",
     "deleteMethod": "DELETE",
     "deletePath": "/v1/default/banks/{bank}"
   }

@@ -240,7 +240,21 @@ const FAKE_V1 = {
 // Package metadata
 // ---------------------------------------------------------------------------
 check("package name is personal-memory", pkg.name === "personal-memory");
-check("bin is only personal-memory (no global pm)", Object.keys(pkg.bin).join() === "personal-memory" && pkg.bin["personal-memory"] === "cli/personal-memory.mjs");
+check(
+  "bin includes personal-memory (+ setup + notebooklm-mcp + cognee-mcp + install-mcp + switch-provider), no bare pm",
+  pkg.bin["personal-memory"] === "cli/personal-memory.mjs" &&
+    pkg.bin["personal-memory-setup"] === "wizard/bin/setup.mjs" &&
+    pkg.bin["personal-memory-notebooklm-mcp"] === "cli/notebooklm-mcp.mjs" &&
+    pkg.bin["personal-memory-cognee-mcp"] === "cli/cognee-mcp.mjs" &&
+    pkg.bin["personal-memory-install-mcp"] === "cli/install-memory-mcp.mjs" &&
+    pkg.bin["personal-memory-switch-provider"] === "cli/switch-memory-provider.mjs" &&
+    !Object.keys(pkg.bin).includes("pm"),
+);
+check("scripts.install-mcp points at install-memory-mcp.mjs", pkg.scripts?.["install-mcp"] === "node cli/install-memory-mcp.mjs");
+check(
+  "scripts.switch-provider points at switch-memory-provider.mjs",
+  pkg.scripts?.["switch-provider"] === "node cli/switch-memory-provider.mjs",
+);
 check("cli entry is a real file with a node shebang", !fs.lstatSync(path.join(ROOT, "cli/personal-memory.mjs")).isSymbolicLink() && read(path.join(ROOT, "cli/personal-memory.mjs")).startsWith("#!/usr/bin/env node"));
 check("engines.node >=20.12.0 (the @clack/prompts floor) and publishConfig.access public", pkg.engines?.node === ">=20.12.0" && pkg.publishConfig?.access === "public");
 check("type is module and deps include @clack/prompts + @iarna/toml", pkg.type === "module" && Boolean(pkg.dependencies?.["@clack/prompts"]) && Boolean(pkg.dependencies?.["@iarna/toml"]));

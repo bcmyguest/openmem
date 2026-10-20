@@ -486,7 +486,8 @@ await withEnv({}, async () => {
 await withEnv({}, async () => {
   const home = tmp("coding-agent");
   const { h, text } = makeHelpers();
-  const ctx = makeCtx(home);
+  // repoRoot must be the real package so installCogneeMcp finds cli/cognee-mcp.mjs
+  const ctx = makeCtx(home, { repoRoot: ROOT });
   await wiz.init(ctx, h);
   ctx.portCognee = "18999";
   ctx.cogneeUrl = "http://127.0.0.1:18999";
@@ -498,8 +499,17 @@ await withEnv({}, async () => {
       /\/api\/v1\/add/.test(text()) &&
       /\/api\/v1\/cognify/.test(text()) &&
       /\/api\/v1\/search/.test(text()) &&
+      /cognee_health|cognee MCP/i.test(text()) &&
       !/npx/.test(text()),
     text(),
+  );
+  const mcpWritten = path.join(home, ".cursor/mcp.json");
+  check(
+    "setupCodingAgent: registers cognee MCP",
+    fs.existsSync(mcpWritten) &&
+      JSON.parse(fs.readFileSync(mcpWritten, "utf8")).mcpServers?.cognee?.args?.[0]?.endsWith(
+        "cli/cognee-mcp.mjs",
+      ),
   );
 });
 

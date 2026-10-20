@@ -167,6 +167,9 @@ first step); default action is full **configure and start**.
   SDK/MCP steps (no fake `pluginPackage`).
 - Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
   an optional env file (`~/.config/personal-memory/cognee.env`, mode 600).
+  Operator notes: `providers/cognee/OPERATOR.md`. Coding-agent: REST on the loopback port plus a
+  read-only stdio MCP (`cli/cognee-mcp.mjs`: `cognee_health` / `cognee_search`) registered by
+  `setupCodingAgent` / `npm run install-mcp` when `MEMORY_PROVIDER=cognee`.
 - **Cognee + Ollama:** default endpoints use `host.docker.internal:11434` (host Ollama on the Docker
   bridge). When this stack’s compose profile `ollama` publishes **loopback-only**
   (`127.0.0.1:11434`), that default is refused from the Cognee container. Set

@@ -3,5 +3,9 @@
   "apiUrl": "http://127.0.0.1:8888",
   "optInOnly": true,
   "optInPaths": [],
-  "mapPathToBank": {}
+  "mapPathToBank": {},
+  "notebooklmAccess": {
+    "enabled": false,
+    "banks": []
+  }
 }

@@ -3,7 +3,7 @@
 Docker Compose setup for local coding-agent memory. The default **memory provider** is
 Hindsight; **mem0** and **Cognee** are experimental (see
 [docs/memory-providers.md](docs/memory-providers.md), `providers/mem0/OPERATOR.md`, and
-`providers/cognee/` for operator notes). With Hindsight it runs three services:
+`providers/cognee/OPERATOR.md`). With Hindsight it runs three services:
 
 - `litellm`: an OpenAI-compatible proxy (`ghcr.io/berriai/litellm:v1.105.1`) on the internal Docker network only. Hindsight sends every LLM call to it.
 - `hindsight`: the Hindsight API on `127.0.0.1:8888` (`HINDSIGHT_PORT`), control plane on `127.0.0.1:9999` (`HINDSIGHT_CP_PORT`). Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
@@ -108,7 +108,7 @@ docker compose up -d                        # needs COMPOSE_PROFILES=hindsight i
 curl -fsS http://127.0.0.1:8888/health   # or your HINDSIGHT_PORT
 ```
 
-**Compose profiles:** `litellm` and `hindsight` use profile `hindsight`. Optional profiles: `ollama` (in-compose Ollama), `notebooklm` (NotebookLM sync). Plain `docker compose up` without a profile starts only the indexer unless `.env` sets `COMPOSE_PROFILES` (the setup wizard writes `hindsight` plus any enabled optionals). `./setup` passes every needed `--profile` on compose commands. A `--profile` flag **replaces** `COMPOSE_PROFILES`, so name every profile you need on one command (for example `--profile hindsight --profile ollama --profile notebooklm`).
+**Compose profiles:** `litellm` and `hindsight` use profile `hindsight`. Optional profiles: `ollama` (in-compose Ollama), `notebooklm` (NotebookLM sync). Plain `docker compose up` without a profile starts only the indexer unless `.env` sets `COMPOSE_PROFILES` (the setup wizard writes `hindsight` plus any enabled optionals). `./setup` passes every needed `--profile` on compose commands and overrides `COMPOSE_PROFILES` to that same list (Compose unions CLI profiles with the env var). Name every profile you need on one command (for example `--profile hindsight --profile ollama --profile notebooklm`). Setup starts NotebookLM **after** the smoke retain/recall so sync does not queue ahead of smoke on the shared LLM.
 
 **Indexer sinks:** `bin/hindsight-project-index` talks to the memory API through `indexer/sinks/` (`--sink hindsight` default, or `MEMORY_SINK`). Use `MEMORY_API_URL` for non-Hindsight sinks; Hindsight keeps `HINDSIGHT_URL`.
 
@@ -208,14 +208,49 @@ To switch models or a route later, edit the LiteLLM YAML (or `litellm.yaml` over
 
 ## Coding-agent plugin (external)
 
-The client plugin is installed separately, not by this repository:
+The Hindsight client plugin is installed separately, not by this repository:
 
 ```sh
-npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode
+npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode cursor-cli \
+  --server self-hosted --api-url http://127.0.0.1:8888
 ln -s ~/personal-memory/config/coding-agent.json ~/.hindsight/coding-agent.json
 ```
 
+Or accept the coding-agent step in `personal-memory setup` / `./setup`.
+
 `config/coding-agent.json` sets the plugin options (`optInPaths`, `mapPathToBank`, and related fields). Edit it for your machine before symlinking. The indexer reads the same file through the `$HOME` mount. If the file is missing, the indexer logs a warning and still indexes everything under `$HOME`.
+
+### Memory MCP servers (`~/.cursor/mcp.json`)
+
+To register **only** memory-related MCP entries (NotebookLM, mem0, Cognee) without re-running full setup:
+
+```sh
+npm run install-mcp -- --yes
+# or: personal-memory-install-mcp --yes
+# or: ./pm install-mcp --yes
+
+# mem0 self-hosted REST → @yeyuan98/mem0-mcp via cli/mem0-mcp.mjs
+MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes --provider-only
+
+# Cognee read-only health/search → cli/cognee-mcp.mjs
+MEMORY_PROVIDER=cognee npm run install-mcp -- --yes --provider-only
+```
+
+Provider comes from `MEMORY_PROVIDER`, else `~/.config/hindsight/wizard.conf`, else `hindsight`. NotebookLM MCP is installed when `~/.config/hindsight/notebooklm.yml` has `enabled: true`, or with `--notebooklm`. Flags: `--dry-run`, `--notebooklm-only`, `--provider-only`. Existing `hindsight` / `codegraph` / `notebooklm` / sibling provider entries are merged, not clobbered. For mem0, `mcp.json` gets `MEM0_API_URL` / `MEM0_BASE_URL` and the path to `mem0.env` — never the API key (see [providers/mem0/OPERATOR.md](providers/mem0/OPERATOR.md)). For Cognee, `mcp.json` gets `COGNEE_API_URL` only — never `COGNEE_API_KEY` (see [providers/cognee/OPERATOR.md](providers/cognee/OPERATOR.md); tools `cognee_health` / `cognee_search`). Manual JSON edits remain a fallback.
+
+Restart the Cursor Agent (or other coding agent) after install so it loads the new wiring. With `optInOnly: true`, only paths listed in `optInPaths` get memory — `/tmp` workspaces and other unlisted directories stay opted out.
+
+### Switch memory provider
+
+To change `MEMORY_PROVIDER` (updates `~/.config/hindsight/wizard.conf`, optionally restarts the stack and refreshes provider MCP) without a full interactive setup:
+
+```sh
+npm run switch-provider -- mem0 --yes
+# or: personal-memory-switch-provider cognee --yes
+# or: ./pm switch hindsight --yes
+```
+
+Flags: `--dry-run`, `--no-stack` (skip compose down/up), `--no-mcp` (skip `install-mcp --provider-only`). Switching does **not** migrate memories between backends. After a switch: restart Cursor Agent, then `./pm doctor`.
 
 ## Indexing
 
@@ -279,7 +314,13 @@ Risks:
 - The stored login is a Google session cookie set. Anyone who reads `~/.config/notebooklm` can act on that Google account. The directory is bind-mounted read-write into the sync container only, and masked from the indexer.
 - Source text and notes are copied into the Hindsight banks on this machine, where Hindsight's model server processes them.
 
-Login (on the host, once; re-run when Google expires the session). The commands below are not run by this repository:
+Login happens in **`npm run setup`** when you enable NotebookLM: the wizard installs
+`notebooklm-py` (via `uv`) if needed, opens the Google sign-in browser, then writes
+`NOTEBOOKLM_HOME=~/.config/notebooklm` into the process environment and `wizard.conf`.
+Cookies land in `~/.config/notebooklm/profiles/default/storage_state.json` (bind-mounted
+into the sync container). Re-run setup when Google expires the session.
+
+Manual equivalent (only if you skip the wizard step):
 
 ```sh
 mkdir -p ~/.config/notebooklm
@@ -288,8 +329,6 @@ uv tool run --from 'notebooklm-py[browser]==0.8.5' python -m playwright install 
 NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm login        # or: ... login --browser-cookies chrome
 NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm auth check --test --json
 ```
-
-`login` opens a browser for the Google sign-in and saves `profiles/default/storage_state.json` under `NOTEBOOKLM_HOME`. `auth check --test` confirms the stored session works. The `playwright install` step is needed only if the login reports a missing browser; it is not run by this repository.
 
 Enable and start:
 
@@ -310,6 +349,42 @@ Enable and start:
    ```
 
 Without a login, the service logs the login commands and retries every 15 minutes. With `enabled: false` it sleeps and checks again hourly.
+
+### Coding-agent access (`notebooklmAccess`)
+
+Synced notebooks land in Hindsight banks named `notebooklm::<slug>`. The coding-agent plugin still uses per-repo `coding-agent::*` banks only. Agents can **list/search** NotebookLM banks on demand (no auto-inject) via an opt-in MCP.
+
+**Primary paths** (pick one):
+
+1. **Wizard** — when you enable NotebookLM sync in setup (step 6), the wizard asks whether to allow coding agents to query those banks via MCP (`notebooklm_list_banks` / `notebooklm_search`). Default is yes after sync is enabled. On yes it writes `notebooklmAccess.enabled: true` into a **real** `~/.hindsight/coding-agent.json` (if that path was a symlink to the repo template, it is copied to a regular file first so machine settings never land in `config/coding-agent.json`) and merges a `notebooklm` entry into `~/.cursor/mcp.json`.
+2. **`npm run install-mcp` / `personal-memory-install-mcp`** — same enable + MCP merge when NotebookLM is already on (`notebooklm.yml` `enabled: true`) or with `--notebooklm` / `--notebooklm-only`. See [Memory MCP servers](#memory-mcp-servers-cursormcpjson) above.
+
+Restart Cursor Agent after either path. Manual JSON remains a fallback if you skipped the prompt or need to change allowlists later:
+
+```json
+"notebooklmAccess": {
+  "enabled": true,
+  "banks": ["*"]
+}
+```
+
+- `enabled: false` (shipped default) — the NotebookLM MCP exits immediately; setup does not register it.
+- `banks: ["*"]` — every `notebooklm::*` bank; or list slugs / full ids (e.g. `"sitrep-analysis"` or `"notebooklm::sitrep-analysis"`).
+
+MCP tools (stdio server `cli/notebooklm-mcp.mjs`):
+
+| Tool | Purpose |
+| --- | --- |
+| `notebooklm_list_banks` | Allowlisted `notebooklm::*` banks (`bank_id`, `fact_count`) |
+| `notebooklm_search` | Recall on one allowlisted bank (`bank_id` + `query`) |
+
+When `enabled` is true, the wizard or `install-mcp` merges a `notebooklm` entry into `~/.cursor/mcp.json` (does not overwrite `hindsight` or `codegraph`). To run the server by hand:
+
+```sh
+# after enabling notebooklmAccess (wizard, install-mcp, or hand-edit)
+node cli/notebooklm-mcp.mjs
+# or: personal-memory-notebooklm-mcp
+```
 
 Enterprise backend (`backend: enterprise`): the documented NotebookLM Enterprise REST API lists recently viewed notebooks only. It returns no source or note text, so this backend syncs notebook metadata only. It is untested against a live Enterprise project.
 

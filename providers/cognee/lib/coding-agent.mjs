@@ -1,7 +1,8 @@
 /**
- * Cognee has no coding-agent plugin package. This hook tells the operator how agents talk
- * to the Cognee REST API on the loopback port (docs, add, cognify, search).
+ * Cognee has no coding-agent plugin package. This hook prints REST paths and registers
+ * the read-only Cognee MCP in ~/.cursor/mcp.json (health + search).
  */
+import { installCogneeMcp } from "./cognee-mcp-install.mjs";
 import { currentPort, ensureState } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -20,4 +21,6 @@ export async function setupCodingAgent(ctx, h) {
   h.info(`  Cognify          POST ${url}/api/v1/cognify`);
   h.info(`  Search           POST ${url}/api/v1/search`);
   h.info("  Auth is off in this stack (loopback only). Set X-Api-Key only if you enable auth in compose.");
+  h.info("Read-only Cursor MCP: cognee_health / cognee_search (cli/cognee-mcp.mjs).");
+  await installCogneeMcp(ctx, h);
 }

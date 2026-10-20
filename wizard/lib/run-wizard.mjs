@@ -7,7 +7,7 @@ import { loadMachineEnv } from "./load-machine-env.mjs";
 import { step, info, ok, warn, die, problem } from "./log.mjs";
 import { COMPOSE_TOO_OLD_HINT, composeVersionOk, parseComposeVersion } from "./compose-version.mjs";
 import { envValue, ensureHsDir, expandHome, indexerStateDir } from "./paths.mjs";
-import { curlGet, curlRequest } from "./curl.mjs";
+import { curlGet, curlRequest, curlRequestProgress } from "./curl.mjs";
 import { ask, confirm } from "./prompts.mjs";
 import { act, actWithEnv, commandExists } from "./exec.mjs";
 import { buildService, snapshot } from "./docker-build.mjs";
@@ -26,6 +26,7 @@ import { validateMemorySetup } from "./validate-setup.mjs";
 import { actionLabel, parseActionFromArgv } from "./wizard-action.mjs";
 import { applyPmConfigEnv, loadPmConfig, syncPmConfig } from "./pm-config.mjs";
 import { writeWizardConf } from "./wizard-conf.mjs";
+import { setupNotebooklm as runNotebooklmSetup } from "./notebooklm.mjs";
 import { createHelpers } from "./provider-wizard/helpers.mjs";
 import {
   PROVIDER_PHASES,
@@ -75,8 +76,8 @@ async function initProvider(ctx) {
 /**
  * Optional compose profiles beyond the provider's main profile.
  * Providers may already have set `ctx.extraComposeProfiles` (hydrate / beforeStack).
- * NotebookLM is meta-owned; a CLI `--profile` replaces COMPOSE_PROFILES, so every
- * needed profile must be listed on the compose command.
+ * NotebookLM is meta-owned; composeSpawnOptions overrides COMPOSE_PROFILES to match
+ * the `--profile` list, so every needed profile must be listed on the compose command.
  */
 function syncExtraProfiles(ctx) {
   const extra = [...(ctx.extraComposeProfiles || [])];
@@ -94,6 +95,8 @@ async function hydrateFromWizardConf(ctx) {
   const provider = confGet(ctx, "MEMORY_PROVIDER") || DEFAULT_PROVIDER_ID;
   ctx.providerId = provider;
   ctx.memoryProvider = resolveProvider(provider);
+  const nlmHome = confGet(ctx, "NOTEBOOKLM_HOME");
+  if (nlmHome) process.env.NOTEBOOKLM_HOME = nlmHome;
   await runProviderPhase(ctx, PROVIDER_PHASES.hydrate, providerHelpers());
   syncExtraProfiles(ctx);
   return true;
@@ -364,54 +367,7 @@ function enableNotebooklm(ctx) {
 }
 
 async function setupNotebooklm(ctx) {
-  step("6. NotebookLM sync (optional, default no)");
-  if (!(await confirm(ctx, "Enable the NotebookLM sync? It stores a Google session cookie on this machine", "n"))) {
-    info("skipped; the service stays off");
-    return;
-  }
-  console.log(`  Login steps (run on the host, once; README "NotebookLM"):
-    mkdir -p ~/.config/notebooklm
-    uv tool install '${ctx.notebooklmPkg}'
-    uv tool run --from '${ctx.notebooklmPkg}' python -m playwright install chromium
-    NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm login
-    NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm auth check --test --json`);
-  if (ctx.dry) {
-    info("[dry-run] after login: run auth check, then enable notebooklm.yml only if it passes");
-    return;
-  }
-  if (!commandExists("notebooklm") && commandExists("uv")) {
-    if (await confirm(ctx, `Install ${ctx.notebooklmPkg} with uv now (includes Playwright Chromium)?`, "y")) {
-      await act(ctx, `uv tool install ${ctx.notebooklmPkg}`, "uv", [
-        "tool",
-        "install",
-        ctx.notebooklmPkg,
-      ]);
-      await act(
-        ctx,
-        "playwright install chromium for notebooklm-py",
-        "uv",
-        ["tool", "run", "--from", ctx.notebooklmPkg, "python", "-m", "playwright", "install", "chromium"],
-      );
-    }
-  }
-  if (!(await confirm(ctx, "Login is done; run the auth check now?", "n"))) {
-    info("later: rerun ./setup after the login steps");
-    return;
-  }
-  if (!commandExists("notebooklm")) {
-    warn("notebooklm is not on PATH; finish the install step first");
-    return;
-  }
-  const check = spawnSync(
-    "notebooklm",
-    ["auth", "check", "--test", "--json"],
-    {
-      env: { ...process.env, NOTEBOOKLM_HOME: path.join(ctx.home, ".config/notebooklm") },
-      stdio: "ignore",
-    },
-  );
-  if (check.status === 0) enableNotebooklm(ctx);
-  else warn(`auth check failed; ${ctx.notebookFile} is unchanged. Log in again and rerun ./setup`);
+  await runNotebooklmSetup(ctx, enableNotebooklm);
 }
 
 async function waitHealth(ctx) {
@@ -422,11 +378,13 @@ async function waitHealth(ctx) {
     info(`[dry-run] wait for ${base}${healthPath}`);
     return;
   }
+  info(`waiting for ${p.label} at ${base}${healthPath}…`);
   for (let i = 0; i < 90; i++) {
     if (curlGet(`${base}${healthPath}`)) {
       ok(`${p.label} is healthy at ${base}`);
       return;
     }
+    if (i > 0 && i % 5 === 0) info(`… still waiting for health (${i * 4}s)`);
     await new Promise((r) => setTimeout(r, 4000));
   }
   if (p.compose.healthService) {
@@ -446,10 +404,25 @@ async function deleteSmokeBank(ctx, base) {
   curlRequest(p.wizard.deleteMethod || "DELETE", `${base}${delPath}`);
 }
 
+/** Expand {compose}/{project}/{api}/{controlPlane}/{logs} in a smoke hint string. */
+function expandSmokeHint(ctx, template, logs) {
+  if (!template) return "";
+  const api = ctx.hindsightUrl || `http://127.0.0.1:${ctx.port || 8888}`;
+  const cp = `http://127.0.0.1:${ctx.portCp || 9999}`;
+  return template
+    .replaceAll("{compose}", composeCommandText(ctx))
+    .replaceAll("{project}", ctx.project)
+    .replaceAll("{api}", api)
+    .replaceAll("{controlPlane}", cp)
+    .replaceAll("{logs}", logs);
+}
+
 /**
  * Smoke test. A provider's `smoke` hook replaces the manifest's HTTP template (for
  * flows that are asynchronous, multipart or not bank-shaped); otherwise the template in
  * manifest.wizard (retain, recall, delete) runs.
+ *
+ * Soft-fails on timeout/mismatch: prints fix hints and continues setup (stack is up).
  */
 async function smokeTest(ctx) {
   const handled = await runProviderPhase(ctx, PROVIDER_PHASES.smoke, providerHelpers());
@@ -468,34 +441,52 @@ async function smokeTest(ctx) {
   const logServices = (p.compose.logServices?.length ? p.compose.logServices : null) ||
     (p.compose.healthService ? [p.compose.healthService] : []);
   const logs = composeCommandText(ctx, "logs", ...logServices);
-  info(`smoke test: retain and recall in bank ${bank}`);
+  const retainTimeout = Number(p.wizard.smokeRetainTimeoutSec) > 0 ? Number(p.wizard.smokeRetainTimeoutSec) : 90;
+  const recallTimeout = Number(p.wizard.smokeRecallTimeoutSec) > 0 ? Number(p.wizard.smokeRecallTimeoutSec) : 60;
+  const api = ctx.hindsightUrl || base;
+  const cp = `http://127.0.0.1:${ctx.portCp || 9999}`;
+  info(`smoke test: retain and recall in bank ${bank} (retain ≤${retainTimeout}s, recall ≤${recallTimeout}s)`);
+  info(`  watch: control plane ${cp}  ·  API ${api}/docs  ·  logs: ${logs}`);
+  const tick = (label) => ({ elapsed, timeoutSec }) =>
+    info(`… still ${label} (${elapsed}s / ${timeoutSec}s; UI ${cp})`);
   const retainPath = expandPath(p, bank, p.wizard.retainPath);
-  const retain = curlRequest(
+  info("retain: posting smoke fact (sync; waits on the model)…");
+  const retain = await curlRequestProgress(
     p.wizard.retainMethod || "POST",
     `${base}${retainPath}`,
     p.wizard.retainBody,
-    600,
+    retainTimeout,
+    { onTick: tick("retaining") },
   );
   if (!retain) {
     await deleteSmokeBank(ctx, base);
-    die(`retain failed: ${logs}`);
+    const hint =
+      expandSmokeHint(ctx, p.wizard.retainHint || p.wizard.recallHint, logs) ||
+      `check model route and LLM queue (${logs}); open ${cp}`;
+    warn(`smoke retain timed out or failed — continuing setup. ${hint}`);
+    ctx.smokeFailed = true;
+    return;
   }
+  ok("retain ok");
   const recallPath = expandPath(p, bank, p.wizard.recallPath);
-  const recall = curlRequest(
+  info("recall: asking for the smoke fact…");
+  const recall = await curlRequestProgress(
     p.wizard.recallMethod || "POST",
     `${base}${recallPath}`,
     p.wizard.recallBody,
-    300,
+    recallTimeout,
+    { onTick: tick("recalling") },
   );
+  info("cleanup: deleting smoke bank…");
   await deleteSmokeBank(ctx, base);
   const needle = p.wizard.recallMustMatch || "heron";
   if (!new RegExp(needle, "i").test(recall)) {
-    const hint = p.wizard.recallHint
-      ? p.wizard.recallHint
-          .replaceAll("{compose}", composeCommandText(ctx))
-          .replaceAll("{project}", ctx.project)
-      : `(${logs})`;
-    die(`recall did not return the smoke fact; ${hint}`);
+    const hint =
+      expandSmokeHint(ctx, p.wizard.recallHint, logs) ||
+      `recall empty; ${logs}; open ${cp}`;
+    warn(`smoke recall did not return the fact — continuing setup. ${hint}`);
+    ctx.smokeFailed = true;
+    return;
   }
   ok(`retain and recall worked; bank ${bank} deleted`);
 }
@@ -513,9 +504,15 @@ async function startStack(ctx) {
   syncExtraProfiles(ctx);
   await runSetupScript(ctx);
   await buildService(ctx, "indexer", "personal-memory-indexer:local");
-  if ((ctx.extraComposeProfiles || []).includes("notebooklm")) {
+  const wantNotebooklm = (ctx.extraComposeProfiles || []).includes("notebooklm");
+  if (wantNotebooklm) {
     await buildService(ctx, "notebooklm", "personal-memory-notebooklm:local");
   }
+  // NotebookLM sync shares Hindsight's LLM with smoke retain. Bring the core stack
+  // up first (omit notebooklm profile), run smoke, then start NotebookLM.
+  const profilesForSmoke = (ctx.extraComposeProfiles || []).filter((p) => p !== "notebooklm");
+  const savedExtras = ctx.extraComposeProfiles;
+  ctx.extraComposeProfiles = profilesForSmoke;
   const up = composeArgs(ctx, "up", "-d", "--no-build");
   await act(ctx, `docker ${up.join(" ")}`, "docker", up, composeSpawnOptions(ctx));
   await waitHealth(ctx);
@@ -523,28 +520,79 @@ async function startStack(ctx) {
   await runProviderPhase(ctx, PROVIDER_PHASES.afterStackHealthy, providerHelpers());
   if (ctx.smoke) await smokeTest(ctx);
   else info("smoke test skipped (--no-smoke)");
+  ctx.extraComposeProfiles = savedExtras;
+  if (wantNotebooklm) {
+    info("starting NotebookLM sync (after smoke — avoids contending for the LLM)…");
+    const nlmUp = composeArgs(ctx, "up", "-d", "--no-build", "notebooklm");
+    await act(ctx, `docker ${nlmUp.join(" ")}`, "docker", nlmUp, composeSpawnOptions(ctx));
+    ok("NotebookLM sync started");
+  }
+}
+
+/**
+ * PATH binary → @vectorize-io/hindsight-coding-agents harness id.
+ * Binary names often differ from harness ids (`claude` → `claude-code`,
+ * `agent` / `cursor-agent` → `cursor-cli`). Detection mirrors the upstream
+ * installer's `detect` checks where practical.
+ */
+const CODING_AGENT_HARNESS = {
+  claude: "claude-code",
+  codex: "codex",
+  opencode: "opencode",
+  // Cursor Agent CLI: `agent` (current) and `cursor-agent` (legacy / alias).
+  agent: "cursor-cli",
+  "cursor-agent": "cursor-cli",
+};
+
+/** @returns {string[]} unique harness ids for agents detected on this machine */
+function detectedCodingHarnesses() {
+  const found = new Set();
+  for (const [bin, harness] of Object.entries(CODING_AGENT_HARNESS)) {
+    if (commandExists(bin)) found.add(harness);
+  }
+  // Upstream cursor-cli also detects ~/.cursor even without the CLI on PATH.
+  const cursorHome = path.join(process.env.HOME || os.homedir(), ".cursor");
+  if (fs.existsSync(cursorHome)) found.add("cursor-cli");
+  return [...found];
 }
 
 async function setupCodingAgents(ctx) {
   step("8. Coding-agent plugin (optional)");
   const pkg = ctx.memoryProvider.codingAgent?.pluginPackage;
-  const agents = ["claude", "codex", "opencode"].filter((n) => commandExists(n));
-  if (!pkg) info(`no coding-agent plugin defined for ${ctx.memoryProvider.label}; step skipped`);
-  else if (!agents.length) info("no claude, codex or opencode on PATH: plugin skipped");
-  else {
-    info(`detected: ${agents.join(" ")}`);
-    if (await confirm(ctx, `Install the ${ctx.memoryProvider.label} plugin for them now (npx)?`, "n")) {
-      await act(ctx, `npx --yes ${pkg} install ${agents.join(" ")}`, "npx", [
-        "--yes",
-        pkg,
-        "install",
-        ...agents,
-      ]);
-    } else {
-      info(`skipped; later: npx --yes ${pkg} install ${agents.join(" ")}`);
-    }
-  }
+  const harnesses = detectedCodingHarnesses();
+  // Link config/coding-agent.json first so the installer can adopt self-hosted settings
+  // (and mem0/Cognee hooks can print their non-plugin guidance).
   await runProviderPhase(ctx, PROVIDER_PHASES.setupCodingAgent, providerHelpers());
+  if (!pkg) {
+    info(`no coding-agent plugin defined for ${ctx.memoryProvider.label}; step skipped`);
+    return;
+  }
+  if (!harnesses.length) {
+    info("no supported coding-agent CLIs on PATH (claude, codex, opencode, agent/cursor-agent): plugin skipped");
+    return;
+  }
+  const apiUrl = await resolveApiBase(ctx);
+  // Scripted install: --server/--api-url skip the "Where should memory live?" prompt
+  // (see @vectorize-io/hindsight-coding-agents README "Where memory lives").
+  const installArgs = [
+    ...harnesses,
+    "--server",
+    "self-hosted",
+    "--api-url",
+    apiUrl,
+  ];
+  info(`detected harnesses: ${harnesses.join(" ")} → self-hosted ${apiUrl}`);
+  if (await confirm(ctx, `Install the ${ctx.memoryProvider.label} plugin for them now (npx)?`, "n")) {
+    await act(ctx, `npx --yes ${pkg} install ${installArgs.join(" ")}`, "npx", [
+      "--yes",
+      pkg,
+      "install",
+      ...installArgs,
+    ]);
+    ok("restart Cursor Agent (or your coding agent) so it picks up the new plugin wiring");
+  } else {
+    info(`skipped; later: npx --yes ${pkg} install ${installArgs.join(" ")}`);
+  }
 }
 
 async function assertMemorySetup(ctx) {

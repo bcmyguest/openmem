@@ -117,6 +117,33 @@ export function syncPmConfig(ctx, sections = {}) {
 }
 
 /**
+ * Minimal in-place update of `memory.provider` in the user config.toml when the file
+ * already exists. Does not create the file (unlike syncPmConfig).
+ *
+ * @param {string} home
+ * @param {string} providerId
+ * @param {{ dry?: boolean }} [opts]
+ * @returns {"updated"|"skipped"|"dry-run"}
+ */
+export function updatePmConfigProvider(home, providerId, opts = {}) {
+  const file = userConfigPath(home);
+  if (!fs.existsSync(file)) return "skipped";
+  if (opts.dry) return "dry-run";
+  const doc = readTomlFile(file);
+  const memory = {
+    ...(doc.memory && typeof doc.memory === "object" && !Array.isArray(doc.memory)
+      ? /** @type {Record<string, unknown>} */ (doc.memory)
+      : {}),
+    provider: providerId,
+  };
+  doc.memory = memory;
+  const header =
+    "# Written by personal-memory — mise-like config.\n# Docs: docs/personal-memory-config.md\n";
+  fs.writeFileSync(file, `${header}${TOML.stringify(doc)}`, { mode: 0o600 });
+  return "updated";
+}
+
+/**
  * Apply config defaults into process.env when env/CLI did not set them. Only the
  * provider-neutral keys live here; a provider maps its own tables in its `init` hook.
  * @param {Record<string, unknown>} cfg

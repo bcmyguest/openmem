@@ -20,10 +20,12 @@ export async function ensureComposeOllamaModels(ctx, h) {
     return;
   }
 
+  h.info("waiting for compose Ollama on 127.0.0.1:11434…");
   let body = null;
   for (let i = 0; i < 45; i++) {
     body = h.curlJson(HOST_TAGS);
     if (body) break;
+    if (i > 0 && i % 5 === 0) h.info(`… still waiting for Ollama (${i * 2}s)`);
     await new Promise((r) => setTimeout(r, 2000));
   }
   if (!body) {
