@@ -8,7 +8,7 @@ declarative config is intentionally similar to **[mise](https://mise.jdx.dev/)**
 | `~/.config/mise/config.toml` + `.mise.toml` | `~/.config/personal-memory/config.toml` + `personal-memory.toml` |
 | `[tools]` plugins | `[memory] provider = "…"` + `providers/*/manifest.json` |
 | `[env]` | Host ports / compose project under `[stack]` |
-| `[tasks]` | `./pm up`, `./pm down`, `./pm doctor` |
+| `[tasks]` | `./pm up`, `./pm down`, `./pm doctor`, `./pm install-mcp`, `./pm switch` |
 | `mise install` applies config | `./setup --yes` applies config |
 
 We **do not** replace mise (or mem0/Hindsight native config). You can use both: mise installs
@@ -136,7 +136,15 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the summary.
   Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
   overrides the env file (see `providers/cognee/compose.yaml`).
-- **`[tasks.*]`** — descriptions for `./pm`; execution maps to `./setup` (see `wizard/bin/pm.mjs`).
+- **`[tasks.*]`** — descriptions for `./pm` (see `wizard/bin/pm.mjs`). Built-in tasks:
+  - `configure` / `up` / `down` / `doctor` — map to `./setup` with the matching flags
+  - `install-mcp` — runs `cli/install-memory-mcp.mjs` (merge memory MCP entries into
+    `~/.cursor/mcp.json`)
+  - `switch <provider>` — runs `cli/switch-memory-provider.mjs`: sets `MEMORY_PROVIDER` in
+    `wizard.conf`, updates `[memory].provider` in `config.toml` when present
+    (`updatePmConfigProvider`), optionally restarts the stack and re-points provider MCP.
+    Flags: `--yes`, `--dry-run`, `--no-stack`, `--no-mcp`. Does not migrate data between
+    backends. See [README — Switch memory provider](../README.md#switch-memory-provider).
 
 ## Apply
 

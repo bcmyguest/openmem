@@ -101,8 +101,15 @@ function textResult(value, isError = false) {
   return { content: [{ type: "text", text }], isError };
 }
 
-/** @param {{ apiUrl: string, banks: string[] }} access @param {string} name @param {Record<string, unknown>} [args] @param {typeof fetch} [fetchFn] */
+/** @param {{ apiUrl: string, banks: string[], enabled?: boolean }} access @param {string} name @param {Record<string, unknown>} [args] @param {typeof fetch} [fetchFn] */
 export async function callTool(access, name, args = {}, fetchFn = fetch) {
+  if (access.enabled !== true) {
+    return textResult(
+      "notebooklmAccess.enabled is not true in coding-agent.json; " +
+        "set notebooklmAccess.enabled to true (and keep ~/.hindsight/coding-agent.json as a real file, not a symlink to the shipped template).",
+      true,
+    );
+  }
   if (name === "notebooklm_list_banks") {
     const filtered = filterNotebooklmBanks(await listBanks(access.apiUrl, fetchFn), access.banks).map((b) => ({
       bank_id: b.bank_id || b.id || b.name,
@@ -209,20 +216,22 @@ export async function serveStdio(input, onMsg) {
 
 async function main() {
   const configPath = process.env.HINDSIGHT_CODING_AGENT_JSON || DEFAULT_CONFIG;
-  let cfg;
+  let cfg = null;
+  let access;
   try {
     cfg = loadCodingAgentConfig(configPath);
+    access = resolveAccess(cfg);
   } catch (err) {
+    // Stay alive so Cursor's MCP client does not report "Connection closed".
+    // Tools return isError until coding-agent.json is readable.
     console.error(`notebooklm-mcp: cannot read ${configPath}: ${err instanceof Error ? err.message : err}`);
-    process.exit(1);
+    access = { enabled: false, banks: ["*"], apiUrl: DEFAULT_API_URL };
   }
-  const access = resolveAccess(cfg);
   if (!access.enabled) {
     console.error(
-      "notebooklm-mcp: notebooklmAccess.enabled is not true in coding-agent.json; " +
-        "set notebooklmAccess.enabled to true to use this MCP (opt-in).",
+      "notebooklm-mcp: notebooklmAccess.enabled is not true; tools will error until it is enabled " +
+        `(config: ${configPath}).`,
     );
-    process.exit(1);
   }
   process.stdin.resume();
   await serveStdio(process.stdin, (msg) => handleMessage(msg, access));

@@ -21,9 +21,21 @@ export function notebooklmMcpScriptPath(repoRoot) {
 export function mergeNotebooklmMcpServer(mcp, scriptPath) {
   const out = { ...mcp };
   const servers = { ...(mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {}) };
+  // Absolute node + explicit config path: Cursor Agent's PATH may resolve a different
+  // `node`, and a symlink ~/.hindsight/coding-agent.json → shipped template used to
+  // make the process exit before handshake ("Connection closed").
+  const nodeBin = process.execPath;
+  const agentJson =
+    process.env.HINDSIGHT_CODING_AGENT_JSON ||
+    path.join(process.env.HOME || path.dirname(scriptPath), ".hindsight", "coding-agent.json");
+  // When called from installNotebooklmMcp, prefer ctx paths via env set by caller.
   const next = {
-    command: "node",
+    type: "stdio",
+    command: nodeBin,
     args: [scriptPath],
+    env: {
+      HINDSIGHT_CODING_AGENT_JSON: agentJson,
+    },
   };
   const prev = servers.notebooklm;
   const same =
@@ -31,7 +43,9 @@ export function mergeNotebooklmMcpServer(mcp, scriptPath) {
     prev.command === next.command &&
     Array.isArray(prev.args) &&
     prev.args.length === 1 &&
-    prev.args[0] === scriptPath;
+    prev.args[0] === scriptPath &&
+    prev.type === "stdio" &&
+    prev.env?.HINDSIGHT_CODING_AGENT_JSON === next.env.HINDSIGHT_CODING_AGENT_JSON;
   if (same) return { mcp: { ...out, mcpServers: servers }, changed: false, skipped: "already configured" };
   servers.notebooklm = next;
   // Preserve sibling servers by reference identity of keys we did not touch.

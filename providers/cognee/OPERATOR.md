@@ -45,3 +45,15 @@ Base URL resolution inside the MCP: `COGNEE_API_URL` / `COGNEE_URL`, else
 `COGNEE_API_KEY` in the agent environment (not in `mcp.json`).
 
 v1 MCP is read-only (no add/cognify). Ingest stays with the indexer or curl.
+
+### Switch to / from Cognee
+
+```sh
+./pm switch cognee --yes
+# later: ./pm switch hindsight --yes
+# or: npm run switch-provider -- cognee --yes
+```
+
+Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack
+unless `--no-stack`, and runs `install-mcp --provider-only` unless `--no-mcp`. Does **not**
+migrate memories. Flags: [README — Switch memory provider](../../README.md#switch-memory-provider).
