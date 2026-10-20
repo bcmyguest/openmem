@@ -25,6 +25,8 @@ cd personal-memory
 ./setup
 ```
 
+![Setup wizard dry-run: preflight, provider choice, model backend, and stack plan](/personal-memory/setup-demo.gif)
+
 The first interactive run installs the wizard's npm dependencies. To see what the wizard would do first, run it with `--dry-run`: it prints the actions and runs only read-only checks, writes nothing, and starts no containers.
 
 ```sh
