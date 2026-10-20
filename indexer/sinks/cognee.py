@@ -1,0 +1,265 @@
+"""Cognee sink: the self-hosted REST server (`cognee/cognee`), stdlib only.
+
+Namespace mapping: `bank` maps to a Cognee dataset named `<slug>_<8 hex of sha256(bank)>`, where the slug is the
+bank lowercased, runs of characters outside [a-z0-9] collapsed to "_", stripped, truncated to 40 characters
+(`bank` when empty). Dataset names reach file and database paths on the server, so they stay in [a-z0-9_]; the hash
+suffix keeps two banks that slug identically apart. Cognee's data and delete endpoints take the dataset UUID, so the
+sink resolves name -> id once (`POST /api/v1/datasets` is create-or-return) and caches it for the instance.
+
+Document mapping: Cognee has no client-chosen document id and `POST /api/v1/add` never updates a document (same
+name with different content is a 409). The sink therefore stores `doc_id` in the document's `external_metadata`
+and upserts by lookup: page through `GET /api/v1/datasets/{id}/data` (limit 1000), pick every item whose
+`externalMetadata.doc_id` equals the id, `DELETE /api/v1/datasets/{id}/data/{data_id}` each, then add the new
+version. The upload file name is `<sha256(doc_id)[:16]>-<8 hex of sha256(content)>.md`: unique per version (so a
+changed document never collides with an old one) and free of path text. The add request addresses the dataset by
+`datasetName` (the same name cognify takes), so it also works if the cached dataset id went stale.
+
+`add` is quick; building the graph is the slow, separate `POST /api/v1/cognify` step, so
+`capabilities.async_ingest` is True and a retained document is not searchable until cognify finishes. The sink
+only marks the bank dirty on retain/delete; `flush(bank)` (optional hook, see `sinks.flush_sink`) issues one
+cognify per dirty bank (`{"datasets": [name], "runInBackground": true}`) and clears the flag only on success.
+`flush()` with no bank flushes every dirty bank; a clean bank sends nothing.
+
+Delete: a bank with no dataset (looked up by name, never created) has nothing to delete. A 404 on listing (dataset
+gone) or on the data DELETE (data gone) is swallowed. Cognee answers 401 for "dataset missing or no permission"
+and 403 for permission, which cannot be told apart from an auth failure, so 401 and 403 always raise.
+
+Auth: env `COGNEE_API_KEY`, read in `create`, is sent as `X-Api-Key` on every request when set. It never appears
+in URLs, errors or logs. URL: `create(url)`, else env `MEMORY_API_URL`; there is no default.
+"""
+
+import hashlib
+import json
+import os
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from collections.abc import Mapping
+
+from sinks import Capabilities, SinkError
+
+PAGE = 1000
+SLUG_MAX = 40
+ADD_TIMEOUT = 300
+TIMEOUT = 60
+HEALTH_TIMEOUT = 5
+
+
+class HttpError(SinkError):
+    def __init__(self, method: str, url: str, status: int, body: str):
+        super().__init__(f"{method} {url}: HTTP {status}: {body}", status)
+
+
+def dataset_name(bank: str) -> str:
+    """The Cognee dataset name for `bank`: `<slug>_<8 hex of sha256(bank)>`."""
+    slug = re.sub(r"[^a-z0-9]+", "_", bank.lower()).strip("_")[:SLUG_MAX].strip("_") or "bank"
+    return f"{slug}_{hashlib.sha256(bank.encode()).hexdigest()[:8]}"
+
+
+def upload_name(doc_id: str, content: str) -> str:
+    """Upload file name: unique per document version, with no doc id or path text in it."""
+    return f"{hashlib.sha256(doc_id.encode()).hexdigest()[:16]}-{hashlib.sha256(content.encode()).hexdigest()[:8]}.md"
+
+
+def multipart(fields: Mapping[str, str], filename: str, content: bytes) -> tuple[bytes, str]:
+    """Build a multipart/form-data body with text `fields` and one `data` file part. Returns (body, content type)."""
+    boundary = "----cognee" + uuid.uuid4().hex
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode() + value.encode() + b"\r\n")
+    parts.append(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="data"; filename="{filename}"\r\nContent-Type: text/markdown\r\n\r\n'.encode()
+        + content
+        + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
+def clean_label(tag: str) -> str:
+    """Cognee labels cannot contain commas."""
+    return tag.replace(",", "_").strip()
+
+
+class CogneeSink:
+    capabilities = Capabilities(async_ingest=True)
+
+    def __init__(self, url: str, api_key: str | None = None):
+        self.url = url.rstrip("/")
+        self._api_key = api_key or None
+        self._datasets: dict[str, str] = {}
+        self._dirty: set[str] = set()
+
+    # HTTP
+
+    def _headers(self, extra: Mapping[str, str] | None = None) -> dict[str, str]:
+        headers = dict(extra or {})
+        if self._api_key:
+            headers["X-Api-Key"] = self._api_key
+        return headers
+
+    def _request(self, method: str, path: str, payload: dict | None = None, *, raw: bytes | None = None, content_type: str | None = None, timeout: int = TIMEOUT):
+        url = self.url + path
+        if raw is not None:
+            data, extra = raw, {"Content-Type": content_type or "application/octet-stream"}
+        elif payload is not None:
+            data, extra = json.dumps(payload).encode(), {"Content-Type": "application/json"}
+        else:
+            data, extra = None, {}
+        request = urllib.request.Request(url, data=data, headers=self._headers(extra), method=method)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read()
+        except urllib.error.HTTPError as error:
+            text = error.read().decode(errors="replace")
+            if self._api_key:
+                text = text.replace(self._api_key, "***")
+            raise HttpError(method, url, error.code, text[:300]) from error
+        if not body:
+            return {}
+        try:
+            return json.loads(body)
+        except ValueError:
+            return {}
+
+    def health(self) -> bool:
+        try:
+            request = urllib.request.Request(self.url + "/health", headers=self._headers())
+            with urllib.request.urlopen(request, timeout=HEALTH_TIMEOUT) as response:
+                return 200 <= response.status < 300
+        except (OSError, ValueError):
+            return False
+
+    # Datasets
+
+    def prepare(self, bank: str) -> None:
+        self._dataset_id(bank)
+
+    def _dataset_id(self, bank: str) -> str:
+        if bank not in self._datasets:
+            response = self._request("POST", "/api/v1/datasets", {"name": dataset_name(bank)})
+            dataset_id = response.get("id") if isinstance(response, dict) else None
+            if not dataset_id:
+                raise SinkError(f"POST {self.url}/api/v1/datasets: reply carries no dataset id")
+            self._datasets[bank] = str(dataset_id)
+        return self._datasets[bank]
+
+    def _find_dataset(self, bank: str) -> str | None:
+        """The dataset id for `bank` when it exists; never creates it."""
+        if bank in self._datasets:
+            return self._datasets[bank]
+        name = dataset_name(bank)
+        response = self._request("GET", "/api/v1/datasets")
+        for item in response if isinstance(response, list) else []:
+            if isinstance(item, dict) and item.get("name") == name and item.get("id"):
+                self._datasets[bank] = str(item["id"])
+                return self._datasets[bank]
+        return None
+
+    def _list_data(self, dataset_id: str) -> list[dict]:
+        items: list[dict] = []
+        offset = 0
+        while True:
+            page = self._request("GET", f"/api/v1/datasets/{urllib.parse.quote(dataset_id, safe='')}/data?limit={PAGE}&offset={offset}")
+            if not isinstance(page, list):
+                raise SinkError(f"GET dataset data: expected a list, got {type(page).__name__}")
+            items.extend(item for item in page if isinstance(item, dict))
+            if len(page) < PAGE:
+                return items
+            offset += len(page)
+
+    def _matching(self, dataset_id: str, doc_id: str) -> list[str]:
+        """Ids of the dataset's items whose external metadata `doc_id` equals `doc_id`."""
+        ids = []
+        for item in self._list_data(dataset_id):
+            meta = item.get("externalMetadata")
+            if not isinstance(meta, dict):
+                meta = item.get("external_metadata")
+            if isinstance(meta, dict) and meta.get("doc_id") == doc_id and item.get("id"):
+                ids.append(str(item["id"]))
+        return ids
+
+    def _delete_data(self, dataset_id: str, data_ids: list[str]) -> None:
+        for data_id in data_ids:
+            try:
+                self._request("DELETE", f"/api/v1/datasets/{urllib.parse.quote(dataset_id, safe='')}/data/{urllib.parse.quote(data_id, safe='')}")
+            except HttpError as error:
+                # 404: the data is already gone. 401/403 are auth failures and raise.
+                if error.status != 404:
+                    raise
+
+    # Documents
+
+    def retain(
+        self,
+        bank: str,
+        doc_id: str,
+        content: str,
+        *,
+        tags: list[str] | None = None,
+        metadata: Mapping[str, str] | None = None,
+        context: str | None = None,
+        timestamp: str | None = None,
+    ) -> None:
+        dataset_id = self._dataset_id(bank)
+        try:
+            existing = self._matching(dataset_id, doc_id)
+        except HttpError as error:
+            if error.status != 404:
+                raise
+            # The cached dataset was removed behind our back: recreate it and look again.
+            self._datasets.pop(bank, None)
+            dataset_id = self._dataset_id(bank)
+            existing = self._matching(dataset_id, doc_id)
+        self._delete_data(dataset_id, existing)
+        meta: dict = {str(key): str(value) for key, value in (metadata or {}).items()}
+        meta["doc_id"] = doc_id
+        meta["bank"] = bank
+        if tags:
+            meta["tags"] = list(tags)
+        if context is not None:
+            meta["context"] = context
+        if timestamp is not None:
+            meta["timestamp"] = timestamp
+        fields = {"datasetName": dataset_name(bank), "external_metadata": json.dumps([meta])}
+        if tags:
+            fields["labels"] = json.dumps([clean_label(tags[0])])
+        body, content_type = multipart(fields, upload_name(doc_id, content), content.encode())
+        self._request("POST", "/api/v1/add", raw=body, content_type=content_type, timeout=ADD_TIMEOUT)
+        self._dirty.add(bank)
+
+    def delete(self, bank: str, doc_id: str) -> None:
+        dataset_id = self._find_dataset(bank)
+        if dataset_id is None:
+            return
+        try:
+            existing = self._matching(dataset_id, doc_id)
+        except HttpError as error:
+            # 404: the dataset is gone, so is the document.
+            if error.status != 404:
+                raise
+            self._datasets.pop(bank, None)
+            return
+        if existing:
+            self._delete_data(dataset_id, existing)
+            self._dirty.add(bank)
+
+    def flush(self, bank: str | None = None) -> None:
+        """Run cognify (in the background on the server) for `bank`, or every dirty bank, if it has changed."""
+        banks = sorted(self._dirty) if bank is None else [bank]
+        for name in banks:
+            if name not in self._dirty:
+                continue
+            self._request("POST", "/api/v1/cognify", {"datasets": [dataset_name(name)], "runInBackground": True})
+            self._dirty.discard(name)
+
+
+def create(url: str | None = None, **_cfg) -> CogneeSink:
+    url = url or os.environ.get("MEMORY_API_URL")
+    if not url:
+        raise SinkError("the cognee sink needs a server URL: pass --url or set MEMORY_API_URL")
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise SinkError("the cognee sink URL must start with http:// or https://")
+    return CogneeSink(url, os.environ.get("COGNEE_API_KEY"))
