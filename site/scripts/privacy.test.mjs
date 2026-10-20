@@ -71,16 +71,16 @@ test('reports line numbers', () => {
 });
 
 test('codeRanges: html pre, code, and data-code attributes', () => {
-  const html = '<p>x /home/a</p><pre><code>/home/example</code></pre><button data-code="/home/c">';
+  const html = '<p>x /home/a</p><pre><code>/home/x</code></pre><button data-code="/home/c">';
   const found = scanText(html, { kind: 'html' }).map((f) => [f.match, f.inCode]);
-  assert.deepEqual(found, [['/home/a', false], ['/home/example', true], ['/home/c', true]]);
+  assert.deepEqual(found, [['/home/a', false], ['/home/x', true], ['/home/c', true]]);
   assert.equal(codeRanges('<p>none</p>', 'html').length, 0);
 });
 
 test('codeRanges: markdown fences and inline code', () => {
-  const md = 'prose /home/a\n\n```sh\n/home/example\n```\n\nand `/home/c` here\n';
+  const md = 'prose /home/a\n\n```sh\n/home/x\n```\n\nand `/home/c` here\n';
   const found = scanText(md, { kind: 'md' }).map((f) => [f.match, f.inCode]);
-  assert.deepEqual(found, [['/home/a', false], ['/home/example', true], ['/home/c', true]]);
+  assert.deepEqual(found, [['/home/a', false], ['/home/x', true], ['/home/c', true]]);
 });
 
 test('allowlist covers only code matches, never prose', () => {

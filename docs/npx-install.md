@@ -138,14 +138,9 @@ until you delete them yourself.
 
 Before the first publish (these are human steps; nothing in this repo does them):
 
-1. **Decide the license.** The repository has no `LICENSE`, so `package.json` says
-   `"UNLICENSED"`. Add a `LICENSE` and set the `license` field (for example `MIT`) before
-   publishing publicly.
-2. **Make the repository public.** `npm publish --provenance` needs a public source
-   repository; `bcmyguest/personal-memory` is private today. Without that, publish from a
-   workstation with `npm publish --access public` (no provenance), or stay private.
-3. **Clear the pack gate.** `npm run pack:check` must pass. It currently reports operator
-   home-directory paths in `config/coding-agent.json` and `README.md`.
+1. **License.** The repository ships `LICENSE` (Apache-2.0) and `package.json` matches.
+2. **Public source.** `npm publish --provenance` needs a public GitHub repository.
+3. **Pack gate.** `npm run pack:check` must pass (no operator home paths in shipped files).
 4. **Create the npm package.** Log in with 2FA (`npm login`), then publish `0.1.0` once by
    hand (`npm publish --access public`). The name `personal-memory` was verified free on
    2026-10-19 (so was `@bcmyguest/personal-memory`); re-check with `npm view personal-memory`.

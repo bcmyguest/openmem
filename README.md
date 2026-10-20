@@ -10,7 +10,7 @@ It runs three services:
 
 ## Does cloning just work?
 
-Not without a few one-time steps: **SSH access** to this private repo, **Docker** (compose v2,
+Not without a few one-time steps: **Docker** (compose v2,
 your user in the `docker` group), **Node 18+** for the interactive `./setup` UI, and a **model
 backend** you configure in the wizard (lemond, Ollama, or an OpenAI-compatible server). There is
 no cloud account in the loop unless you point custom routes at one. After `./setup` succeeds,
@@ -76,7 +76,7 @@ Rerun `./setup` at any time. It shows current values as defaults and keeps what 
 
 Ports come from `HINDSIGHT_PORT` (default 8888) and `HINDSIGHT_CP_PORT` (default 9999), read from the environment or `.env`. The wizard writes the values it uses to `.env`. Compose binds them on `127.0.0.1` only.
 
-HAL-Predictor bench runs need `compose.bench.yaml` as well. It also publishes Hindsight on the Docker bridge gateway `172.17.0.1:8888`, which sandboxes reach as `host.docker.internal:8888`. Loopback stays bound, and the bridge bind is not LAN-reachable. Apply it with:
+Optional bench overlays use `compose.bench.yaml` as well. It also publishes Hindsight on the Docker bridge gateway `172.17.0.1:8888`, which sandboxes reach as `host.docker.internal:8888`. Loopback stays bound, and the bridge bind is not LAN-reachable. Apply it with:
 
 ```bash
 docker compose -f compose.yaml -f compose.override.yaml -f compose.bench.yaml up -d hindsight

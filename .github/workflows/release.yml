@@ -5,8 +5,7 @@ name: Release
 # notes. prepare-release.yml dispatches this on the tag; a manual tag push also works. To
 # retry, use "Run workflow" with the tag (not a branch) as the ref.
 #
-# Provenance requires a PUBLIC repository. bcmyguest/personal-memory is private today:
-# make it public first, or `npm publish --provenance` fails (see docs/npx-install.md).
+# Provenance requires a public GitHub repository (see docs/npx-install.md).
 #
 # One-time setup: npm lets a trusted publisher be added only to an existing package, so
 # publish 0.1.0 once by hand (`npm publish --access public`), then on npmjs.com:
