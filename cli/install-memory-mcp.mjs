@@ -43,7 +43,8 @@ const HELP = `${BIN}: merge memory MCP servers into ~/.cursor/mcp.json
 
 Usage:
   ${BIN} [flags]
-  npm run install-mcp -- [flags]
+  npx personal-memory install-mcp [flags]
+  npm run install-mcp -- [flags]             # checkout
 
 Flags:
   --yes               no confirmation prompts

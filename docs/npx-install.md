@@ -15,13 +15,17 @@ bash dependency in the CLI (macOS ships bash 3.2).
 npx personal-memory                 # interactive setup, nothing installed globally
 npx personal-memory setup           # same as the bare command
 npx personal-memory configure --yes # non-interactive setup and start
+npx personal-memory up              # start stack
+npx personal-memory install-mcp --yes
+npx personal-memory switch mem0 --yes
 npm i -g personal-memory            # then: personal-memory setup | up | down | ...
+# From a git checkout (package not required on the registry):
 git clone https://github.com/bcmyguest/personal-memory && cd personal-memory
-npm install && npm run setup        # checkout: same wizard; also ./setup
+npm install && npx . setup          # same wizard; also: npm run setup / ./setup
 ```
 
 No global `pm` command is installed: it collides with Android's `pm`. `./pm` and `npm run pm`
-exist only inside a checkout.
+exist only inside a checkout; prefer `npx personal-memory …` (or `npx . …` in a checkout).
 
 ### Commands
 
@@ -31,6 +35,8 @@ exist only inside a checkout.
 | `configure` | non-interactive setup and start (`setup --yes`) |
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
+| `install-mcp` | merge memory MCP entries into `~/.cursor/mcp.json` |
+| `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |
 | `init [--force] [--dry-run] [--json]` | create or upgrade the stack root without running the wizard |
 | `--version`, `--help` | |

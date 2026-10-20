@@ -17,7 +17,10 @@ const description =
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
 ${site.sourceInstall.command}`;
-const npxCommand = `npx ${site.npm.package}`;
+const npxCommand = `npx ${site.npm.package}
+npx ${site.npm.package} up
+npx ${site.npm.package} install-mcp --yes
+npx ${site.npm.package} switch mem0 --yes`;
 ---
 <Landing title={title} description={description}>
   <header class="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur">
@@ -161,23 +164,27 @@ const npxCommand = `npx ${site.npm.package}`;
         <div class="mt-8 grid gap-4 lg:grid-cols-2">
           <Card class="min-w-0 bg-panel-raised">
             <h3 class="flex flex-wrap items-center gap-2 font-semibold">
-              From source
-              <Badge variant="supported">Works today</Badge>
+              With npx
+              {site.npm.published ? <Badge variant="supported">Published</Badge> : <Badge variant="inferred">After first npm release</Badge>}
             </h3>
-            <p class="mt-2 text-sm leading-relaxed text-muted">Clone the repository and run the wizard. Add <code>--dry-run</code> first to see what it would do without writing anything.</p>
-            <div class="mt-4"><CodeBlock code={sourceCommands} label="Clone and run the wizard" /></div>
+            {site.npm.published ? (
+              <p class="mt-2 text-sm leading-relaxed text-muted">Preferred day-0 and day-2 commands. Same CLI for setup, stack control, MCP install, and provider switch.</p>
+            ) : (
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Command shape you will use after publish. Until then, clone and run <code>npx . setup</code> (same subcommands).
+              </p>
+            )}
+            <div class="mt-4"><CodeBlock code={npxCommand} label="npx personal-memory commands" copy={site.npm.published} /></div>
           </Card>
           <Card class="min-w-0 bg-panel-raised">
             <h3 class="flex flex-wrap items-center gap-2 font-semibold">
-              With npx
-              {site.npm.published ? <Badge variant="supported">Published</Badge> : <Badge variant="inferred">Available after the first npm release</Badge>}
+              From source
+              <Badge variant="supported">Works today</Badge>
             </h3>
-            {site.npm.published ? (
-              <p class="mt-2 text-sm leading-relaxed text-muted">Runs the same wizard without a checkout.</p>
-            ) : (
-              <p class="mt-2 text-sm leading-relaxed text-muted">The package is not published yet, so this command does not work today. Use the from-source path.</p>
-            )}
-            <div class="mt-4"><CodeBlock code={npxCommand} label="Run the wizard with npx" copy={site.npm.published} /></div>
+            <p class="mt-2 text-sm leading-relaxed text-muted">
+              Clone and use <code>npx .</code> for the same CLI. Add <code>--dry-run</code> first to see what setup would do without writing anything.
+            </p>
+            <div class="mt-4"><CodeBlock code={sourceCommands} label="Clone and run the wizard" /></div>
           </Card>
         </div>
         <div class="mt-6 flex flex-wrap gap-3">

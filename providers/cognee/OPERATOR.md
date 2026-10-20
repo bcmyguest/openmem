@@ -19,8 +19,8 @@ or the **read-only** stdio MCP shipped in this repo.
 When `MEMORY_PROVIDER=cognee`:
 
 ```sh
-npm run install-mcp -- --yes --provider-only
-# or: personal-memory-install-mcp --yes --provider-only
+npx personal-memory install-mcp --yes --provider-only
+# checkout: npx . install-mcp --yes --provider-only
 # or during setup: coding-agent step registers the same entry
 ```
 
@@ -49,9 +49,9 @@ v1 MCP is read-only (no add/cognify). Ingest stays with the indexer or curl.
 ### Switch to / from Cognee
 
 ```sh
-./pm switch cognee --yes
-# later: ./pm switch hindsight --yes
-# or: npm run switch-provider -- cognee --yes
+npx personal-memory switch cognee --yes
+# later: npx personal-memory switch hindsight --yes
+# checkout: npx . switch cognee --yes
 ```
 
 Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack

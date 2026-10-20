@@ -141,7 +141,7 @@ first step); default action is full **configure and start**.
 
 ### Changing provider later
 
-Prefer **`./pm switch <id> --yes`** (or `npm run switch-provider -- <id> --yes`) over a full
+Prefer **`npx personal-memory switch <id> --yes`** (checkout: `npx . switch <id> --yes`) over a full
 interactive setup re-run when you only need to change backends:
 
 - Updates `MEMORY_PROVIDER` in `~/.config/hindsight/wizard.conf`
@@ -179,7 +179,7 @@ Switching does **not** migrate memories between backends. The NotebookLM compose
   repo ships no mem0 container yet. A mem0 service built from a pinned upstream ref is a follow-up.
   Operator runbook: `providers/mem0/OPERATOR.md`. Coding-agent: wizard `setupCodingAgent` prints
   SDK/MCP steps (no fake `pluginPackage`); register Cursor MCP with
-  `MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes` (or `./pm switch mem0 --yes`).
+  `npx personal-memory install-mcp --yes` / `npx personal-memory switch mem0 --yes`.
 - Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
   an optional env file (`~/.config/personal-memory/cognee.env`, mode 600).
   Operator notes: `providers/cognee/OPERATOR.md`. Coding-agent: REST on the loopback port plus a
