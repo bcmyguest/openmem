@@ -16,7 +16,8 @@ your user in the `docker` group), **Node 18+** for the interactive setup UI, and
 backend** you configure in the wizard (lemond, Ollama, or an OpenAI-compatible server). There is
 no cloud account in the loop unless you point custom routes at one. After `npm run setup` (or
 `npx personal-memory setup`) succeeds, Hindsight listens on `http://127.0.0.1:8888` and the
-coding-agent plugin uses `~/.hindsight/coding-agent.json` (linked from this repo).
+coding-agent plugin uses a machine-local `~/.hindsight/coding-agent.json` (seeded from
+`config/coding-agent.json`, never left as a symlink into the repo).
 
 ## Prerequisites
 

@@ -181,7 +181,7 @@ model prompts lives in `providers/hindsight/`:
 | `lib/stack-env.mjs` | `prepareStackEnv`, `migrateEnv`, `setupNotices` for `scripts/setup.mjs` |
 | `lib/validate.mjs` | Hindsight validation (model backend, route file, ports) |
 | `lib/summary.mjs` | Closing summary lines |
-| `lib/coding-agent.mjs` | `~/.hindsight/coding-agent.json` link and opt-in paths check |
+| `lib/coding-agent.mjs` | seed/materialize `~/.hindsight/coding-agent.json` (real file) and opt-in paths check |
 | `lib/clack.mjs` | `clackSetup`: backend and model prompts for the Clack front end |
 
 Its `wizard.conf` keeps `MEMORY_PROVIDER`, `MEMORY_BACKEND`, `MEMORY_MODEL`, `MEMORY_API_BASE` and

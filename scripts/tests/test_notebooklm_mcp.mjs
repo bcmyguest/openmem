@@ -185,7 +185,8 @@ process.on("exit", () => {
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+    // Cursor Agent uses NDJSON + 2025-11-25; reply must be NDJSON echoing that version.
+    params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
   });
   child.stdin.write(`${line}\n`);
   const got = await new Promise((resolve) => {
@@ -193,7 +194,7 @@ process.on("exit", () => {
     const t = setTimeout(() => resolve(null), 3000);
     child.stdout.on("data", (c) => {
       buf += c;
-      if (buf.includes("notebooklm")) {
+      if (buf.includes("notebooklm") && buf.includes("\n")) {
         clearTimeout(t);
         resolve(buf);
       }
@@ -201,6 +202,8 @@ process.on("exit", () => {
   });
   child.kill();
   check("disabled mode stays up for initialize", !!got && /notebooklm/.test(got));
+  check("disabled mode replies NDJSON not Content-Length", !!got && got.trimStart().startsWith("{") && !got.includes("Content-Length:"));
+  check("disabled mode echoes client protocolVersion", !!got && /"protocolVersion"\s*:\s*"2025-11-25"/.test(got));
   check("disabled mode stderr mentions enabled", /notebooklmAccess\.enabled/i.test(stderr));
 }
 

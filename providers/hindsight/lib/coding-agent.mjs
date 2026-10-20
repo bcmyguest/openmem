@@ -40,9 +40,8 @@ function notebooklmSyncEnabled(ctx) {
 }
 
 /**
- * Seed or keep a real coding-agent.json. Symlinks to the tracked template are left as-is
- * when already correct; a regular file is never replaced with a symlink (preserves
- * notebooklmAccess and other machine settings).
+ * Seed or keep a real coding-agent.json. Never leave (or create) a symlink to the shipped
+ * template — machine keys such as notebooklmAccess must not write into the repo.
  *
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
@@ -58,21 +57,16 @@ async function linkAgentConfig(ctx, h) {
     stat = null;
   }
   if (stat?.isSymbolicLink()) {
-    const dest = realpathSafe(fs.readlinkSync(ctx.agentJson));
-    if (realpathSafe(dest) === realpathSafe(target)) {
-      h.ok(`${ctx.agentJson} links to config/coding-agent.json`);
+    // Copy current contents into a regular file so later writes never hit the template.
+    if (ctx.dry) {
+      h.info(`[dry-run] materialize ${ctx.agentJson} (symlink → regular file)`);
       return;
     }
-    h.warn(`${ctx.agentJson} links to ${fs.readlinkSync(ctx.agentJson)}`);
-    if (await h.confirm(ctx, "Repoint it to config/coding-agent.json?", "n")) {
-      if (ctx.dry) h.info(`[dry-run] repoint ${ctx.agentJson}`);
-      else {
-        fs.unlinkSync(ctx.agentJson);
-        fs.mkdirSync(path.dirname(ctx.agentJson), { recursive: true });
-        fs.symlinkSync(target, ctx.agentJson);
-        h.ok(`linked ${ctx.agentJson}`);
-      }
-    }
+    const raw = fs.readFileSync(ctx.agentJson, "utf8");
+    fs.unlinkSync(ctx.agentJson);
+    fs.mkdirSync(path.dirname(ctx.agentJson), { recursive: true });
+    fs.writeFileSync(ctx.agentJson, raw.endsWith("\n") ? raw : `${raw}\n`);
+    h.ok(`materialized ${ctx.agentJson} (was symlink → regular file)`);
     return;
   }
   if (stat?.isFile()) {
