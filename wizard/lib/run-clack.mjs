@@ -1,5 +1,4 @@
 import * as p from "@clack/prompts";
-import { loadMachineEnv } from "./load-machine-env.mjs";
 import {
   listAllProviders,
   listSelectableProviders,
@@ -22,7 +21,6 @@ import path from "node:path";
  * @returns {Promise<Record<string, string>>}
  */
 export async function runClackSetup(repoRoot) {
-  const machine = loadMachineEnv(repoRoot);
   const home = process.env.HOME || "";
   const wizardConf = path.join(home, ".config/hindsight/wizard.conf");
   const ctxStub = { repoRoot, home, wizardConf };
@@ -65,7 +63,7 @@ export async function runClackSetup(repoRoot) {
   }
 
   ctxStub.pmMerged = pm.merged;
-  const providerDefault = providerDefaultId(ctxStub, machine);
+  const providerDefault = providerDefaultId(ctxStub);
   const providerPick = await p.select({
     message: "Memory provider",
     options: selectable.map((m) => ({

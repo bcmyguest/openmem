@@ -93,9 +93,8 @@ export function listPlannedProviders() {
 
 /**
  * @param {import("../run-wizard.mjs").WizardContext} ctx
- * @param {Record<string, string>} [machine]
  */
-export function providerDefaultId(ctx, machine = {}) {
+export function providerDefaultId(ctx) {
   const fromConf = ctx.wizardConf && fs.existsSync(ctx.wizardConf)
     ? readConfKey(ctx.wizardConf, "MEMORY_PROVIDER")
     : "";
@@ -106,7 +105,6 @@ export function providerDefaultId(ctx, machine = {}) {
     process.env.MEMORY_PROVIDER ||
     process.env.PM_MEMORY_PROVIDER ||
     fromToml ||
-    machine.MEMORY_PROVIDER ||
     fromConf ||
     DEFAULT_PROVIDER_ID
   );

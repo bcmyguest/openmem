@@ -25,15 +25,14 @@ export { migrateEnv, prepareStackEnv, setupNotices } from "./lib/stack-env.mjs";
 
 /**
  * Quiet: fill Hindsight's context fields, map [stack]/[model] TOML defaults into the
- * environment, and read LEMOND_BASE from config/machine.env.
+ * environment (including LEMOND_BASE from [model].lemond.host).
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
 export async function init(ctx, h) {
   ensureState(ctx);
   applyConfigEnv(ctx.pmMerged || {});
-  const machine = h.loadMachineEnv(ctx.repoRoot);
-  if (machine.LEMOND_BASE) ctx.lemondBase = machine.LEMOND_BASE;
+  if (process.env.LEMOND_BASE) ctx.lemondBase = process.env.LEMOND_BASE;
 }
 
 /**

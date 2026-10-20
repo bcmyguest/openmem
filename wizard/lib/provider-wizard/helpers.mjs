@@ -34,7 +34,7 @@ export const HELPERS_API_VERSION = 2;
  *   run a command (printed, not run, in a dry run); exits the wizard on failure
  * @property {(ctx: object, description: string, cmd: string, args: string[], extraEnv: Record<string, string>) => Promise<void>} actWithEnv
  * @property {(name: string) => boolean} commandExists
- * @property {(repoRoot: string) => Record<string, string>} loadMachineEnv parse config/machine.env
+ * @property {(repoRoot: string) => Record<string, string>} loadMachineEnv deprecated; always {}
  * @property {(file: string, key: string) => string} envValue read one KEY=value from an env file
  * @property {(p: string, home?: string) => string} expandHome
  * @property {(ctx: object) => void} ensureConfigDir create the per-machine config dir (no-op in a dry run)

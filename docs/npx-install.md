@@ -68,7 +68,7 @@ stack/
   config/                   shipped templates: *.example, index.yml, notebooklm.yml,
                             litellm.*.yaml, coding-agent.json
   providers/<id>/compose*.yaml   shipped provider compose fragments
-  .env  .build-hash  compose.override.yaml  config/machine.env  ...   generated: never touched
+  .env  .build-hash  compose.override.yaml  personal-memory.toml  ...   generated: never touched
 ```
 
 The wizard code itself (`wizard/`, `scripts/`, provider manifests and hooks) is **not**
@@ -103,7 +103,7 @@ Each command compares the package's shipped files with the stack root using the 
   `personal-memory init --force`, which overwrites it and saves yours as
   `<file>.user-<timestamp>.bak`.
 - No longer shipped: left in place and reported as a note.
-- Generated files (`.env`, `.build-hash`, `compose.override.yaml`, `config/machine.env`,
+- Generated files (`.env`, `.build-hash`, `compose.override.yaml`, `personal-memory.toml`,
   anything not in the manifest) are never overwritten or deleted.
 
 After an upgrade the wizard's `.build-hash` check rebuilds the images when their sources

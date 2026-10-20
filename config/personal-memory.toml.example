@@ -6,8 +6,8 @@
 #   ./setup --yes
 #
 # Precedence (highest wins): CLI flags → environment variables →
-#   ~/.config/personal-memory/config.toml → ./personal-memory.toml (in repo cwd) →
-#   config/machine.env → generated wizard.conf (legacy mirror).
+#   ~/.config/personal-memory/config.toml → ./personal-memory.toml (stack root) →
+#   ~/.config/hindsight/wizard.conf (last configure run).
 #
 # Provider-native settings (mem0 cloud, Hindsight product UI, etc.) stay in those tools;
 # this file only describes how this machine runs the shared stack.

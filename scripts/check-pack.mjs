@@ -45,7 +45,6 @@ export const REQUIRED = [
   "sync/Dockerfile",
   "config/index.yml",
   "config/notebooklm.yml",
-  "config/machine.env.example",
   "config/hindsight.env.example",
   "config/litellm.lemond.yaml",
   "config/personal-memory.toml.example",

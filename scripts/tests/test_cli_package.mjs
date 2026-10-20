@@ -120,7 +120,7 @@ const FAKE_V1 = {
   "sync/tests/test_s.py": "x\n",
   "config/index.yml": "sources: []\n",
   "config/notebooklm.yml": "a: 1\n",
-  "config/machine.env.example": "A=1\n",
+  "config/personal-memory.toml.example": "[memory]\n",
   "config/litellm.lemond.yaml": "model_list: []\n",
   "config/machine.env": "SECRET=1\n",
   "config/hindsight.env": "SECRET=1\n",
@@ -142,7 +142,7 @@ const FAKE_V1 = {
   const got = listShippedFiles(p);
   const has = (/** @type {string} */ f) => got.includes(f);
   check("shipped: compose files and Dockerfile build contexts", has("compose.yaml") && has("compose.bench.yaml") && has("indexer/Dockerfile") && has("indexer/watch.py") && has("sync/Dockerfile") && has("bin/hindsight-project-index"));
-  check("shipped: config templates only", has("config/index.yml") && has("config/machine.env.example") && has("config/litellm.lemond.yaml") && !has("config/machine.env") && !has("config/hindsight.env"));
+  check("shipped: config templates only", has("config/index.yml") && has("config/personal-memory.toml.example") && has("config/litellm.lemond.yaml") && !has("config/machine.env") && !has("config/hindsight.env"));
   check("shipped: provider compose fragments but not manifests or hooks", has("providers/hindsight/compose.yaml") && !has("providers/hindsight/manifest.json") && !has("providers/hindsight/wizard.mjs"));
   check("shipped: no tests, bytecode, generated files, wizard code", !got.some((f) => /tests\/|__pycache__|\.pyc$/.test(f)) && !has(".env") && !has("compose.override.yaml") && !has("wizard/lib/run-wizard.mjs") && !has("wizard/bin/setup.mjs"));
   check("shipped: no code (scripts/, wizard/) that must run from the package", !got.some((f) => /^(scripts|wizard)\//.test(f)));
@@ -416,7 +416,7 @@ check(
   /docker compose -p pm-test-w4 --profile hindsight up -d/.test(cfg.stdout + cfg.stderr),
   (cfg.stdout + cfg.stderr).slice(-800),
 );
-check("stack root materialized (compose, build contexts, templates, manifest)", ["compose.yaml", "compose.bench.yaml", "indexer/Dockerfile", "indexer/watch.py", "bin/hindsight-project-index", "sync/Dockerfile", "config/index.yml", "config/machine.env.example", MANIFEST_NAME].every((f) => fs.existsSync(path.join(stackRoot, f))));
+check("stack root materialized (compose, build contexts, templates, manifest)", ["compose.yaml", "compose.bench.yaml", "indexer/Dockerfile", "indexer/watch.py", "bin/hindsight-project-index", "sync/Dockerfile", "config/index.yml", "config/personal-memory.toml.example", MANIFEST_NAME].every((f) => fs.existsSync(path.join(stackRoot, f))));
 check("stack bin/ keeps the executable bit", (fs.statSync(path.join(stackRoot, "bin/hindsight-project-index")).mode & 0o111) !== 0);
 check("stack root has no code that must stay in the package", !fs.existsSync(path.join(stackRoot, "wizard")) && !fs.existsSync(path.join(stackRoot, "scripts")) && !fs.existsSync(path.join(stackRoot, "providers/hindsight/manifest.json")));
 check("dry-run wrote no generated files into the stack or the package", ["", "../node_modules/" + pkg.name].every((rel) => { const d = path.join(stackRoot, rel); return [".env", ".build-hash", "compose.override.yaml"].every((f) => !fs.existsSync(path.join(d, f))); }));

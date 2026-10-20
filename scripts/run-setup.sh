@@ -1,37 +1,30 @@
 #!/usr/bin/env bash
-# Invoked by ansible after personal-memory is cloned. Runs ./setup when a TTY is
-# available; otherwise prints what to run by hand.
+# Non-interactive checkout bootstrap (CI, remote shells without a TTY).
+# Prefer: npx personal-memory  or  cd checkout && npx . setup
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO}"
 
-if [ ! -d wizard/node_modules/@clack/prompts ]; then
-    npm install --prefix wizard --no-fund --no-audit
-fi
-
-if [ ! -f config/machine.env ] && [ -f config/machine.env.example ]; then
-    cp -n config/machine.env.example config/machine.env
-    printf 'Created %s from example — edit for this machine, then rerun ./setup\n' config/machine.env
-fi
+npm install --no-fund --no-audit
 
 if [ -f "${HOME}/.config/hindsight/wizard.conf" ]; then
-    exec ./setup --yes --no-smoke "$@"
+  exec npx . setup --yes --no-smoke "$@"
 fi
 
 if [ -t 0 ] && [ -t 1 ]; then
-    exec ./setup --no-smoke "$@"
+  exec npx . setup --no-smoke "$@"
 fi
 
 cat <<EOF
-personal-memory is at ${REPO}
+personal-memory checkout: ${REPO}
 
-Run the setup wizard on a terminal (configures Docker, the memory provider, indexing):
+Run the wizard on a terminal (Docker, provider, indexing):
 
   cd ${REPO}
-  cp -n config/machine.env.example config/machine.env   # once per machine
-  \$EDITOR config/machine.env
-  ./setup
+  mkdir -p ~/.config/personal-memory
+  cp config/personal-memory.toml.example ~/.config/personal-memory/config.toml
+  npx . setup
 
-Reconfigure later: cd ${REPO} && ./setup
+Or from npm (no clone): npx personal-memory
 EOF
 exit 0
