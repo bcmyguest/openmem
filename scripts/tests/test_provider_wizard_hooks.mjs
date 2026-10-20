@@ -239,7 +239,7 @@ resetEnv({ PM_DEFAULT_MODEL: "Custom-Retain-GGUF" });
   );
 }
 
-// --yes ollama.
+// --yes ollama (host answering).
 resetEnv({ PM_BACKEND: "ollama" });
 {
   const ctx = freshCtx("ollama-yes");
@@ -250,7 +250,23 @@ resetEnv({ PM_BACKEND: "ollama" });
   check("--yes ollama: backend ollama", ctx.backend === "ollama");
   check("--yes ollama: shipped model", ctx.model === "gemma4:e2b");
   check("--yes ollama: api base", ctx.apiBase === "http://host.docker.internal:11434");
+  check("--yes ollama: not in compose", ctx.ollamaInCompose === false);
   check("--yes ollama: conf saved", calls.saved[0]?.MEMORY_BACKEND === "ollama");
+  check("--yes ollama: compose flag saved as 0", calls.saved[0]?.MEMORY_OLLAMA_IN_COMPOSE === "0");
+}
+
+// --yes ollama when host is down: default confirm is yes → compose Ollama.
+resetEnv({ PM_BACKEND: "ollama" });
+{
+  const ctx = freshCtx("ollama-compose-yes");
+  const { h, calls } = stubHelpers(ctx.home, { models: {} });
+  await hindsight.configureModelRouting(ctx, h);
+  check("--yes ollama down: compose mode", ctx.ollamaInCompose === true);
+  check("--yes ollama down: api base is compose service", ctx.apiBase === "http://ollama:11434");
+  check("--yes ollama down: override written for compose api_base", fs.existsSync(ctx.litellmOverride));
+  const text = fs.readFileSync(ctx.litellmOverride, "utf8");
+  check("--yes ollama down: route points at ollama service", text.includes("api_base: http://ollama:11434"));
+  check("--yes ollama down: conf records compose", calls.saved[0]?.MEMORY_OLLAMA_IN_COMPOSE === "1");
 }
 
 // --yes custom: override file with the custom URL.

@@ -41,10 +41,20 @@ export function prepareStackEnv({ repo, home, env }) {
     ? overrideConfig
     : path.join(repo, "config", `litellm.${backend}.yaml`);
 
+  const profiles = ["hindsight"];
+  if (env.MEMORY_OLLAMA_IN_COMPOSE === "1") profiles.push("ollama");
+  const notebookYml = path.join(home, ".config/hindsight/notebooklm.yml");
+  if (
+    fs.existsSync(notebookYml) &&
+    /^enabled:\s*true\b/m.test(fs.readFileSync(notebookYml, "utf8"))
+  ) {
+    profiles.push("notebooklm");
+  }
+
   /** @type {[string, string][]} */
   const entries = [
     ["LITELLM_CONFIG", litellmConfig],
-    ["COMPOSE_PROFILES", "hindsight"],
+    ["COMPOSE_PROFILES", profiles.join(",")],
   ];
   const drop = ["LITELLM_CONFIG", "COMPOSE_PROFILES"];
   if (env.HINDSIGHT_PORT) {

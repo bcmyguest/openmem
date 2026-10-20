@@ -10,11 +10,18 @@ import { ensureState } from "./state.mjs";
  */
 export function summary(ctx) {
   ensureState(ctx);
+  const modelWhere =
+    ctx.backend === "ollama" && ctx.ollamaInCompose
+      ? "compose Ollama (profile ollama)"
+      : "the LiteLLM proxy (internal network)";
   const running = [
     `  Hindsight API      ${ctx.hindsightUrl}  (docs: ${ctx.hindsightUrl}/docs)`,
     `  control plane      http://127.0.0.1:${ctx.portCp}`,
-    `  model              ${ctx.backend}, ${ctx.model} via the LiteLLM proxy (internal network)`,
+    `  model              ${ctx.backend}, ${ctx.model} via ${modelWhere}`,
   ];
+  if (ctx.ollamaInCompose) {
+    running.push(`  Ollama            http://127.0.0.1:11434 (compose service; LiteLLM uses http://ollama:11434)`);
+  }
   const configFiles = [`  ${ctx.envFile}`];
   if (fs.existsSync(ctx.litellmOverride)) {
     configFiles.push(`  ${ctx.litellmOverride} (model routes; replaces config/litellm.*.yaml)`);

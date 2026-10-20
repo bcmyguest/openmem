@@ -3,7 +3,8 @@ FROM python:3.12-slim
 
 # Pinned: the unofficial notebooklm-py client changes without notice. google-auth and requests serve the optional
 # enterprise backend only.
-RUN pip install --no-cache-dir notebooklm-py==0.8.5 pyyaml==6.0.3 google-auth==2.62.0 requests==2.34.2
+# [markdown] pulls markdownify — sources.get_fulltext(..., output_format="markdown") needs it.
+RUN pip install --no-cache-dir 'notebooklm-py[markdown]==0.8.5' pyyaml==6.0.3 google-auth==2.62.0 requests==2.34.2
 
 COPY sync/notebooklm_sync.py /opt/notebooklm/notebooklm_sync.py
 # Shipped default config. The per-machine override is mounted at /etc/notebooklm/override.yml by compose.

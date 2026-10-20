@@ -43,8 +43,7 @@ meta.setupEnv                   indexer state dir, then provider.setupEnv or scr
 meta.index                      index.yml
 meta.notebooklm                 optional profile
 provider.beforeStack            compose fragments, migrations
-meta.stack                      build, up, health, then provider.smoke or manifest smoke
-provider.afterStackHealthy
+meta.stack                      build, up, health, provider.afterStackHealthy, then smoke
 meta.codingAgent                generic npx plugin, then provider.setupCodingAgent
 meta.validate                   generic checks, then provider.extendValidation
 meta.syncConfig                 config.toml (provider.configToml sections)
@@ -84,7 +83,7 @@ The path must stay inside the provider directory. Every export is an optional
 | `beforeStack` | announced | ignored | After env and index, before `docker compose up` |
 | `apiBase` | quiet | string | HTTP base URL when it is not `http://127.0.0.1:<compose.hostPortEnv>` |
 | `smoke` | announced | ignored | Replace the manifest HTTP smoke test |
-| `afterStackHealthy` | announced | ignored | After health and smoke |
+| `afterStackHealthy` | announced | ignored | After health, before smoke (e.g. pull compose Ollama models) |
 | `setupCodingAgent` | announced | ignored | After the generic coding-agent plugin step |
 | `extendValidation` | announced | ignored | Push to `ctx.validationErrors` / `ctx.validationChecks`; runs after the generic checks |
 | `configToml` | quiet | `{ stack?, memory?, <table>: {...} }` | Sections for `config.toml`: `stack` merges into `[stack]`, `memory` sub-tables (for example `memory.mem0`) merge into `[memory]` and `provider` there is always set by the wizard, every other key is a table |

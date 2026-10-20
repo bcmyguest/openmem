@@ -6,7 +6,12 @@
  */
 import { applyConfigEnv } from "./config.mjs";
 import { fetchJson, normalizeOpenAiBase, ollamaModelNames, openAiModelIds } from "./probe.mjs";
-import { LEMOND_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL } from "./state.mjs";
+import {
+  LEMOND_DEFAULT_MODEL,
+  OLLAMA_COMPOSE_API_BASE,
+  OLLAMA_DEFAULT_MODEL,
+  OLLAMA_HOST_API_BASE,
+} from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
 
@@ -114,6 +119,26 @@ export async function clackSetup(ctx, ui, h) {
     spin.stop(
       body ? `Ollama answered (${names.length} models)` : "Ollama not reachable",
     );
+    let ollamaInCompose = false;
+    if (!body) {
+      const useDocker = await ui.confirm({
+        message: "Ollama is not on this host. Run it in Docker (compose profile ollama)?",
+        active: "yes",
+        inactive: "no",
+        initialValue: true,
+      });
+      if (ui.isCancel(useDocker)) process.exit(0);
+      ollamaInCompose = Boolean(useDocker);
+      if (ollamaInCompose) {
+        ui.log.info(
+          "LiteLLM will call http://ollama:11434; the wizard pulls the model after the stack starts.",
+        );
+      } else {
+        ui.log.warn(
+          "Start Ollama on this host (OLLAMA_HOST on the Docker bridge), or rerun and pick Docker.",
+        );
+      }
+    }
     const defaultModel =
       machine.PM_DEFAULT_MODEL ||
       machine.MEMORY_MODEL ||
@@ -136,7 +161,8 @@ export async function clackSetup(ctx, ui, h) {
       if (ui.isCancel(typed)) process.exit(0);
       model = /** @type {string} */ (typed);
     }
-    apiBase = "http://host.docker.internal:11434";
+    apiBase = ollamaInCompose ? OLLAMA_COMPOSE_API_BASE : OLLAMA_HOST_API_BASE;
+    if (ollamaInCompose) handoff.MEMORY_OLLAMA_IN_COMPOSE = "1";
   } else {
     const defaultBase =
       machine.CUSTOM_DEFAULT_BASE || "http://host.docker.internal:3456/v1";

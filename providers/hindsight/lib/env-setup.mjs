@@ -31,10 +31,13 @@ export function stackEnv(ctx) {
   ensureState(ctx);
   let backend = ctx.backend;
   if (backend === "custom") backend = "lemond";
+  /** @type {Record<string, string>} */
+  const env = { MEMORY_BACKEND: backend };
+  if (ctx.ollamaInCompose) env.MEMORY_OLLAMA_IN_COMPOSE = "1";
   return {
     description:
       "scripts/setup.sh: write .env, litellm.env (mode 600 when new), compose.override.yaml",
-    env: { MEMORY_BACKEND: backend },
+    env,
   };
 }
 

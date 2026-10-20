@@ -10,7 +10,10 @@ import path from "node:path";
  * and compose.override.yaml from the stack root. With `compose.files`, the list is
  * compose.yaml, compose.override.yaml (when present), then the extra files.
  *
- * @param {{ project: string, repoRoot: string, memoryProvider?: { compose?: { profile?: string, files?: string[] } } }} ctx
+ * Extra profiles (compose Ollama, NotebookLM) come from `ctx.extraComposeProfiles`.
+ * A `--profile` flag replaces `COMPOSE_PROFILES`, so every needed profile is named here.
+ *
+ * @param {{ project: string, repoRoot: string, memoryProvider?: { compose?: { profile?: string, files?: string[] } }, extraComposeProfiles?: string[] }} ctx
  * @param {...string} rest the compose subcommand and its arguments
  * @returns {string[]}
  */
@@ -25,7 +28,12 @@ export function composeArgs(ctx, ...rest) {
     }
     for (const f of extra) args.push("-f", f);
   }
-  if (compose.profile) args.push("--profile", compose.profile);
+  const profiles = [];
+  if (compose.profile) profiles.push(compose.profile);
+  for (const p of ctx.extraComposeProfiles || []) {
+    if (typeof p === "string" && p && !profiles.includes(p)) profiles.push(p);
+  }
+  for (const p of profiles) args.push("--profile", p);
   return [...args, ...rest];
 }
 
