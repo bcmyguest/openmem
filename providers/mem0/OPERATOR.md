@@ -63,9 +63,48 @@ Prefer `https://`, or keep the server on loopback / the same host.
 ## Coding agents
 
 There is no `pluginPackage`. Agents talk to your server via the Python SDK,
-mem0's MCP server, or direct REST (`POST /memories`, `POST /search`). The
-wizard's coding-agent step prints those paths; see also
+the self-hosted MCP bridge, or direct REST (`POST /memories`, `POST /search`). The
+wizard's coding-agent step prints those paths and can register Cursor MCP; see
 `providers/mem0/lib/coding-agent.mjs`.
+
+### Cursor MCP (`~/.cursor/mcp.json`)
+
+Mem0's official MCP (`https://mcp.mem0.ai`) is **platform/cloud only**. For a
+self-hosted REST server this repo registers [`@yeyuan98/mem0-mcp`](https://www.npmjs.com/package/@yeyuan98/mem0-mcp)
+via the launcher `cli/mem0-mcp.mjs` (loads the key from the env file, then
+`npx -y @yeyuan98/mem0-mcp`).
+
+```sh
+MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes
+# or: personal-memory-install-mcp --yes
+# or accept the coding-agent MCP confirm in ./setup
+```
+
+Shape written (URL and env-file **path** only — never the key value):
+
+```json
+{
+  "mcpServers": {
+    "mem0": {
+      "command": "node",
+      "args": ["/path/to/personal-memory/cli/mem0-mcp.mjs"],
+      "env": {
+        "MEM0_API_URL": "http://127.0.0.1:18888",
+        "MEM0_BASE_URL": "http://127.0.0.1:18888",
+        "MEM0_ENV_FILE": "~/.config/personal-memory/mem0.env"
+      }
+    }
+  }
+}
+```
+
+**API key:** the launcher reads `MEM0_API_KEY` from `MEM0_ENV_FILE` when the
+variable is not already in the process environment. You can also
+`export MEM0_API_KEY=…` (e.g. `set -a; source ~/.config/personal-memory/mem0.env; set +a`)
+before starting Cursor so the agent inherits it. **Never** put `MEM0_API_KEY` in
+`mcp.json`. Existing `hindsight` / `codegraph` / `notebooklm` servers are left alone.
+
+Restart Cursor Agent after install.
 
 ## Compose
 

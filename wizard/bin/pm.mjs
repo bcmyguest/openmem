@@ -18,6 +18,14 @@ const TASKS = {
   up: { args: ["--up", "--yes"], help: "Start stack" },
   down: { args: ["--down", "--yes"], help: "Stop stack" },
   doctor: { args: ["--yes", "--no-smoke"], help: "Validate config (no smoke)" },
+  "install-mcp": {
+    script: "cli/install-memory-mcp.mjs",
+    help: "Install memory MCP servers into ~/.cursor/mcp.json",
+  },
+  switch: {
+    script: "cli/switch-memory-provider.mjs",
+    help: "Switch MEMORY_PROVIDER (wizard.conf + optional stack/MCP)",
+  },
 };
 
 const task = process.argv[2];
@@ -44,12 +52,27 @@ if (!spec) {
   process.exit(1);
 }
 
+const extra = process.argv.slice(3);
+
+if (spec.script) {
+  const script = path.join(pkgRoot, spec.script);
+  if (!fs.existsSync(script)) {
+    console.error(`${spec.script} not found; run from a personal-memory checkout or install`);
+    process.exit(1);
+  }
+  const r = spawnSync(process.execPath, [script, ...extra], {
+    cwd: REPO,
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(r.status ?? 1);
+}
+
 if (!fs.existsSync(SETUP)) {
   console.error("setup.mjs not found; run from a personal-memory checkout or install");
   process.exit(1);
 }
 
-const extra = process.argv.slice(3);
 const r = spawnSync(process.execPath, [SETUP, ...spec.args, ...extra], {
   cwd: REPO,
   stdio: "inherit",

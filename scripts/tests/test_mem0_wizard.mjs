@@ -70,6 +70,15 @@ function stubHelpers({ answers = {} } = {}) {
       const hit = Object.keys(answers).find((k) => prompt.includes(k));
       return hit ? answers[hit] : def;
     },
+    confirm: async (_ctx, prompt, defYN) => {
+      asked.push(prompt);
+      const hit = Object.keys(answers).find((k) => prompt.includes(k));
+      if (hit) {
+        const v = String(answers[hit]).toLowerCase();
+        return v === "y" || v === "yes" || v === "true";
+      }
+      return defYN === "y";
+    },
     saveWizardConf: (_ctx, extra, opts) => saved.push({ extra, opts }),
     loadMachineEnv: () => ({}),
   });
@@ -708,10 +717,11 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
 }
 
-// setupCodingAgent: non-silent; pluginPackage stays null.
+// setupCodingAgent: non-silent; pluginPackage stays null; --yes registers MCP (no key in mcp.json).
 {
   resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
-  const ctx = freshCtx("coding-agent");
+  const ctx = freshCtx("coding-agent", { packageRoot: root, yes: true });
+  fs.writeFileSync(path.join(ctx.repoRoot, ".env"), "MEM0_API_URL=http://127.0.0.1:19999\n");
   const { h, out } = stubHelpers();
   await mem0.setupCodingAgent(ctx, h);
   const t = text(out);
@@ -719,6 +729,24 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   check("setupCodingAgent prints SDK / MCP / REST steps", /SDK/.test(t) && /MCP/.test(t) && /REST/.test(t) && t.includes("/memories") && t.includes("/search"));
   check("setupCodingAgent keeps pluginPackage null", manifest.codingAgent?.pluginPackage === null);
   check("setupCodingAgent points at OPERATOR.md", t.includes("providers/mem0/OPERATOR.md"));
+  const mcpPath = path.join(ctx.home, ".cursor/mcp.json");
+  check("setupCodingAgent --yes writes mcp.json", fs.existsSync(mcpPath));
+  if (fs.existsSync(mcpPath)) {
+    const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
+    const entry = mcp.mcpServers?.mem0;
+    check("setupCodingAgent MCP uses node launcher", entry?.command === "node" && String(entry?.args?.[0] || "").endsWith("cli/mem0-mcp.mjs"));
+    check("setupCodingAgent MCP has URL env", entry?.env?.MEM0_API_URL === "http://127.0.0.1:19999" && entry?.env?.MEM0_BASE_URL === "http://127.0.0.1:19999");
+    check("setupCodingAgent MCP has no API key value", !("MEM0_API_KEY" in (entry?.env || {})));
+    check("setupCodingAgent MCP references env file path", String(entry?.env?.MEM0_ENV_FILE || "").endsWith("mem0.env"));
+  }
+  const skipCtx = freshCtx("coding-agent-skip", { packageRoot: root, yes: false });
+  const skip = stubHelpers({ answers: { "Register mem0 MCP": "n" } });
+  await mem0.setupCodingAgent(skipCtx, skip.h);
+  check(
+    "setupCodingAgent confirm n skips mcp.json",
+    !fs.existsSync(path.join(skipCtx.home, ".cursor/mcp.json")) &&
+      text(skip.out).includes("skip MCP merge"),
+  );
 }
 
 

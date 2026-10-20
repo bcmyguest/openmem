@@ -42,7 +42,8 @@ AUTH_RETRY_SECONDS = 900
 DISABLED_SLEEP_SECONDS = 3600
 ERROR_SLEEP_SECONDS = 300
 LOGIN_INSTRUCTION = (
-    "NotebookLM is not logged in. On the host (README \"NotebookLM\") run: "
+    "NotebookLM is not logged in. On the host re-run setup and enable NotebookLM "
+    "(it opens Google sign-in and sets NOTEBOOKLM_HOME), or: "
     "mkdir -p ~/.config/notebooklm && uv tool install 'notebooklm-py[browser]==0.8.5' && "
     "uv tool run --from 'notebooklm-py[browser]==0.8.5' python -m playwright install chromium && "
     "NOTEBOOKLM_HOME=$HOME/.config/notebooklm notebooklm login. "
@@ -486,7 +487,11 @@ async def fetch_client(cfg: Config) -> FetchResult:
                 except NotebookLMError as error:
                     complete = False
                     log.error("notebook %r: %s", nb.title, error)
-                snapshots.append(NotebookSnapshot(nb.id, nb.title or "Untitled notebook", tuple(items), complete))
+                title = nb.title or "Untitled notebook"
+                if complete and not items:
+                    # ensure_bank runs only when retaining documents; empty notebooks never appear as banks.
+                    log.info("notebook %r (%s): nothing to sync (no notes/sources/chats); skipping bank", title, nb.id)
+                snapshots.append(NotebookSnapshot(nb.id, title, tuple(items), complete))
     except FileNotFoundError as error:
         raise AuthProblem(f"{error}\n{LOGIN_INSTRUCTION}") from error
     except AuthError as error:

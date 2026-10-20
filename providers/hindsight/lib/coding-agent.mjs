@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { realpathSync } from "node:fs";
+import { installNotebooklmMcp } from "./notebooklm-mcp-install.mjs";
 import { ensureState } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -135,4 +136,5 @@ export async function setupCodingAgent(ctx, h) {
   ensureState(ctx);
   await linkAgentConfig(ctx, h);
   await checkOptIn(ctx, h);
+  await installNotebooklmMcp(ctx, h);
 }

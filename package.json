@@ -23,7 +23,11 @@
   ],
   "bin": {
     "personal-memory": "cli/personal-memory.mjs",
-    "personal-memory-setup": "wizard/bin/setup.mjs"
+    "personal-memory-setup": "wizard/bin/setup.mjs",
+    "personal-memory-notebooklm-mcp": "cli/notebooklm-mcp.mjs",
+    "personal-memory-cognee-mcp": "cli/cognee-mcp.mjs",
+    "personal-memory-install-mcp": "cli/install-memory-mcp.mjs",
+    "personal-memory-switch-provider": "cli/switch-memory-provider.mjs"
   },
   "files": [
     "cli/",
@@ -62,6 +66,8 @@
     "setup": "node wizard/bin/setup.mjs",
     "pm": "node wizard/bin/pm.mjs",
     "personal-memory": "node cli/personal-memory.mjs",
+    "install-mcp": "node cli/install-memory-mcp.mjs",
+    "switch-provider": "node cli/switch-memory-provider.mjs",
     "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
     "test:unit": "node scripts/tests/test_cli_package.mjs --unit",
     "pack:check": "node scripts/check-pack.mjs"

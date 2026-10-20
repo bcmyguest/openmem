@@ -226,6 +226,15 @@ export function validateManifest(manifest) {
   if (manifest.wizard?.recallHint !== undefined && typeof manifest.wizard.recallHint !== "string") {
     errors.push("wizard.recallHint must be a string");
   }
+  if (manifest.wizard?.retainHint !== undefined && typeof manifest.wizard.retainHint !== "string") {
+    errors.push("wizard.retainHint must be a string");
+  }
+  for (const key of ["smokeRetainTimeoutSec", "smokeRecallTimeoutSec"]) {
+    const v = manifest.wizard?.[key];
+    if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v <= 0)) {
+      errors.push(`wizard.${key} must be a positive number`);
+    }
+  }
   return errors;
 }
 
