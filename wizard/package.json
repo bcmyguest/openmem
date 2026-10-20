@@ -1,0 +1,10 @@
+{
+  "name": "personal-memory-setup",
+  "private": true,
+  "type": "module",
+  "description": "Interactive setup wizard for personal-memory (@clack/prompts)",
+  "dependencies": {
+    "@clack/prompts": "^1.2.0",
+    "@iarna/toml": "^2.2.5"
+  }
+}

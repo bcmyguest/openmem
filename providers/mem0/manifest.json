@@ -1,0 +1,48 @@
+{
+  "id": "mem0",
+  "label": "mem0",
+  "status": "planned",
+  "notes": "Requires Phase B sink + compose profile. API and agent plugin differ from Hindsight.",
+  "settings": {
+    "nativeDocs": "https://docs.mem0.ai/",
+    "nativeConfigPaths": [],
+    "wizardOwns": [
+      "compose profile or external URL hookup (TBD)",
+      "index.yml sources (shared indexer)",
+      "provider-specific wizard steps (TBD)"
+    ]
+  },
+  "compose": {
+    "services": [],
+    "healthService": null,
+    "healthPath": "/health",
+    "hostPortEnv": "MEM0_PORT",
+    "defaultHostPort": 8765
+  },
+  "indexer": {
+    "apiUrlEnv": "MEM0_API_URL",
+    "sinkDriver": "mem0-rest"
+  },
+  "codingAgent": {
+    "pluginPackage": null,
+    "configTemplate": null
+  },
+  "wizardHooks": {
+    "module": "wizard.mjs",
+    "delegates": {
+      "login": {
+        "description": "mem0 CLI login (native; install separately)",
+        "run": ["mem0", "login"]
+      }
+    }
+  },
+  "wizard": {
+    "smokeBank": "wizard-smoke",
+    "retainMethod": null,
+    "retainPath": null,
+    "recallMethod": null,
+    "recallPath": null,
+    "deleteMethod": null,
+    "deletePath": null
+  }
+}

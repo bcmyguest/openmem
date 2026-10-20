@@ -1,0 +1,60 @@
+# Mise-like declarative config for the personal-memory meta wizard.
+#
+#   mkdir -p ~/.config/personal-memory
+#   cp config/personal-memory.toml.example ~/.config/personal-memory/config.toml
+#   $EDITOR ~/.config/personal-memory/config.toml
+#   ./setup --yes
+#
+# Precedence (highest wins): CLI flags → environment variables →
+#   ~/.config/personal-memory/config.toml → ./personal-memory.toml (in repo cwd) →
+#   config/machine.env → generated wizard.conf (legacy mirror).
+#
+# Provider-native settings (mem0 cloud, Hindsight product UI, etc.) stay in those tools;
+# this file only describes how this machine runs the shared stack.
+
+[memory]
+provider = "hindsight"
+
+[stack]
+project = "personal-memory"
+api_port = 8888
+control_plane_port = 9999
+
+# Default wizard action when ./setup runs non-interactively without --up/--down
+[wizard]
+action = "configure" # configure | up | down
+
+# LLM routing for Hindsight (LiteLLM → lemond/Ollama/custom). Not lemond's own config.
+[model]
+backend = "lemond" # lemond | ollama | custom
+retain = "Gemma-4-E2B-it-GGUF"
+reflect = ""       # empty = shipped memory-reflect route
+api_base = ""      # custom backend only
+
+[model.lemond]
+host = "http://127.0.0.1:13305"
+
+[model.ollama]
+host = "http://127.0.0.1:11434"
+
+# Optional indexer defaults (wizard may still prompt interactively)
+# [[index.roots]]
+# path = "~"
+# depth = 3
+
+# Mise-style named tasks (run via ./pm <name>)
+[tasks.configure]
+description = "Secrets, index sources, build images, compose up"
+
+[tasks.up]
+description = "Start stack using existing config"
+
+[tasks.down]
+description = "docker compose down for this project"
+
+[tasks.doctor]
+description = "Validate memory setup on this machine"
+
+# Future: provider-native options live in their own tables, not under [model]
+# [memory.mem0]
+# api_url = "https://api.mem0.ai"
