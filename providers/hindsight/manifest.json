@@ -8,6 +8,7 @@
     "healthPath": "/health",
     "hostPortEnv": "HINDSIGHT_PORT",
     "defaultHostPort": 8888,
+    "logServices": ["hindsight", "litellm"],
     "profile": "hindsight",
     "files": []
   },
@@ -46,6 +47,7 @@
     "recallPath": "/v1/default/banks/{bank}/memories/recall",
     "recallBody": "{\"query\":\"What is the project codename?\"}",
     "recallMustMatch": "heron",
+    "recallHint": "check the model route ({compose} logs litellm)",
     "deleteMethod": "DELETE",
     "deletePath": "/v1/default/banks/{bank}"
   }

@@ -8,6 +8,7 @@ import {
   loadPmConfig,
   userConfigPath,
 } from "../../wizard/lib/pm-config.mjs";
+import { configToml, defaultsFromConfig } from "../../providers/hindsight/lib/config.mjs";
 
 const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const example = path.join(repo, "config/personal-memory.toml.example");
@@ -50,6 +51,20 @@ const ctx = {
 };
 const out = buildPmConfigToml(ctx);
 check("buildPmConfigToml includes provider", out.includes('provider = "hindsight"'));
+check(
+  "provider-neutral config.toml has no model or port tables",
+  !/\[model/.test(out) && !/api_port/.test(out) && /\[tasks\.doctor\]/.test(out),
+);
+
+// Hindsight's [stack] ports and [model] tables come from its configToml hook.
+const hs = buildPmConfigToml(ctx, configToml(ctx));
+check("hindsight sections: api_port", /api_port = 28_?888/.test(hs) && /control_plane_port = 29_?999/.test(hs));
+check("hindsight sections: [model] backend and retain", /\[model\]/.test(hs) && /backend = "lemond"/.test(hs) && /retain = "Gemma-4-E2B-it-GGUF"/.test(hs));
+check("hindsight sections: [model.lemond] host", /\[model\.lemond\]/.test(hs) && /host = "http:\/\/127\.0\.0\.1:13305"/.test(hs));
+check("hindsight sections: project stays in [stack]", /\[stack\]\nproject = "pm-test"/.test(hs));
+const hsd = defaultsFromConfig(loaded.merged);
+check("hindsight defaults read [model] from the example", hsd.modelBackend === "lemond");
+check("provider-neutral defaults carry no model keys", !("modelBackend" in d) && !("apiPort" in d));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 

@@ -1,0 +1,26 @@
+{
+  "id": "hooked",
+  "label": "Hooked fixture",
+  "status": "experimental",
+  "compose": {
+    "services": [],
+    "healthService": "memory",
+    "healthPath": "/health",
+    "hostPortEnv": "HOOKED_PORT",
+    "defaultHostPort": 18766,
+    "profile": "hooked",
+    "files": ["fixture-fragment.yaml"],
+    "logServices": ["memory"]
+  },
+  "indexer": { "apiUrlEnv": "HOOKED_URL", "sinkDriver": "hooked-rest" },
+  "codingAgent": { "pluginPackage": null, "configTemplate": null },
+  "wizardHooks": { "module": "wizard.mjs" },
+  "wizard": {
+    "smokeBank": "wizard-smoke",
+    "retainPath": "/fixture/{bank}/memories",
+    "retainBody": "{}",
+    "recallPath": "/fixture/{bank}/memories/recall",
+    "recallBody": "{}",
+    "deletePath": "/fixture/{bank}"
+  }
+}
