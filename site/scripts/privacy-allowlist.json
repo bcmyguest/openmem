@@ -5,5 +5,15 @@
     "files": ["docs/npx-install.md", "dist/docs/npx-install", "dist/llms-full.txt"],
     "reason": "Inline code in a platform note: the generic Docker alias that compose.yaml maps through extra_hosts on Linux. It names no operator host.",
     "todo": "docs/npx-install.md:116 ('Linux and macOS notes'). Integrator: reword the note to avoid the alias, then delete this entry; otherwise keep it as an accepted generic Docker term."
+  },
+  {
+    "rule": "docker-host",
+    "match": "host.docker.internal",
+    "files": [
+      "docs/personal-memory-config.md",
+      "dist/docs/personal-memory-config",
+      "dist/llms-full.txt"
+    ],
+    "reason": "Documented Docker host alias for mem0 indexer URL rewrite and host-resident LLM endpoints; generic compose term, not an operator path."
   }
 ]

@@ -9,6 +9,7 @@ import { features, next, providers, security, site, STATUS_LABEL, steps, works }
 import { withBase } from '../lib/url';
 
 const supportedNames = providers.filter((p) => p.status === 'supported').map((p) => p.label).join(', ');
+const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
   'A setup wizard, Docker Compose stack, and project and vault indexer that wire coding agents to a pluggable local memory provider. Provider status is read from the manifests.';
@@ -44,7 +45,7 @@ const npxCommand = `npx ${site.npm.package}`;
         <Badge variant="outline">Local-first · Docker Compose · work in progress</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          personal-memory is a setup wizard built around pluggable memory providers, a Docker Compose stack, and an indexer for your projects and notes. It wires coding agents to a provider that runs on your machine. {supportedNames ? `Supported today: ${supportedNames}.` : 'No provider is supported yet.'} Every other provider is listed with the status its manifest declares.
+          personal-memory is a setup wizard built around pluggable memory providers, a Docker Compose stack, and an indexer for your projects and notes. It wires coding agents to a provider that runs on your machine. {supportedNames ? `Supported today: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''} Every other provider is listed with the status its manifest declares.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <Button href="#install" size="lg">Install</Button>

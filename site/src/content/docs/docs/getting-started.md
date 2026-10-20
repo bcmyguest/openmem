@@ -5,7 +5,7 @@ description: "Prerequisites and the from-source install that works today, plus t
 
 personal-memory sets up memory for coding agents on one machine. A wizard configures a memory provider, starts a Docker Compose stack, indexes your repositories and Obsidian vaults, and checks that the provider answers.
 
-This page covers what works today. For how each provider is wired, see [Provider status](../provider-status/).
+This page covers what works today. **Hindsight** is supported; **mem0** and **Cognee** are experimental (selectable in the wizard, not yet validated on every machine). For how each provider is wired, see [Provider status](../provider-status/).
 
 ## Prerequisites
 
@@ -42,8 +42,8 @@ The first interactive run installs the wizard's npm dependencies. To see what th
 ## What the wizard asks
 
 1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
-2. Stack action (configure, start, or stop) and memory provider.
-3. For Hindsight: the model backend (lemond, Ollama, or a custom OpenAI-compatible server) and the route for each model alias.
+2. Stack action (configure, start, or stop) and memory provider (Hindsight, mem0, or Cognee).
+3. Provider-specific steps: Hindsight asks for the model backend (lemond, Ollama, or a custom OpenAI-compatible server) and the route for each model alias; mem0 asks for your mem0 REST server URL and API key file; Cognee asks for a loopback port and `LLM_API_KEY` for graph build.
 4. Secrets and env files under `~/.config/hindsight/` with mode 600.
 5. Source roots to index and the Obsidian vaults it finds.
 6. Whether to enable the opt-in NotebookLM sync (default no).
