@@ -139,6 +139,20 @@ defaults to `wizard.conf` / `machine.env`), or set `MEMORY_PROVIDER` for `--yes`
 the choice in `wizard.conf`. Stack **up** / **down** are wizard actions (`--up`, `--down`, or Clack
 first step); default action is full **configure and start**.
 
+### Changing provider later
+
+Prefer **`./pm switch <id> --yes`** (or `npm run switch-provider -- <id> --yes`) over a full
+interactive setup re-run when you only need to change backends:
+
+- Updates `MEMORY_PROVIDER` in `~/.config/hindsight/wizard.conf`
+- Updates `[memory].provider` in `~/.config/personal-memory/config.toml` when that file exists
+- Unless `--no-stack`: compose down + up for the new provider (with mem0/Cognee readiness checks)
+- Unless `--no-mcp`: runs `install-mcp --provider-only` so Cursor MCP points at the new provider
+
+Switching does **not** migrate memories between backends. The NotebookLM compose profile and
+`notebooklm` MCP entry are left alone. Flags and examples:
+[README — Switch memory provider](../README.md#switch-memory-provider).
+
 ## Suggested implementation phases (separate commits)
 
 ### Phase A — Registry and docs (this commitset)
@@ -164,7 +178,8 @@ first step); default action is full **configure and start**.
 - mem0 is **URL-only** in v1: the indexer talks to a mem0 server the operator already runs, and this
   repo ships no mem0 container yet. A mem0 service built from a pinned upstream ref is a follow-up.
   Operator runbook: `providers/mem0/OPERATOR.md`. Coding-agent: wizard `setupCodingAgent` prints
-  SDK/MCP steps (no fake `pluginPackage`).
+  SDK/MCP steps (no fake `pluginPackage`); register Cursor MCP with
+  `MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes` (or `./pm switch mem0 --yes`).
 - Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
   an optional env file (`~/.config/personal-memory/cognee.env`, mode 600).
   Operator notes: `providers/cognee/OPERATOR.md`. Coding-agent: REST on the loopback port plus a

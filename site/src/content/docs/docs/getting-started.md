@@ -70,9 +70,12 @@ Instead of answering prompts, describe the setup in `~/.config/personal-memory/c
 ./pm up
 ./pm down
 ./pm doctor
+./pm install-mcp --yes          # merge memory MCP into ~/.cursor/mcp.json
+./pm switch mem0 --yes          # change MEMORY_PROVIDER (no data migration)
 ```
 
 See [Configuration file](../personal-memory-config/) for the files, precedence, and sections.
+Provider switch and MCP install details live in the repo [README](https://github.com/bcmyguest/personal-memory#switch-memory-provider).
 
 ## Stop and reset
 

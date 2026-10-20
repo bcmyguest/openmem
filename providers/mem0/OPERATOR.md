@@ -106,6 +106,18 @@ before starting Cursor so the agent inherits it. **Never** put `MEM0_API_KEY` in
 
 Restart Cursor Agent after install.
 
+### Switch to / from mem0
+
+```sh
+./pm switch mem0 --yes
+# later: ./pm switch hindsight --yes
+# or: npm run switch-provider -- mem0 --yes
+```
+
+Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack
+unless `--no-stack`, and runs `install-mcp --provider-only` unless `--no-mcp`. Does **not**
+migrate memories. Flags: [README — Switch memory provider](../../README.md#switch-memory-provider).
+
 ## Compose
 
 `providers/mem0/compose.yaml` defines no mem0 service — only env +
