@@ -76,13 +76,17 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   env_file = "~/.config/personal-memory/cognee.env"   # where LLM_API_KEY lives
   ```
 
-  `port` is resolved as:   `COGNEE_PORT`, then this table, then (for `./pm up`) the port saved in `wizard.conf`, then the
-  stack `.env`, then the default `8766`. The Cognee env file is `COGNEE_ENV_FILE`, then `env_file`, then
-  `~/.config/personal-memory/cognee.env`; a non-default `env_file` is exported to compose as
-  `COGNEE_ENV_FILE` for the run (export it yourself when you run `docker compose` by hand, and
-  use an absolute path). The indexer container reads a second, optional file,
-  `COGNEE_INDEXER_ENV_FILE` (default `~/.config/personal-memory/cognee-indexer.env`), which holds
-  only `COGNEE_API_KEY`.
+  `port` is resolved as: `COGNEE_PORT`, then this table, then the stack `.env`, then the port
+  saved in `wizard.conf`, then the default `8766`. Both env file locations follow the same order:
+  the variable (`COGNEE_ENV_FILE`, `COGNEE_INDEXER_ENV_FILE`), then `env_file` /
+  `indexer_env_file` in this table, then the stack `.env`, then the defaults
+  `~/.config/personal-memory/cognee.env` and `~/.config/personal-memory/cognee-indexer.env`.
+  The second file is optional and is the one the indexer container reads; it holds only
+  `COGNEE_API_KEY`. A non-default location (`~` is expanded, a relative path is taken relative
+  to the stack root) is written to the stack `.env` as a path, so a plain `docker compose` finds
+  the same files; the file contents never go there. Keep custom files inside
+  `~/.config/personal-memory`: that is the directory hidden from the indexer's read-only `$HOME`
+  mount, and setup warns about a file elsewhere under `$HOME`.
 
   Cognee builds its graph with an LLM, so documents are stored but not searchable until
   `LLM_API_KEY` works. `./setup` writes the key into the env file (mode 600 in a mode 700
@@ -91,15 +95,17 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 
   | Variable (environment) | Written to the env file as |
   | --- | --- |
-  | `PM_COGNEE_LLM_API_KEY`; under `--yes` also plain `LLM_API_KEY` | `LLM_API_KEY` |
+  | `PM_COGNEE_LLM_API_KEY`; under `--yes` or `--dry-run` also plain `LLM_API_KEY` | `LLM_API_KEY` |
   | `PM_COGNEE_LLM_PROVIDER`, `PM_COGNEE_LLM_MODEL`, `PM_COGNEE_LLM_ENDPOINT` | `LLM_PROVIDER`, `LLM_MODEL`, `LLM_ENDPOINT` |
-  | `PM_COGNEE_EMBEDDING_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_API_KEY`, `_DIMENSIONS` | the same names without `PM_COGNEE_` |
+  | `PM_COGNEE_EMBEDDING_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_DIMENSIONS` | the same names without `PM_COGNEE_` |
+  | `PM_COGNEE_EMBEDDING_API_KEY`; under `--yes` or `--dry-run` also plain `EMBEDDING_API_KEY` | `EMBEDDING_API_KEY` |
 
   Only variables that are set are written, so a local model needs no key:
   `PM_COGNEE_LLM_PROVIDER=ollama PM_COGNEE_LLM_MODEL=... PM_COGNEE_LLM_ENDPOINT=http://host.docker.internal:11434/v1 ./setup --yes`
   (a model server on the host is `host.docker.internal` from the container). The interactive
-  setup asks for the key with a hidden prompt. With no key under `--yes` the wizard warns and
-  carries on. The key never goes into the stack `.env`, `wizard.conf`, `config.toml` or the
+  setup asks for the key with a hidden prompt. The key variables are removed from the wizard's
+  own environment before it starts docker or any other child process, so nothing it launches
+  inherits them. With no key under `--yes` the wizard warns and carries on. The key never goes into the stack `.env`, `wizard.conf`, `config.toml` or the
   summary. Authentication is off in this stack; to turn it on by hand, set
   `REQUIRE_AUTHENTICATION=true` in `cognee.env` and `COGNEE_API_KEY` in `cognee-indexer.env` (see
   the comments in `providers/cognee/compose.yaml`).

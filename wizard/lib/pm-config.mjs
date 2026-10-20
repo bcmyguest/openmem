@@ -82,13 +82,15 @@ export function defaultsFromPmConfig(cfg) {
 /**
  * @param {import("./run-wizard.mjs").WizardContext} ctx
  * @param {Record<string, Record<string, unknown>>} [sections] provider-owned tables:
- *   `stack` keys are merged into [stack]; every other key becomes its own top-level table
+ *   `stack` keys are merged into [stack]; `memory` sub-tables (for example `memory.mem0`) are
+ *   merged into [memory], and `provider` there is always the active provider id; every other
+ *   key becomes its own top-level table
  * @returns {string}
  */
 export function buildPmConfigToml(ctx, sections = {}) {
-  const { stack: stackExtra = {}, ...rest } = sections;
+  const { stack: stackExtra = {}, memory: memoryExtra = {}, ...rest } = sections;
   const doc = {
-    memory: { provider: ctx.memoryProvider?.id || DEFAULT_PROVIDER_ID },
+    memory: { ...memoryExtra, provider: ctx.memoryProvider?.id || DEFAULT_PROVIDER_ID },
     stack: { project: ctx.project, ...stackExtra },
     wizard: { action: ctx.action || "configure" },
     ...rest,

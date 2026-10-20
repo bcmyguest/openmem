@@ -1,5 +1,6 @@
 /**
- * Cognee's contribution to scripts/setup.mjs: the COGNEE_PORT entry of the stack .env, an inert
+ * Cognee's contribution to scripts/setup.mjs: the COGNEE_PORT entry of the stack .env, the paths of
+ * non-default env files (COGNEE_ENV_FILE, COGNEE_INDEXER_ENV_FILE: paths, never contents), an inert
  * LITELLM_CONFIG entry, and the end-of-run notices about the Cognee env file.
  * Runs as a plain Node script step (no wizard context), so it only reads process environment
  * and the paths it is given. It never prints or returns secret values.
@@ -17,18 +18,31 @@ function packageRoot() {
   return path.resolve(process.env.PM_PACKAGE_ROOT || moduleRoot);
 }
 
-/** @param {string} home @param {NodeJS.ProcessEnv} env */
-function cogneeEnvFile(home, env) {
-  return env.COGNEE_ENV_FILE || path.join(home, ".config/personal-memory/cognee.env");
+/** @param {string} home @param {NodeJS.ProcessEnv} env @param {string} [repo] */
+function cogneeEnvFile(home, env, repo) {
+  const value = env.COGNEE_ENV_FILE || (repo && envValue(path.join(repo, ".env"), "COGNEE_ENV_FILE"));
+  if (!value) return path.join(home, ".config/personal-memory/cognee.env");
+  return value.startsWith("~/") ? path.join(home, value.slice(2)) : path.resolve(repo || "", value);
 }
 
 /**
- * @param {{ repo: string, home: string, env: NodeJS.ProcessEnv }} opts
+ * An env-file path from the environment as an absolute path: `~` is expanded and a relative
+ * path is taken relative to the stack root, which is how compose resolves env_file.
+ * @param {string} value @param {string} repo @param {string} home
+ */
+function absolutePath(value, repo, home) {
+  if (/[\r\n\0]/.test(value)) throw new Error("an env file path must be a single line");
+  const expanded = value === "~" ? home : value.startsWith("~/") ? path.join(home, value.slice(2)) : value;
+  return path.resolve(repo, expanded);
+}
+
+/**
+ * @param {{ repo: string, home?: string, env: NodeJS.ProcessEnv }} opts
  * @returns {{ entries: [string, string][], drop: string[], report: string[] }}
  *   entries: KEY=value lines to add to the stack .env; drop: keys to remove first (so a key is
  *   rewritten, never duplicated); report: KEY=value strings echoed in the "wrote .env" line
  */
-export function prepareStackEnv({ repo, env }) {
+export function prepareStackEnv({ repo, home = process.env.HOME || "", env }) {
   const stackEnv = path.join(repo, ".env");
 
   const port = env.COGNEE_PORT || envValue(stackEnv, "COGNEE_PORT") || DEFAULT_PORT;
@@ -44,6 +58,17 @@ export function prepareStackEnv({ repo, env }) {
   ];
   const drop = ["COGNEE_PORT", "COMPOSE_PROFILES"];
   const report = [`COGNEE_PORT=${entries[0][1]}`, "COMPOSE_PROFILES=cognee"];
+
+  // Env files at a non-default location: persist the PATH (not its contents) so a hand-run
+  // `docker compose` finds the same files. Absent from the environment, nothing is written and
+  // an existing line is kept.
+  for (const name of ["COGNEE_ENV_FILE", "COGNEE_INDEXER_ENV_FILE"]) {
+    if (!env[name]) continue;
+    const file = absolutePath(env[name], repo, home);
+    entries.push([name, file]);
+    drop.push(name);
+    report.push(`${name}=${file}`);
+  }
 
   // Compose interpolates every service before it filters by profile, so the root compose.yaml
   // requires LITELLM_CONFIG even under `--profile cognee`. The value is inert here: the litellm
@@ -78,11 +103,11 @@ function hasValue(text, key) {
 
 /**
  * Printed after the .env is written. Names the env file, never its contents.
- * @param {{ home: string, env: NodeJS.ProcessEnv }} opts
+ * @param {{ repo?: string, home: string, env: NodeJS.ProcessEnv }} opts
  * @returns {string[]}
  */
-export function setupNotices({ home, env }) {
-  const file = cogneeEnvFile(home, env);
+export function setupNotices({ repo, home, env }) {
+  const file = cogneeEnvFile(home, env, repo);
   const notices = [];
   let text = "";
   try {

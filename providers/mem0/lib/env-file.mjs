@@ -1,9 +1,11 @@
 /**
  * The mem0 env file (default ~/.config/personal-memory/mem0.env): the indexer's MEM0_API_KEY,
- * mode 600 in a mode 700 directory, outside the repo. Nothing here prints a key.
+ * mode 600 in a mode 700 directory, outside the repo. Nothing here prints a key. Reads follow
+ * docker compose's env_file rules (see dotenv.mjs) so the wizard sees the key the indexer gets.
  */
 import fs from "node:fs";
 import path from "node:path";
+import { parseEnvValue } from "./dotenv.mjs";
 
 const KEY_LINE = /^\s*(?:export\s+)?MEM0_API_KEY\s*=/;
 
@@ -21,16 +23,13 @@ export function keyProblem(key) {
 }
 
 /**
- * The MEM0_API_KEY value in the file (the last such line), or "".
+ * The MEM0_API_KEY value compose would load from the file (last duplicate wins, quotes and
+ * `export` handled), or "" when the file is absent, has no such line, or the value is empty.
  * @param {string} file
  */
 export function readKey(file) {
   if (!fs.existsSync(file)) return "";
-  let value = "";
-  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
-    if (KEY_LINE.test(line)) value = line.slice(line.indexOf("=") + 1).trim();
-  }
-  return value;
+  return parseEnvValue(fs.readFileSync(file, "utf8"), "MEM0_API_KEY");
 }
 
 /** @param {string} file @returns {number} permission bits, or -1 when the file is absent */
@@ -45,30 +44,63 @@ export function tooOpen(file) {
 }
 
 /**
- * Write `MEM0_API_KEY=<key>` into the file: other lines are kept, an existing key line is
- * replaced. The directory is created with mode 700 and the file is replaced atomically
- * with mode 600 (a temp file beside it, so the key is never briefly world-readable).
+ * True when the file's directory exists and group or others can enter or list it. The file
+ * mode still protects the key; this is the extra hygiene the wizard warns about.
+ * @param {string} file
+ */
+export function dirTooOpen(file) {
+  const dir = path.dirname(file);
+  return fs.existsSync(dir) && (fs.statSync(dir).mode & 0o077) !== 0;
+}
+
+/**
+ * Follow a chain of symlinks (also dangling ones) to the path that would hold the data.
+ * @param {string} p
+ */
+function resolveLink(p) {
+  let current = p;
+  for (let i = 0; i < 16; i++) {
+    let stat;
+    try {
+      stat = fs.lstatSync(current);
+    } catch {
+      return current;
+    }
+    if (!stat.isSymbolicLink()) return current;
+    current = path.resolve(path.dirname(current), fs.readlinkSync(current));
+  }
+  throw new Error("too many symbolic links in the mem0 env file path");
+}
+
+/**
+ * Write `MEM0_API_KEY=<key>` into the file: other lines are kept, every existing key line is
+ * replaced by one. A symlinked file or directory keeps its link and the data lands at the
+ * target. The directory is created with mode 700; the file is replaced atomically through a
+ * temp file created exclusively (`wx`) with mode 600 beside it, so the key is never briefly
+ * readable by others.
  * @param {string} file
  * @param {string} key
  * @returns {"created"|"updated"|"unchanged"}
  */
 export function writeKey(file, key) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  // Write through a symlink instead of replacing it.
-  const target = fs.existsSync(file) ? fs.realpathSync(file) : file;
+  const target = resolveLink(path.join(fs.realpathSync(path.dirname(file)), path.basename(file)));
+  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
   const existed = fs.existsSync(target);
   /** @type {string[]} */
   let lines = [];
+  let previous = "";
   if (existed) {
-    lines = fs.readFileSync(target, "utf8").split(/\r?\n/);
+    previous = fs.readFileSync(target, "utf8");
+    lines = previous.split(/\r?\n/);
     while (lines.length && lines.at(-1) === "") lines.pop();
   }
   const kept = lines.filter((l) => !KEY_LINE.test(l));
   const text = `${[...kept, `MEM0_API_KEY=${key}`].join("\n")}\n`;
-  if (existed && fs.readFileSync(target, "utf8") === text && !tooOpen(target)) return "unchanged";
-  const tmp = `${target}.tmp-${process.pid}`;
+  if (existed && previous === text && !tooOpen(target)) return "unchanged";
+  const tmp = `${target}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
   try {
-    fs.writeFileSync(tmp, text, { mode: 0o600 });
+    fs.writeFileSync(tmp, text, { flag: "wx", mode: 0o600 });
     fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, target);
   } finally {

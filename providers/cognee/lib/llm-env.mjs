@@ -5,7 +5,7 @@
  * only the path and the key NAMES are reported.
  *
  * Answers come from the environment, so a run is scriptable (also for local models):
- *   PM_COGNEE_LLM_API_KEY     the key (under --yes, plain LLM_API_KEY is read too)
+ *   PM_COGNEE_LLM_API_KEY     the key (under --yes or --dry-run, plain LLM_API_KEY is read too)
  *   PM_COGNEE_<NAME>          LLM_PROVIDER, LLM_MODEL, LLM_ENDPOINT, EMBEDDING_PROVIDER,
  *                             EMBEDDING_MODEL, EMBEDDING_ENDPOINT, EMBEDDING_API_KEY,
  *                             EMBEDDING_DIMENSIONS
@@ -31,27 +31,61 @@ export const PASSTHROUGH = [
   "EMBEDDING_DIMENSIONS",
 ];
 
-/** PM_COGNEE_* variables that carry a secret; removed from the process environment once read. */
-const SECRET_ANSWERS = ["PM_COGNEE_LLM_API_KEY", "PM_COGNEE_EMBEDDING_API_KEY"];
+/** Answers that are secrets: env-file key -> [PM_COGNEE_ variable, plain variable used under --yes]. */
+const SECRET_KEYS = /** @type {const} */ ({
+  LLM_API_KEY: ["PM_COGNEE_LLM_API_KEY", "LLM_API_KEY"],
+  EMBEDDING_API_KEY: ["PM_COGNEE_EMBEDDING_API_KEY", "EMBEDDING_API_KEY"],
+});
 
 /**
- * Answers present in the environment, by env-file key. Secret answers are removed from
- * process.env after they are read, so child processes (docker, curl, scripts/setup.mjs)
- * never inherit them.
+ * Secret answers taken out of the environment, per wizard context. Module-private on
+ * purpose: nothing outside this file can read them, they are never put on `ctx` (which is
+ * handed to every hook and helper), and a later `process.env` copy cannot contain them.
+ * @type {WeakMap<object, Record<string, string>>}
+ */
+const captured = new WeakMap();
+
+/**
+ * Take the secret answers out of `process.env` before the wizard starts any child process
+ * (docker, curl, scripts/setup.mjs inherit the environment). Called from the `init` hook,
+ * which runs before the first docker call. PM_COGNEE_LLM_API_KEY and
+ * PM_COGNEE_EMBEDDING_API_KEY are always taken; plain LLM_API_KEY and EMBEDDING_API_KEY are
+ * taken only for a non-interactive run (--yes or --dry-run), the only case that reads them.
+ * Calling it again keeps what an earlier call captured.
+ * @param {Record<string, any>} ctx
+ */
+export function captureSecrets(ctx) {
+  const mine = captured.get(ctx) || {};
+  const plainToo = Boolean(ctx.yes || ctx.dry);
+  for (const [key, [pmName, plainName]] of Object.entries(SECRET_KEYS)) {
+    const fromPm = process.env[pmName]?.trim();
+    delete process.env[pmName];
+    let value = fromPm;
+    if (plainToo) {
+      const plain = process.env[plainName]?.trim();
+      delete process.env[plainName];
+      value ||= plain;
+    }
+    if (value) mine[key] = value;
+  }
+  captured.set(ctx, mine);
+  return mine;
+}
+
+/**
+ * Answers for the env file, by key: the secrets captured in `init` plus the non-secret
+ * PM_COGNEE_<NAME> pass-through variables.
  * @param {Record<string, any>} ctx
  * @returns {Record<string, string>}
  */
 export function answersFromEnv(ctx) {
   /** @type {Record<string, string>} */
-  const answers = {};
-  const nonInteractive = ctx.yes || ctx.skipBackendStep || ctx.dry;
-  const key = process.env.PM_COGNEE_LLM_API_KEY || (nonInteractive ? process.env[KEY_NAME] : "");
-  if (key?.trim()) answers[KEY_NAME] = key.trim();
+  const answers = { ...(captured.get(ctx) || captureSecrets(ctx)) };
   for (const name of PASSTHROUGH) {
+    if (name in SECRET_KEYS) continue;
     const value = process.env[`PM_COGNEE_${name}`];
     if (value?.trim()) answers[name] = value.trim();
   }
-  for (const name of SECRET_ANSWERS) delete process.env[name];
   return answers;
 }
 

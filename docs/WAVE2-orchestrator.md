@@ -201,3 +201,5 @@ Filled in when the wave finishes.
 | C3 | done (integrator) | pending | `providers/cognee/wizard.mjs`, `lib/*`, wizard tests |
 | I | done (`7d373cc`) | n/a | manifests `experimental`, sink hardening, docs |
 | F | pending | n/a | full-wave secrets review (human or reviewer) |
+
+**Orchestrator note:** the background [Wave 2 orchestrator](f46c40c9-014c-46b1-970d-71c9faa2d942) stopped after resume stalls; slices 0–I and the site deploy landed on `main`. Slice **F** and formal per-slice reviewer sign-off were not finished in that run.

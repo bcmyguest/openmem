@@ -39,26 +39,29 @@ export function defaultEnvFile(home) {
 
 /**
  * The file that holds MEM0_API_KEY for the indexer: MEM0_ENV_FILE, then [memory.mem0]
- * env_file, then ~/.config/personal-memory/mem0.env.
+ * env_file, then MEM0_ENV_FILE in the stack .env (written by scripts/setup.mjs), then
+ * ~/.config/personal-memory/mem0.env.
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
 export function resolveEnvFile(ctx, h) {
   const state = ensureState(ctx);
-  const raw = (process.env.MEM0_ENV_FILE || state.tomlEnvFile || "").trim();
+  const stackValue = ctx.repoRoot ? h.envValue(path.join(ctx.repoRoot, ".env"), "MEM0_ENV_FILE") : "";
+  const raw = (process.env.MEM0_ENV_FILE || state.tomlEnvFile || stackValue || "").trim();
   if (!raw) return defaultEnvFile(ctx.home);
   return h.expandHome(raw, ctx.home);
 }
 
 /**
  * What is wrong with an env file path, or "". Compose interpolates the path in the
- * indexer's `env_file`, so it must be absolute and free of control characters and '$'.
+ * indexer's `env_file` and the stack .env stores it, so it must be absolute and free of control
+ * characters, quotes, '$', backslashes, ' #' and leading or trailing spaces.
  * @param {string} file
  */
 export function envFileProblem(file) {
   if (!path.isAbsolute(file)) return "the mem0 env file path must be absolute (MEM0_ENV_FILE or env_file)";
-  if (/[\x00-\x1f\x7f$]/.test(file)) {
-    return "the mem0 env file path must not contain control characters or '$'";
+  if (/[\x00-\x1f\x7f$"'`\\]/.test(file) || file.includes(" #") || file !== file.trim()) {
+    return "the mem0 env file path must not contain control characters, quotes, '$', backslashes, ' #' or edge spaces";
   }
   return "";
 }

@@ -2,12 +2,15 @@
  * mem0's contribution to scripts/setup.mjs: the stack .env entries that point the indexer at an
  * existing mem0 server, and the end-of-run notices about the indexer's API key file and about
  * a loopback-only server. Runs as a plain Node script step (no wizard context), so it only reads
- * process environment and the paths it is given. It never reads or prints the key.
+ * process environment and the paths it is given. It reads the key file only to see whether a key
+ * exists (the same parse as docker compose) and never prints or returns the key.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { envValue } from "../../../wizard/lib/paths.mjs";
+import { parseEnvValue } from "./dotenv.mjs";
+import { envFileProblem } from "./state.mjs";
 
 /** Hostnames that mean "this machine" on the host and so must become the host gateway in a container. */
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]"]);
@@ -83,12 +86,25 @@ function shippedLitellmConfig() {
 }
 
 /**
- * @param {{ repo: string, home: string, env: NodeJS.ProcessEnv }} opts
+ * The env file path for a custom location: MEM0_ENV_FILE from the process environment, with a
+ * leading ~ expanded, or "" when the process does not set one.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} [home]
+ */
+function customEnvFile(env, home) {
+  const raw = (env.MEM0_ENV_FILE || "").trim();
+  if (!raw) return "";
+  if (raw === "~" || raw.startsWith("~/")) return path.join(home || env.HOME || "", raw.slice(2));
+  return raw;
+}
+
+/**
+ * @param {{ repo: string, home?: string, env: NodeJS.ProcessEnv }} opts
  * @returns {{ entries: [string, string][], drop: string[], report: string[] }}
  *   entries: KEY=value lines to add to the stack .env; drop: keys to remove first;
  *   report: KEY=value strings echoed in the "wrote .env" line
  */
-export function prepareStackEnv({ repo, env }) {
+export function prepareStackEnv({ repo, home, env }) {
   const stackEnv = path.join(repo, ".env");
   const rawUrl = (env.MEM0_API_URL || envValue(stackEnv, "MEM0_API_URL")).trim();
   if (!rawUrl) {
@@ -117,11 +133,21 @@ export function prepareStackEnv({ repo, env }) {
     ["COMPOSE_PROFILES", "mem0"],
     ["LITELLM_CONFIG", litellmConfig],
   ];
-  return {
-    entries,
-    drop: ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG"],
-    report: [`MEM0_INDEXER_URL=${containerUrl}`, `COMPOSE_PROFILES=mem0`, `LITELLM_CONFIG=${litellmConfig}`],
-  };
+  const drop = ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG"];
+  const report = [`MEM0_INDEXER_URL=${containerUrl}`, `COMPOSE_PROFILES=mem0`, `LITELLM_CONFIG=${litellmConfig}`];
+
+  // A custom key file location is a path, not a secret: persist it so a hand-run `docker compose`
+  // and `./pm up` read the same env_file as this run. With no custom path in the process
+  // environment an existing line is left alone (the wizard reads it back too).
+  const envFile = customEnvFile(env, home);
+  if (envFile) {
+    const problem = envFileProblem(envFile);
+    if (problem) throw new Error(`MEM0_ENV_FILE: ${problem}`);
+    entries.push(["MEM0_ENV_FILE", envFile]);
+    drop.push("MEM0_ENV_FILE");
+    report.push(`MEM0_ENV_FILE=${envFile}`);
+  }
+  return { entries, drop, report };
 }
 
 /**
@@ -131,8 +157,11 @@ export function prepareStackEnv({ repo, env }) {
  * @returns {string[]}
  */
 export function setupNotices({ repo, home, env }) {
-  const file = env.MEM0_ENV_FILE || path.join(home, ".config/personal-memory/mem0.env");
-  const hasKey = fs.existsSync(file) && /^MEM0_API_KEY=\S/m.test(fs.readFileSync(file, "utf8"));
+  const stackEnvFile = repo ? path.join(repo, ".env") : "";
+  const configured = customEnvFile(env, home) || (stackEnvFile ? customEnvFile({ MEM0_ENV_FILE: envValue(stackEnvFile, "MEM0_ENV_FILE") }, home) : "");
+  const file = configured || path.join(home, ".config/personal-memory/mem0.env");
+  // Same parse as docker compose: an empty, commented or unterminated value is no key.
+  const hasKey = fs.existsSync(file) && parseEnvValue(fs.readFileSync(file, "utf8"), "MEM0_API_KEY") !== "";
   /** @type {string[]} */
   const notes = [];
   if (!hasKey) {
@@ -148,9 +177,14 @@ export function setupNotices({ repo, home, env }) {
         `NOTE: ${file} is readable by group or others (mode ${mode.toString(8)}). Run: chmod 600 ${file}`,
       );
     }
+    const dir = path.dirname(file);
+    const dirMode = fs.statSync(dir).mode & 0o777;
+    if (dirMode & 0o077) {
+      notes.push(`NOTE: ${dir} is accessible to group or others (mode ${dirMode.toString(8)}). Run: chmod 700 ${dir}`);
+    }
   }
 
-  const rawUrl = (env.MEM0_API_URL || (repo ? envValue(path.join(repo, ".env"), "MEM0_API_URL") : "")).trim();
+  const rawUrl = (env.MEM0_API_URL || (stackEnvFile ? envValue(stackEnvFile, "MEM0_API_URL") : "")).trim();
   if (rawUrl) {
     try {
       const url = parseHostUrl(rawUrl);

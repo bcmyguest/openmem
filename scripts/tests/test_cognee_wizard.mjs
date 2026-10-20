@@ -9,7 +9,7 @@
  *   (d) the validation hook
  * Everything runs in tmp dirs with a scratch HOME. No live stack, no docker, no real keys.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -22,6 +22,8 @@ import { validateManifest } from "../../wizard/lib/providers/registry.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const wiz = await import(pathToFileURL(path.join(ROOT, "providers/cognee/wizard.mjs")).href);
+const envFileLib = await import(pathToFileURL(path.join(ROOT, "providers/cognee/lib/env-file.mjs")).href);
+const stackEnvLib = await import(pathToFileURL(path.join(ROOT, "providers/cognee/lib/stack-env.mjs")).href);
 const { runSmoke } = await import(pathToFileURL(path.join(ROOT, "providers/cognee/lib/smoke.mjs")).href);
 const shippedManifest = JSON.parse(fs.readFileSync(path.join(ROOT, "providers/cognee/manifest.json"), "utf8"));
 
@@ -164,22 +166,48 @@ await withEnv({}, async () => {
   check("init: default env file is ~/.config/personal-memory/cognee.env", ctx.cognee.envFile === envFileOf(home));
 });
 
-// hydrate: the saved port.
+// resolvePorts restores the saved port (hydrate runs after the ports are resolved).
+/** @param {string} home @param {string} [stackEnv] */
+function seedPortState(home, stackEnv) {
+  fs.mkdirSync(path.join(home, ".config/hindsight"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".config/hindsight/wizard.conf"), "MEMORY_PROVIDER=cognee\nCOGNEE_PORT=18777\n");
+  if (stackEnv !== undefined) {
+    fs.mkdirSync(path.join(home, "stack"), { recursive: true });
+    fs.writeFileSync(path.join(home, "stack/.env"), stackEnv);
+  }
+}
+for (const [label, vars, stackEnv, want] of /** @type {[string, Record<string,string>, string|undefined, string][]} */ ([
+  ["wizard.conf supplies the port when env and .env have none", {}, undefined, "18777"],
+  ["the stack .env beats wizard.conf", {}, "COGNEE_PORT=18555\n", "18555"],
+  ["the environment beats wizard.conf", { COGNEE_PORT: "18999" }, undefined, "18999"],
+  ["a .env without COGNEE_PORT still falls back to wizard.conf", {}, "HOST_UID=1\n", "18777"],
+])) {
+  await withEnv(vars, async () => {
+    const home = tmp("restore");
+    seedPortState(home, stackEnv);
+    /** @type {string[]} */
+    const seen = [];
+    const { h } = makeHelpers({
+      resolveHostPort: async () => {
+        seen.push(String(process.env.COGNEE_PORT));
+        return Number(process.env.COGNEE_PORT || stackEnv?.match(/COGNEE_PORT=(\d+)/)?.[1] || 8766);
+      },
+    });
+    const ctx = makeCtx(home);
+    await wiz.init(ctx, h);
+    await wiz.resolvePorts(ctx, h);
+    // Only the wizard.conf cases show the port in the environment before resolveHostPort runs.
+    const sawBefore = seen[0];
+    check(`resolvePorts: ${label}`, ctx.portCognee === want && (stackEnv?.includes("COGNEE_PORT") ? true : sawBefore === want), `${sawBefore} ${ctx.portCognee}`);
+  });
+}
 await withEnv({}, async () => {
   const home = tmp("hydrate");
-  fs.mkdirSync(path.join(home, ".config/hindsight"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".config/hindsight/wizard.conf"), "MEMORY_PROVIDER=cognee\nCOGNEE_PORT=18777\n");
+  seedPortState(home);
   const { h } = makeHelpers();
-  await wiz.hydrate(makeCtx(home), h);
-  check("hydrate: restores COGNEE_PORT from wizard.conf", process.env.COGNEE_PORT === "18777");
-});
-await withEnv({ COGNEE_PORT: "18999" }, async () => {
-  const home = tmp("hydrate2");
-  fs.mkdirSync(path.join(home, ".config/hindsight"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".config/hindsight/wizard.conf"), "MEMORY_PROVIDER=cognee\nCOGNEE_PORT=18777\n");
-  const { h } = makeHelpers();
-  await wiz.hydrate(makeCtx(home), h);
-  check("hydrate: an environment port wins over wizard.conf", process.env.COGNEE_PORT === "18999");
+  const ctx = makeCtx(home);
+  await wiz.hydrate(ctx, h);
+  check("hydrate: is a quiet no-op that leaves the environment alone", process.env.COGNEE_PORT === undefined && ctx.cognee !== undefined);
 });
 
 // resolvePorts.
@@ -375,10 +403,34 @@ await withEnv({}, async () => {
   check("beforeStack: creates the env directory with mode 700", fs.existsSync(dir) && mode(dir) === "700");
   fs.writeFileSync(path.join(dir, "cognee.env"), "LLM_API_KEY=x\n", { mode: 0o640 });
   fs.chmodSync(path.join(dir, "cognee.env"), 0o640);
+  fs.writeFileSync(path.join(dir, "cognee-indexer.env"), "COGNEE_API_KEY=y\n", { mode: 0o644 });
+  fs.chmodSync(path.join(dir, "cognee-indexer.env"), 0o644);
+  const dry = makeHelpers();
+  await wiz.beforeStack({ ...ctx, dry: true }, dry.h);
+  check("beforeStack: dry run only warns about a group-readable cognee.env", dry.lines.some((l) => l.kind === "warn" && /cognee\.env/.test(l.msg)) && mode(path.join(dir, "cognee.env")) === "640");
   const second = makeHelpers();
   await wiz.beforeStack(ctx, second.h);
-  check("beforeStack: warns when cognee.env is group-readable, without printing contents", second.lines.some((l) => l.kind === "warn" && /cognee\.env/.test(l.msg) && !l.msg.includes("LLM_API_KEY=x")));
-  check("beforeStack: leaves the file mode alone", mode(path.join(dir, "cognee.env")) === "640");
+  check("beforeStack: a real run tightens cognee.env and the indexer env file to 600", mode(path.join(dir, "cognee.env")) === "600" && mode(path.join(dir, "cognee-indexer.env")) === "600");
+  check("beforeStack: ... says so without printing contents", second.lines.some((l) => l.kind === "ok" && /tightened .*cognee\.env/.test(l.msg)) && !second.text().includes("LLM_API_KEY=x"));
+  check("beforeStack: the default location raises no 'unmasked' warning", !second.lines.some((l) => /outside ~\/\.config\/personal-memory/.test(l.msg)));
+});
+await withEnv({}, async () => {
+  const home = tmp("before-custom");
+  process.env.COGNEE_ENV_FILE = path.join(home, "vault/cognee.env");
+  const { h, lines } = makeHelpers();
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.beforeStack(ctx, h);
+  check("beforeStack: an env file under $HOME but outside ~/.config/personal-memory is flagged as unmasked", lines.some((l) => l.kind === "warn" && /outside ~\/\.config\/personal-memory/.test(l.msg) && l.msg.includes(path.join(home, "vault/cognee.env"))));
+  check("beforeStack: ... and its directory is created with mode 700", mode(path.join(home, "vault")) === "700");
+});
+await withEnv({ COGNEE_ENV_FILE: "/opt/pm-elsewhere/cognee.env" }, async () => {
+  const home = tmp("before-outside");
+  const { h, lines } = makeHelpers();
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.beforeStack({ ...ctx, dry: true }, h);
+  check("beforeStack: an env file outside $HOME is not flagged", !lines.some((l) => /outside ~\/\.config\/personal-memory/.test(l.msg)));
 });
 
 // summary.
@@ -428,6 +480,196 @@ await withEnv({}, async () => {
   check("clackSetup: an existing key is kept unless the user replaces it", passwordCalls.length === 0 && kept.PM_COGNEE_LLM_API_KEY === undefined);
 });
 
+// B1: secrets leave process.env in `init`, before any child process can inherit them.
+const SECRET_VARS = ["PM_COGNEE_LLM_API_KEY", "PM_COGNEE_EMBEDDING_API_KEY", "LLM_API_KEY", "EMBEDDING_API_KEY"];
+await withEnv({ PM_COGNEE_LLM_API_KEY: "pm-llm-secret", PM_COGNEE_EMBEDDING_API_KEY: "pm-emb-secret", LLM_API_KEY: "plain-llm-secret", EMBEDDING_API_KEY: "plain-emb-secret" }, async () => {
+  const home = tmp("b1-yes");
+  const { h, text } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  check("init: no secret variable is left in process.env (--yes)", SECRET_VARS.every((k) => process.env[k] === undefined));
+  check("init: the secrets are not stored on ctx", !JSON.stringify(ctx).match(/secret/));
+  await wiz.configureModelRouting(ctx, h);
+  const body = fs.readFileSync(envFileOf(home), "utf8");
+  check("llm: PM_COGNEE_* beats the plain variable and both keys are written", body.includes("LLM_API_KEY=pm-llm-secret\n") && body.includes("EMBEDDING_API_KEY=pm-emb-secret\n") && !body.includes("plain-"));
+  check("llm: no secret is printed", !/-secret/.test(text()));
+});
+await withEnv({ LLM_API_KEY: "plain-llm-secret", EMBEDDING_API_KEY: "plain-emb-secret" }, async () => {
+  const home = tmp("b1-plain");
+  const { h } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check("--yes: plain LLM_API_KEY and EMBEDDING_API_KEY are consumed and removed from the environment", process.env.LLM_API_KEY === undefined && process.env.EMBEDDING_API_KEY === undefined && fs.readFileSync(envFileOf(home), "utf8") === "LLM_API_KEY=plain-llm-secret\nEMBEDDING_API_KEY=plain-emb-secret\n");
+});
+await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
+  const home = tmp("b1-dry");
+  const { h } = makeHelpers();
+  const ctx = makeCtx(home, { yes: false, dry: true });
+  await wiz.init(ctx, h);
+  check("--dry-run: plain LLM_API_KEY is also taken out of the environment", process.env.LLM_API_KEY === undefined);
+});
+await withEnv({ LLM_API_KEY: "plain-llm-secret", PM_COGNEE_LLM_API_KEY: "hand-off-secret" }, async () => {
+  const home = tmp("b1-clack");
+  const { h } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check("Clack hand-off: PM_COGNEE_LLM_API_KEY is taken and used", process.env.PM_COGNEE_LLM_API_KEY === undefined && fs.readFileSync(envFileOf(home), "utf8") === "LLM_API_KEY=hand-off-secret\n");
+  check("Clack hand-off: the operator's plain LLM_API_KEY is left alone", process.env.LLM_API_KEY === "plain-llm-secret");
+});
+await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
+  const home = tmp("b1-keep");
+  const file = envFileOf(home);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "LLM_API_KEY=stored-secret\n", { mode: 0o600 });
+  const { h, lines } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check("Clack 'keep existing key': a plain LLM_API_KEY in the environment does not replace it", fs.readFileSync(file, "utf8") === "LLM_API_KEY=stored-secret\n" && !lines.some((l) => l.kind === "warn"));
+});
+await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
+  const home = tmp("b1-noplain");
+  const { h, lines } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check("skipBackendStep alone never reads the plain LLM_API_KEY", !fs.existsSync(envFileOf(home)) && lines.some((l) => l.kind === "warn"));
+});
+
+// Escapes: a second run changes nothing for a value that needed quoting.
+await withEnv({ PM_COGNEE_LLM_API_KEY: 'p"w$d\\' }, async () => {
+  const home = tmp("escape");
+  const { h } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  const file = envFileOf(home);
+  const first = fs.readFileSync(file);
+  process.env.PM_COGNEE_LLM_API_KEY = 'p"w$d\\';
+  const again = makeHelpers({ saveWizardConf: () => {} });
+  await wiz.configureModelRouting(ctx, again.h);
+  check("a value with quote, dollar and trailing backslash is written double-quoted", first.toString() === 'LLM_API_KEY="p\\"w\\$d\\\\"\n');
+  check("... and a second run leaves it byte for byte unchanged", Buffer.compare(first, fs.readFileSync(file)) === 0 && /kept /.test(again.text()) && !/wrote /.test(again.text()));
+});
+
+// env-file helpers.
+{
+  const { parseEnvText, mergeEnvText, formatValue, writePrivateFile, writeTarget } = envFileLib;
+  const values = parseEnvText("export A=1\r\nB='two words'\r\n# C=3\r\nD=\"q\\\"x\\\\y\\$z\"\r\n\r\nE = spaced\r\n");
+  check("parseEnvText: export prefix, CRLF, quotes and double-quote unescaping", values.get("A") === "1" && values.get("B") === "two words" && !values.has("C") && values.get("D") === 'q"x\\y$z' && values.get("E") === "spaced");
+  check("formatValue: a trailing backslash is never single-quoted", formatValue("abc\\").startsWith('"') && formatValue("abc\\") === '"abc\\\\"');
+  check("formatValue: safe, spaced and quoted shapes", formatValue("sk-abc_1.2") === "sk-abc_1.2" && formatValue("a b") === "'a b'" && formatValue("it's") === '"it\'s"');
+  let threw = false;
+  try {
+    formatValue("a\nLLM_API_KEY=evil");
+  } catch {
+    threw = true;
+  }
+  check("formatValue: a multi-line value is refused", threw);
+  const merged = mergeEnvText("# LLM_API_KEY=commented\r\nNOTE=\"LLM_API_KEY=inside text\"\r\nexport LLM_API_KEY=old\r\nKEEP=1\r\n", { LLM_API_KEY: "new" });
+  const parsed = parseEnvText(merged);
+  check("mergeEnvText: replaces only the assignment (not a comment or a quoted mention), keeps CRLF-file neighbours", parsed.get("LLM_API_KEY") === "new" && parsed.get("NOTE") === "LLM_API_KEY=inside text" && parsed.get("KEEP") === "1" && merged.includes("# LLM_API_KEY=commented") && merged.split("LLM_API_KEY=new").length === 2);
+  check("mergeEnvText: merging the same value again is a fixed point", mergeEnvText(merged, { LLM_API_KEY: "new" }) === merged);
+  let badKey = false;
+  try {
+    mergeEnvText("", { "bad key": "x" });
+  } catch {
+    badKey = true;
+  }
+  check("mergeEnvText: an invalid key name is refused", badKey);
+
+  // Symlinks keep their target.
+  const dir = tmp("symlink");
+  const real = path.join(dir, "dotfiles/cognee.env");
+  fs.mkdirSync(path.dirname(real));
+  fs.writeFileSync(real, "OLD=1\n", { mode: 0o644 });
+  const link = path.join(dir, "cognee.env");
+  fs.symlinkSync(real, link);
+  writePrivateFile(link, "NEW=1\n");
+  check("writePrivateFile: a symlinked env file stays a symlink to its target", fs.lstatSync(link).isSymbolicLink() && fs.readlinkSync(link) === real && fs.readFileSync(real, "utf8") === "NEW=1\n" && mode(real) === "600");
+  check("writePrivateFile: no temp file is left beside the target", fs.readdirSync(path.dirname(real)).join() === "cognee.env" && fs.readdirSync(dir).sort().join() === "cognee.env,dotfiles");
+  const dangling = path.join(dir, "dangling.env");
+  fs.symlinkSync(path.join(dir, "dotfiles/later.env"), dangling);
+  writePrivateFile(dangling, "X=1\n");
+  check("writePrivateFile: a dangling symlink creates its target", fs.lstatSync(dangling).isSymbolicLink() && fs.readFileSync(path.join(dir, "dotfiles/later.env"), "utf8") === "X=1\n" && writeTarget(dangling) === path.join(dir, "dotfiles/later.env"));
+}
+
+// A symlinked cognee.env keeps its target through configureModelRouting.
+await withEnv({ PM_COGNEE_LLM_API_KEY: SECRET }, async () => {
+  const home = tmp("llm-symlink");
+  const target = path.join(home, "dotfiles/cognee.env");
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, "FOO=bar\n", { mode: 0o644 });
+  fs.mkdirSync(path.dirname(envFileOf(home)), { recursive: true });
+  fs.symlinkSync(target, envFileOf(home));
+  const { h } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check("llm: a dotfile-managed link keeps its target and the merge lands there", fs.lstatSync(envFileOf(home)).isSymbolicLink() && fs.readFileSync(target, "utf8") === `FOO=bar\nLLM_API_KEY=${SECRET}\n` && mode(target) === "600");
+});
+
+// Custom env file paths: precedence, persistence, expansion.
+await withEnv({}, async () => {
+  const home = tmp("paths");
+  const stack = path.join(home, "stack");
+  fs.mkdirSync(stack, { recursive: true });
+  const { h } = makeHelpers();
+  const mk = (/** @type {Record<string, any>} */ toml) => makeCtx(home, { pmMerged: { memory: { cognee: toml } } });
+  const stackEnvFile = path.join(stack, ".env");
+  let ctx = mk({});
+  await wiz.init(ctx, h);
+  check("paths: default locations with nothing set", ctx.cognee.envFile === envFileOf(home) && ctx.cognee.indexerEnvFile === path.join(home, ".config/personal-memory/cognee-indexer.env"));
+  fs.writeFileSync(stackEnvFile, "COGNEE_ENV_FILE=/from/stack.env\nCOGNEE_INDEXER_ENV_FILE=/from/stack-indexer.env\n");
+  ctx = mk({});
+  await wiz.init(ctx, h);
+  check("paths: the stack .env beats the default", ctx.cognee.envFile === "/from/stack.env" && ctx.cognee.indexerEnvFile === "/from/stack-indexer.env");
+  ctx = mk({ env_file: "~/toml/cognee.env", indexer_env_file: "~/toml/indexer.env" });
+  await wiz.init(ctx, h);
+  check("paths: TOML beats the stack .env and ~ is expanded", ctx.cognee.envFile === path.join(home, "toml/cognee.env") && ctx.cognee.indexerEnvFile === path.join(home, "toml/indexer.env"));
+  check("paths: TOML values are exported as absolute paths for compose", process.env.COGNEE_ENV_FILE === path.join(home, "toml/cognee.env") && process.env.COGNEE_INDEXER_ENV_FILE === path.join(home, "toml/indexer.env"));
+  process.env.COGNEE_ENV_FILE = "~/env/cognee.env";
+  process.env.COGNEE_INDEXER_ENV_FILE = "~/env/indexer.env";
+  ctx = mk({ env_file: "~/toml/cognee.env", indexer_env_file: "~/toml/indexer.env" });
+  await wiz.init(ctx, h);
+  check("paths: the environment beats TOML, and ~ is expanded for both variables", ctx.cognee.envFile === path.join(home, "env/cognee.env") && ctx.cognee.indexerEnvFile === path.join(home, "env/indexer.env") && process.env.COGNEE_ENV_FILE === path.join(home, "env/cognee.env") && process.env.COGNEE_INDEXER_ENV_FILE === path.join(home, "env/indexer.env"));
+  const toml = wiz.configToml(ctx).memory.cognee;
+  check("configToml: persists env_file and indexer_env_file (home as ~)", toml.env_file === "~/env/cognee.env" && toml.indexer_env_file === "~/env/indexer.env");
+  const se = wiz.stackEnv(ctx).env;
+  check("stackEnv: passes custom env file paths to the stack setup script", se.COGNEE_ENV_FILE === path.join(home, "env/cognee.env") && se.COGNEE_INDEXER_ENV_FILE === path.join(home, "env/indexer.env"));
+});
+await withEnv({}, async () => {
+  const home = tmp("paths-default");
+  const { h } = makeHelpers();
+  const ctx = makeCtx(home, { pmMerged: { memory: { cognee: { env_file: "~/.config/personal-memory/cognee.env", indexer_env_file: "~/.config/personal-memory/cognee-indexer.env" } } } });
+  await wiz.init(ctx, h);
+  check("paths: TOML values equal to the defaults are not exported and not passed on", process.env.COGNEE_ENV_FILE === undefined && process.env.COGNEE_INDEXER_ENV_FILE === undefined && !("COGNEE_ENV_FILE" in wiz.stackEnv(ctx).env));
+  const toml = wiz.configToml(ctx).memory.cognee;
+  check("configToml: defaults are written in ~ form", toml.env_file === "~/.config/personal-memory/cognee.env" && toml.indexer_env_file === "~/.config/personal-memory/cognee-indexer.env");
+});
+{
+  const repo = tmp("prep-repo");
+  const home = tmp("prep-home");
+  const base = { repo, home };
+  const plain = stackEnvLib.prepareStackEnv({ ...base, env: { PM_PACKAGE_ROOT: ROOT } });
+  check("prepareStackEnv: no env file entries unless the environment names them", !plain.entries.some(([k]) => /ENV_FILE/.test(k)));
+  const custom = stackEnvLib.prepareStackEnv({ ...base, env: { PM_PACKAGE_ROOT: ROOT, COGNEE_ENV_FILE: "~/secrets/cognee.env", COGNEE_INDEXER_ENV_FILE: "rel/indexer.env" } });
+  const entries = Object.fromEntries(custom.entries);
+  check("prepareStackEnv: writes absolute paths (~ expanded, relative to the stack root) and drops the old lines", entries.COGNEE_ENV_FILE === path.join(home, "secrets/cognee.env") && entries.COGNEE_INDEXER_ENV_FILE === path.join(repo, "rel/indexer.env") && custom.drop.includes("COGNEE_ENV_FILE") && custom.drop.includes("COGNEE_INDEXER_ENV_FILE"));
+  check("prepareStackEnv: the reported line names paths, not contents", custom.report.some((r) => r.startsWith("COGNEE_ENV_FILE=")) && !custom.report.join().includes("API_KEY"));
+  let threw = false;
+  try {
+    stackEnvLib.prepareStackEnv({ ...base, env: { PM_PACKAGE_ROOT: ROOT, COGNEE_ENV_FILE: "/x\nLLM_API_KEY=evil" } });
+  } catch {
+    threw = true;
+  }
+  check("prepareStackEnv: a multi-line path is refused", threw);
+  const notice = stackEnvLib.setupNotices({ repo, home, env: { COGNEE_ENV_FILE: "~/secrets/cognee.env" } }).join("\n");
+  check("setupNotices: names the expanded custom env file", notice.includes(path.join(home, "secrets/cognee.env")));
+}
+
 // ---------------------------------------------------------------------------
 // Cognee stub (node:http)
 // ---------------------------------------------------------------------------
@@ -453,7 +695,8 @@ function parseMultipart(contentType, buf) {
 
 /**
  * Emulates the Cognee endpoints the wizard uses. Options: addStatus, emptyList, healthDown,
- * healthFailures, deleteStatus, requireKey, metaStyle ("object" | "array" | "none" | "other").
+ * healthFailures, deleteStatus, requireKey, addDetail, createMode ("500-after-create" |
+ * "hang-after-create"), metaStyle ("object" | "array" | "none" | "other").
  * @param {Record<string, any>} [opts]
  */
 async function startCognee(opts = {}) {
@@ -484,6 +727,9 @@ async function startCognee(opts = {}) {
       }
       return send(200, { status: "ready" });
     }
+    if (req.method === "GET" && url === "/api/v1/datasets") {
+      return send(200, [...datasets.values()].map((d) => ({ id: d.id, name: d.name })));
+    }
     if (req.method === "POST" && url === "/api/v1/datasets") {
       const { name } = JSON.parse(body.toString("utf8"));
       let ds = [...datasets.values()].find((d) => d.name === name);
@@ -491,10 +737,13 @@ async function startCognee(opts = {}) {
         ds = { id: crypto.randomUUID(), name, items: [] };
         datasets.set(ds.id, ds);
       }
+      // The server did create the dataset but the client never learns it: 5xx, or no answer.
+      if (opts.createMode === "500-after-create") return send(500, { detail: "gateway hiccup" });
+      if (opts.createMode === "hang-after-create") return;
       return send(200, { id: ds.id, name: ds.name });
     }
     if (req.method === "POST" && url === "/api/v1/add") {
-      if (opts.addStatus) return send(opts.addStatus, { detail: "ingest exploded" });
+      if (opts.addStatus) return send(opts.addStatus, { detail: opts.addDetail ?? "ingest exploded" });
       const parts = parseMultipart(String(req.headers["content-type"]), body);
       adds.push(parts);
       const name = parts.find((p) => p.name === "datasetName")?.content;
@@ -663,6 +912,25 @@ console.log("--- (b) smoke");
   check("smoke: dry run also states that recall is skipped", /recall skipped/.test(r.text()));
 }
 
+{
+  const r = await smokeScenario({ createMode: "500-after-create" });
+  check("smoke: a create that answers 5xx after creating is found by name and deleted", /create dataset failed \(HTTP 500: gateway hiccup\)/.test(r.threw) && r.stub.datasets.size === 0 && r.stub.requests.some((q) => q.method === "GET" && q.url === "/api/v1/datasets"), r.threw);
+}
+{
+  const r = await smokeScenario({ createMode: "hang-after-create" }, { timing: { requestTimeoutMs: 150 } });
+  check("smoke: a create that times out is found by name and deleted", /create dataset request failed \(TimeoutError\)/.test(r.threw) && r.stub.datasets.size === 0 && r.stub.requests.at(-1)?.method === "DELETE", r.threw);
+}
+{
+  const r = await smokeScenario({ requireKey: "k" }, { env: { COGNEE_API_KEY: "k" } });
+  check("smoke: a definite create answer (not 5xx) does not trigger the by-name lookup", !r.stub.requests.some((q) => q.method === "GET" && q.url === "/api/v1/datasets"));
+}
+{
+  const detail = `boom\u0007\u001b[31m${"x".repeat(200)}`;
+  const r = await smokeScenario({ addStatus: 500, addDetail: detail });
+  const echoed = /HTTP 500: ([^)]*)\)/.exec(r.threw)?.[1] || "";
+  check("smoke: the echoed server detail is at most 80 printable characters", echoed.length > 0 && echoed.length <= 80 && !/[\u0000-\u001f\u007f]/.test(r.threw), r.threw);
+}
+
 // ---------------------------------------------------------------------------
 // (d) validation hook
 // ---------------------------------------------------------------------------
@@ -766,6 +1034,7 @@ console.log("--- (c) real wizard run");
 
 const DOCKER_STUB = `#!/usr/bin/env bash
 echo "docker $*" >> "\${STUB_LOG}"
+env >> "\${STUB_LOG}.env"
 case "$1" in
     info) exit 0 ;;
     ps)
@@ -847,28 +1116,33 @@ function filesContaining(dir, needle) {
  * @param {ReturnType<typeof makeWorld>} w
  * @param {number} port
  * @param {string[]} args
+ * @param {Record<string, string | null>} [over] environment overrides (null removes a variable)
  * @returns {Promise<{ code: number | null, out: string }>}
  */
-function runWizard(w, port, args) {
+function runWizard(w, port, args, over = {}) {
   return new Promise((resolve) => {
+    const env = {
+      PATH: `${w.bin}:/usr/bin:/bin`,
+      LANG: "C.UTF-8",
+      TERM: "dumb",
+      HOME: w.home,
+      STUB_LOG: w.log,
+      STUB_PROJECT: "pm-cognee-test",
+      PM_PROJECT: "pm-cognee-test",
+      PM_STACK_ROOT: w.stack,
+      PM_PROVIDERS_DIR: w.providers,
+      MEMORY_PROVIDER: "cognee",
+      ...(port ? { COGNEE_PORT: String(port) } : {}),
+      PM_COGNEE_LLM_API_KEY: SECRET,
+      PM_COGNEE_LLM_MODEL: "test-model",
+      ...over,
+    };
+    // A null override removes the variable.
+    for (const [k, v] of Object.entries(env)) if (v === null) delete env[k];
     const child = spawn(process.execPath, [path.join(ROOT, "wizard/bin/setup.mjs"), ...args], {
       cwd: w.base,
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        PATH: `${w.bin}:/usr/bin:/bin`,
-        LANG: "C.UTF-8",
-        TERM: "dumb",
-        HOME: w.home,
-        STUB_LOG: w.log,
-        STUB_PROJECT: "pm-cognee-test",
-        PM_PROJECT: "pm-cognee-test",
-        PM_STACK_ROOT: w.stack,
-        PM_PROVIDERS_DIR: w.providers,
-        MEMORY_PROVIDER: "cognee",
-        COGNEE_PORT: String(port),
-        PM_COGNEE_LLM_API_KEY: SECRET,
-        PM_COGNEE_LLM_MODEL: "test-model",
-      },
+      env,
     });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
@@ -920,9 +1194,18 @@ function runWizard(w, port, args) {
 
   // A second run changes nothing.
   const before = tree(w.home);
+  const stackTreeBefore = tree(w.stack);
+  const envBefore = fs.readFileSync(path.join(w.stack, ".env"), "utf8");
   stub.requests.length = 0;
   const again = await runWizard(w, stub.port, ["--yes"]);
   check("real run: a second run exits 0", again.code === 0, again.out.split("\n").slice(-15).join("\n"));
+  if (process.env.COGNEE_TEST_VERBOSE) {
+    const now = new Set(tree(w.stack));
+    console.log("stack changes:", stackTreeBefore.filter((l) => !now.has(l)));
+    console.log("env before:\n" + envBefore + "env after:\n" + fs.readFileSync(path.join(w.stack, ".env"), "utf8"));
+    const homeNow = new Set(tree(w.home));
+    console.log("home changes:", before.filter((l) => !homeNow.has(l)));
+  }
   check("real run: a second run reports changed=0", /wizard: changed=0/.test(again.out), again.out.split("\n").slice(-6).join("\n"));
   check("real run: a second run leaves HOME unchanged", JSON.stringify(tree(w.home)) === JSON.stringify(before));
   check("real run: a second run smokes again and cleans up", stub.requests.some((q) => q.method === "POST" && q.url === "/api/v1/add") && stub.datasets.size === 0);
@@ -971,6 +1254,103 @@ function runWizard(w, port, args) {
   check("dry run: prints the compose plan with profile and files", /\[dry-run\] docker compose -p pm-cognee-test -f compose\.yaml -f providers\/cognee\/compose\.yaml --profile cognee up -d/.test(r.out), r.out);
   check("dry run: prints the env file plan with key names only", /\[dry-run\] write .*cognee\.env.*LLM_API_KEY/.test(r.out) && !r.out.includes(SECRET));
   check("dry run: prints the five smoke steps", /\[dry-run\]\s+5\. DELETE/.test(r.out) && /recall skipped/.test(r.out));
+  await stub.close();
+}
+
+// ---------------------------------------------------------------------------
+// env files round-trip through real Docker Compose
+// ---------------------------------------------------------------------------
+console.log("--- env-file round trip (docker compose config)");
+{
+  const composeOk = spawnSync("docker", ["compose", "version", "--short"], { encoding: "utf8" });
+  const major = Number(/^v?(\d+)/.exec(composeOk.stdout || "")?.[1] || 0);
+  if (composeOk.status !== 0 || major < 2) {
+    console.log("skip  docker compose is unavailable: round-trip tests skipped");
+  } else {
+    const dir = tmp("roundtrip");
+    fs.writeFileSync(path.join(dir, "compose.yaml"), "services:\n  t:\n    image: scratch-never-pulled\n    env_file: [./t.env]\n");
+    const values = [
+      "sk-plain_123", "a=b=c", "a#b", "a b  c", "  lead and trail  ", "a$b${C}d", 'say "hi"', "it's", "it's \"x\" $y",
+      "a`b`", "abc\\", "a\\b", "abc \\", 'a"b\\', "p@ss:w0rd/+%", "trailing\\\\", "$$", "\\$HOME", "q'\\", "tab\there",
+    ];
+    const updates = Object.fromEntries(values.map((v, i) => [`V${i}`, v]));
+    const text = envFileLib.mergeEnvText("# header\nKEEP=1\n", updates);
+    fs.writeFileSync(path.join(dir, "t.env"), text);
+    const r = spawnSync("docker", ["compose", "-p", "pm-cognee-roundtrip", "-f", "compose.yaml", "config", "--format", "json"], { cwd: dir, encoding: "utf8" });
+    check("round trip: Compose accepts the env file we wrote", r.status === 0, r.stderr);
+    if (r.status === 0) {
+      const environment = JSON.parse(r.stdout).services.t.environment;
+      for (const [i, v] of values.entries()) {
+        // `config` prints a literal $ as $$ (it re-escapes for interpolation); undo that.
+        const got = String(environment[`V${i}`]).replaceAll("$$", "$");
+        check(`round trip: Compose reads back ${JSON.stringify(v)}`, got === v, JSON.stringify(got));
+      }
+      check("round trip: the unrelated line survives", environment.KEEP === "1");
+      const reparsed = envFileLib.parseEnvText(text);
+      check("round trip: our own parser agrees with what we wrote", values.every((v, i) => reparsed.get(`V${i}`) === v));
+      check("round trip: merging the same values again changes nothing", envFileLib.mergeEnvText(text, updates) === text);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (c2) --up, --down, and the child environment
+// ---------------------------------------------------------------------------
+console.log("--- (c2) --up, --down, child environment");
+
+/** Secrets must not reach a child process: the fake docker dumps its environment on every call. */
+async function childEnvScenario(label, args, over, secrets, wantFile) {
+  const stub = await startCognee({});
+  const w = makeWorld(`childenv-${label}`);
+  const homeBefore = JSON.stringify(tree(w.home));
+  const r = await runWizard(w, stub.port, args, over);
+  const envLog = fs.existsSync(`${w.log}.env`) ? fs.readFileSync(`${w.log}.env`, "utf8") : "";
+  check(`child env (${label}): the wizard exits 0`, r.code === 0, r.out.split("\n").slice(-12).join("\n"));
+  check(`child env (${label}): the fake docker was called and dumped a real environment`, /PM_PROJECT=pm-cognee-test/.test(envLog) && (envLog.match(/^PATH=/gm) || []).length >= 3);
+  check(`child env (${label}): no secret appears in any docker call's environment`, secrets.every((x) => !envLog.includes(x)), secrets.filter((x) => envLog.includes(x)).join());
+  check(`child env (${label}): no secret in the wizard output`, secrets.every((x) => !r.out.includes(x)));
+  if (wantFile) {
+    check(`child env (${label}): the key reached cognee.env`, fs.existsSync(envFileOf(w.home)) && fs.readFileSync(envFileOf(w.home), "utf8").includes(wantFile));
+  } else {
+    check(`child env (${label}): nothing was written under --dry-run`, JSON.stringify(tree(w.home)) === homeBefore && stub.requests.length === 0);
+  }
+  await stub.close();
+}
+await childEnvScenario("yes-plain", ["--yes"], { PM_COGNEE_LLM_API_KEY: null, LLM_API_KEY: "plain-llm-child-secret", EMBEDDING_API_KEY: "plain-emb-child-secret", PM_COGNEE_EMBEDDING_API_KEY: null }, ["plain-llm-child-secret", "plain-emb-child-secret"], "LLM_API_KEY=plain-llm-child-secret");
+await childEnvScenario("yes-pm", ["--yes"], { PM_COGNEE_LLM_API_KEY: "pm-llm-child-secret", PM_COGNEE_EMBEDDING_API_KEY: "pm-emb-child-secret" }, ["pm-llm-child-secret", "pm-emb-child-secret"], "EMBEDDING_API_KEY=pm-emb-child-secret");
+await childEnvScenario("dry-run", ["--yes", "--dry-run"], { PM_COGNEE_LLM_API_KEY: "dry-llm-child-secret", LLM_API_KEY: "dry-plain-child-secret" }, ["dry-llm-child-secret", "dry-plain-child-secret"], "");
+await childEnvScenario("clack-handoff", [], { WIZARD_SKIP_BACKEND_STEP: "1", PM_COGNEE_LLM_API_KEY: "clack-llm-child-secret" }, ["clack-llm-child-secret"], "LLM_API_KEY=clack-llm-child-secret");
+
+{
+  // --up: a second start from the saved state. No port in the environment, no stack .env, no
+  // config.toml: the port comes back from wizard.conf.
+  const stub = await startCognee({});
+  const w = makeWorld("up");
+  const first = await runWizard(w, stub.port, ["--yes"]);
+  check("--up: the configure run before it exits 0", first.code === 0, first.out.split("\n").slice(-8).join("\n"));
+  const confBefore = fs.readFileSync(path.join(w.home, ".config/hindsight/wizard.conf"), "utf8");
+  fs.rmSync(path.join(w.stack, ".env"));
+  fs.rmSync(path.join(w.home, ".config/personal-memory/config.toml"));
+  fs.rmSync(w.log);
+  stub.requests.length = 0;
+  const up = await runWizard(w, null, ["--up", "--yes"], { PM_COGNEE_LLM_API_KEY: null, PM_COGNEE_LLM_MODEL: null });
+  check("--up: exits 0", up.code === 0, up.out.split("\n").slice(-20).join("\n"));
+  const log = fs.existsSync(w.log) ? fs.readFileSync(w.log, "utf8") : "";
+  check("--up: runs compose up with the profile and files", /compose -p pm-cognee-test -f compose\.yaml( -f compose\.override\.yaml)? -f providers\/cognee\/compose\.yaml --profile cognee up -d/.test(log), log);
+  const stackEnv = fs.readFileSync(path.join(w.stack, ".env"), "utf8");
+  check("--up: the port saved in wizard.conf is restored into the stack .env", stackEnv.includes(`COGNEE_PORT=${stub.port}\n`), stackEnv);
+  check("--up: the stub is smoke-tested on that port and left clean", stub.requests.some((q) => q.method === "POST" && q.url === "/api/v1/add") && stub.datasets.size === 0);
+  check("--up: wizard.conf is not rewritten and cognee.env is untouched", fs.readFileSync(path.join(w.home, ".config/hindsight/wizard.conf"), "utf8") === confBefore && fs.readFileSync(envFileOf(w.home), "utf8").includes(SECRET));
+  check("--up: the summary names the Cognee API", up.out.includes(`Cognee API         http://127.0.0.1:${stub.port}`));
+  check("--up: nothing secret in the new stack .env", !/API_KEY|sk-/.test(stackEnv));
+  stub.requests.length = 0;
+  fs.rmSync(w.log);
+  const down = await runWizard(w, stub.port, ["--down", "--yes"]);
+  check("--down: exits 0", down.code === 0, down.out.split("\n").slice(-12).join("\n"));
+  const downLog = fs.readFileSync(w.log, "utf8");
+  check("--down: runs compose down with the profile and files, without -v", /compose -p pm-cognee-test -f compose\.yaml( -f compose\.override\.yaml)? -f providers\/cognee\/compose\.yaml --profile cognee down\n/.test(downLog) && !/ down -v/.test(downLog), downLog);
+  check("--down: sends no request to Cognee and prints the summary", stub.requests.length === 0 && /== Summary ==/.test(down.out) && /Memory provider: Cognee/.test(down.out));
+  check("--down: the secret is not printed", !down.out.includes(SECRET));
   await stub.close();
 }
 

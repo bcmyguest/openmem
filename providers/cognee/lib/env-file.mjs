@@ -9,8 +9,23 @@ import path from "node:path";
 const KEY_RE = /^[A-Z][A-Z0-9_]*$/;
 
 /**
- * Parse a dotenv-style text. Accepts `export KEY=value` and a matching pair of quotes
- * around the value; the last assignment of a key wins.
+ * The value of one assignment as Docker Compose reads it: a double-quoted value has `\\`, `\"`
+ * and `\$` unescaped (the escapes formatValue writes), a single-quoted value is literal, and
+ * anything else is taken as is.
+ * @param {string} raw the text after `=`
+ */
+function unquote(raw) {
+  const dq = /^"(.*)"$/.exec(raw);
+  if (dq) return dq[1].replace(/\\(["\\$])/g, "$1");
+  const sq = /^'(.*)'$/.exec(raw);
+  if (sq) return sq[1];
+  return raw;
+}
+
+/**
+ * Parse a dotenv-style text. Parsing is line-based: a value never spans lines (formatValue
+ * refuses to write one), so a line that merely looks like an assignment is an assignment.
+ * Accepts `export KEY=value` and CRLF line ends; the last assignment of a key wins.
  * @param {string} text
  * @returns {Map<string, string>}
  */
@@ -23,12 +38,7 @@ export function parseEnvText(text) {
     const eq = line.indexOf("=");
     if (eq < 1) continue;
     const key = line.slice(0, eq).trim();
-    const value = line
-      .slice(eq + 1)
-      .trim()
-      .replace(/^(["'])(.*)\1$/, "$2")
-      .trim();
-    values.set(key, value);
+    values.set(key, unquote(line.slice(eq + 1).trim()));
   }
   return values;
 }
@@ -64,13 +74,14 @@ export function tooOpen(file) {
 /**
  * Render one value so Docker Compose's env_file parser reads it back unchanged: plain when
  * it only has safe characters, single-quoted (literal, no interpolation) when it has no
- * single quote, double-quoted with `\`, `"` and `$` escaped otherwise.
+ * single quote and does not end in a backslash (Compose reads `\'` as an unterminated
+ * quote), double-quoted with `\`, `"` and `$` escaped otherwise.
  * @param {string} value
  */
 export function formatValue(value) {
   if (/[\r\n\0]/.test(value)) throw new Error("env values must be a single line");
   if (/^[A-Za-z0-9_.:/@%+=,-]*$/.test(value)) return value;
-  if (!value.includes("'")) return `'${value}'`;
+  if (!value.includes("'") && !value.endsWith("\\")) return `'${value}'`;
   return `"${value.replace(/[\\"$]/g, "\\$&")}"`;
 }
 
@@ -120,18 +131,40 @@ export function ensurePrivateDir(dir) {
 }
 
 /**
+ * Where a write to `file` really lands: the target of a symlink (a dotfile-managed link
+ * keeps pointing at its file), including a link whose target does not exist yet.
+ * @param {string} file
+ */
+export function writeTarget(file) {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    try {
+      if (fs.lstatSync(file).isSymbolicLink()) {
+        return path.resolve(path.dirname(file), fs.readlinkSync(file));
+      }
+    } catch {
+      // not there at all: write the path itself
+    }
+    return file;
+  }
+}
+
+/**
  * Write `text` to `file` with mode 0600 (temp file in the same directory, then rename, so
- * a reader never sees a partial file and the old mode is never kept).
+ * a reader never sees a partial file and the old mode is never kept). A symlink is
+ * followed: the target is replaced and the link stays.
  * @param {string} file
  * @param {string} text
  */
 export function writePrivateFile(file, text) {
-  ensurePrivateDir(path.dirname(file));
-  const tmp = `${file}.tmp-${process.pid}`;
+  const target = writeTarget(file);
+  ensurePrivateDir(path.dirname(target));
+  const tmp = `${target}.tmp-${process.pid}`;
   try {
     fs.writeFileSync(tmp, text, { mode: 0o600, flag: "wx" });
     fs.chmodSync(tmp, 0o600);
-    fs.renameSync(tmp, file);
+    fs.renameSync(tmp, target);
   } catch (e) {
     fs.rmSync(tmp, { force: true });
     throw e;

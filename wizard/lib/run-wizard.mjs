@@ -4,7 +4,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseWizardFlags } from "./parse-args.mjs";
 import { loadMachineEnv } from "./load-machine-env.mjs";
-import { step, info, ok, warn, die } from "./log.mjs";
+import { step, info, ok, warn, die, problem } from "./log.mjs";
+import { COMPOSE_TOO_OLD_HINT, composeVersionOk, parseComposeVersion } from "./compose-version.mjs";
 import { envValue, ensureHsDir, expandHome, indexerStateDir } from "./paths.mjs";
 import { curlGet, curlRequest } from "./curl.mjs";
 import { ask, confirm } from "./prompts.mjs";
@@ -515,11 +516,14 @@ async function checkPreflight(ctx) {
       `docker is not usable by ${os.userInfo().username}. Fix: sudo usermod -aG docker ${os.userInfo().username}, then log out and back in`,
     );
   }
-  const verR = spawnSync("docker", ["compose", "version"], { encoding: "utf8" });
-  const verMatch = (verR.stdout || "").match(/version v?([0-9]+)\./);
-  const major = Number(verMatch?.[1] || 0);
-  if (major < 2) die("Docker Compose v2 is required (docker compose version). Install the compose plugin");
-  ok(`docker and compose v${major} work without sudo; git and curl present`);
+  const verR = spawnSync("docker", ["compose", "version", "--short"], { encoding: "utf8" });
+  const version = parseComposeVersion(verR.stdout);
+  if (!version) die("Docker Compose v2 is required (docker compose version). Install the compose plugin");
+  else if (!composeVersionOk(version)) {
+    // A dry run only plans, so it warns; a real run would fail at `docker compose up`.
+    problem(ctx, `${COMPOSE_TOO_OLD_HINT} (found ${version.major}.${version.minor})`);
+  }
+  ok(`docker and compose v${version.major} work without sudo; git and curl present`);
   ok(`host UID:GID is ${os.userInfo().uid}:${os.userInfo().gid}`);
   await runProviderPhase(ctx, PROVIDER_PHASES.resolvePorts, providerHelpers());
 }

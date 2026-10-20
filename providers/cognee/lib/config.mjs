@@ -1,8 +1,15 @@
 /**
  * Cognee's slice of ~/.config/personal-memory/config.toml: the `[memory.cognee]` table
- * (`port`, `env_file`). It never holds a secret.
+ * (`port`, `env_file`, `indexer_env_file`). It never holds a secret.
  */
-import { resolveFile, currentPort, DEFAULT_ENV_FILE, ensureState, tildePath } from "./state.mjs";
+import {
+  DEFAULT_ENV_FILE,
+  DEFAULT_INDEXER_ENV_FILE,
+  currentPort,
+  ensureState,
+  resolveFile,
+  tildePath,
+} from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
 
@@ -18,14 +25,18 @@ function portText(value) {
 /**
  * The `[memory.cognee]` table from a merged TOML config.
  * @param {Record<string, unknown>} cfg
- * @returns {{ port: string, envFile: string }}
+ * @returns {{ port: string, envFile: string, indexerEnvFile: string }}
  */
 export function defaultsFromConfig(cfg) {
   const memory = /** @type {Record<string, any>} */ (cfg.memory || {});
   const table = /** @type {Record<string, unknown>} */ (
     memory.cognee && typeof memory.cognee === "object" ? memory.cognee : {}
   );
-  return { port: portText(table.port), envFile: String(table.env_file || "") };
+  return {
+    port: portText(table.port),
+    envFile: String(table.env_file || ""),
+    indexerEnvFile: String(table.indexer_env_file || ""),
+  };
 }
 
 /**
@@ -45,13 +56,23 @@ export function applyConfig(ctx, h) {
     ctx.cognee.port = d.port;
     if (!process.env.COGNEE_PORT) process.env.COGNEE_PORT = d.port;
   }
-  if (d.envFile) {
-    ctx.cognee.configEnvFile = d.envFile;
-    // Compose reads COGNEE_ENV_FILE from the environment, so a custom path from the TOML
-    // must be exported as a real, absolute path for the stack start.
-    if (!process.env.COGNEE_ENV_FILE) process.env.COGNEE_ENV_FILE = resolveFile(d.envFile, ctx);
-  } else if (process.env.COGNEE_ENV_FILE?.startsWith("~")) {
-    process.env.COGNEE_ENV_FILE = resolveFile(process.env.COGNEE_ENV_FILE, ctx);
+  const defaults = {
+    COGNEE_ENV_FILE: DEFAULT_ENV_FILE,
+    COGNEE_INDEXER_ENV_FILE: DEFAULT_INDEXER_ENV_FILE,
+  };
+  for (const [setting, name, field] of /** @type {const} */ ([
+    [d.envFile, "COGNEE_ENV_FILE", "configEnvFile"],
+    [d.indexerEnvFile, "COGNEE_INDEXER_ENV_FILE", "configIndexerEnvFile"],
+  ])) {
+    if (process.env[name]?.startsWith("~")) process.env[name] = resolveFile(process.env[name], ctx);
+    if (setting) {
+      ctx.cognee[field] = setting;
+      // Compose reads the path from the environment (or the stack .env, which the stack
+      // setup script fills from this export), so a TOML value must be a real absolute path.
+      // The shipped default location needs no export (and no .env line).
+      const file = resolveFile(setting, ctx);
+      if (!process.env[name] && file !== resolveFile(defaults[name], ctx)) process.env[name] = file;
+    }
   }
   ensureState(ctx);
 }
@@ -70,6 +91,7 @@ export function configToml(ctx) {
       cognee: {
         port: Number(currentPort(ctx)),
         env_file: tildePath(ctx.cognee.envFile, ctx.home) || DEFAULT_ENV_FILE,
+        indexer_env_file: tildePath(ctx.cognee.indexerEnvFile, ctx.home) || DEFAULT_INDEXER_ENV_FILE,
       },
     },
   };

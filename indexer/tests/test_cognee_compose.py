@@ -312,3 +312,38 @@ def test_setup_notices_follow_the_env_file_state_and_never_print_values(tmp_path
     env_file.chmod(0o600)
     out = run_setup(stack, home, {"COGNEE_ENV_FILE": str(env_file)}).stdout
     assert "NOTE" not in out
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
+def test_setup_mjs_persists_custom_env_file_paths_and_compose_reads_them(tmp_path):
+    """A non-default env file location is written to the stack .env as a path (never its contents)."""
+    stack = tmp_path / "stack"
+    home = tmp_path / "home"
+    vault = home / "vault"
+    vault.mkdir(parents=True)
+    (vault / "cognee.env").write_text(f"LLM_API_KEY={LLM_SECRET}\n")
+    (vault / "indexer.env").write_text(f"COGNEE_API_KEY={INDEXER_SECRET}\n")
+    custom = {
+        "COGNEE_ENV_FILE": "~/vault/cognee.env",
+        "COGNEE_INDEXER_ENV_FILE": str(vault / "indexer.env"),
+    }
+    run_setup(stack, home, custom)
+
+    written = read_env(stack / ".env")
+    assert written["COGNEE_ENV_FILE"] == str(vault / "cognee.env")
+    assert written["COGNEE_INDEXER_ENV_FILE"] == str(vault / "indexer.env")
+    text = (stack / ".env").read_text()
+    for forbidden in ("LLM_API_KEY=", "COGNEE_API_KEY=", LLM_SECRET, INDEXER_SECRET):
+        assert forbidden not in text
+
+    # A plain `docker compose` run (no process variables) finds the same files through the stack .env.
+    rendered = render(stack / ".env", PROJECT, "--profile", "cognee", files=FILES, env={"HOME": str(home)})
+    assert rendered["services"]["cognee"]["environment"]["LLM_API_KEY"] == LLM_SECRET
+    assert rendered["services"]["indexer"]["environment"]["COGNEE_API_KEY"] == INDEXER_SECRET
+
+    # Without the variables a rerun keeps the persisted paths, and re-running with new ones replaces them.
+    run_setup(stack, home)
+    assert read_env(stack / ".env")["COGNEE_ENV_FILE"] == str(vault / "cognee.env")
+    run_setup(stack, home, {"COGNEE_ENV_FILE": str(vault / "other.env")})
+    lines = (stack / ".env").read_text().splitlines()
+    assert [line for line in lines if line.startswith("COGNEE_ENV_FILE=")] == [f"COGNEE_ENV_FILE={vault / 'other.env'}"]
