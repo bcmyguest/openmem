@@ -405,9 +405,9 @@ async function deleteSmokeBank(ctx, base) {
 }
 
 /** Expand {compose}/{project}/{api}/{controlPlane}/{logs} in a smoke hint string. */
-function expandSmokeHint(ctx, template, logs) {
+function expandSmokeHint(ctx, template, logs, apiBase) {
   if (!template) return "";
-  const api = ctx.hindsightUrl || `http://127.0.0.1:${ctx.port || 8888}`;
+  const api = apiBase || `http://127.0.0.1:${ctx.port || 8888}`;
   const cp = `http://127.0.0.1:${ctx.portCp || 9999}`;
   return template
     .replaceAll("{compose}", composeCommandText(ctx))
@@ -443,7 +443,7 @@ async function smokeTest(ctx) {
   const logs = composeCommandText(ctx, "logs", ...logServices);
   const retainTimeout = Number(p.wizard.smokeRetainTimeoutSec) > 0 ? Number(p.wizard.smokeRetainTimeoutSec) : 90;
   const recallTimeout = Number(p.wizard.smokeRecallTimeoutSec) > 0 ? Number(p.wizard.smokeRecallTimeoutSec) : 60;
-  const api = ctx.hindsightUrl || base;
+  const api = base;
   const cp = `http://127.0.0.1:${ctx.portCp || 9999}`;
   info(`smoke test: retain and recall in bank ${bank} (retain ≤${retainTimeout}s, recall ≤${recallTimeout}s)`);
   info(`  watch: control plane ${cp}  ·  API ${api}/docs  ·  logs: ${logs}`);
@@ -461,7 +461,7 @@ async function smokeTest(ctx) {
   if (!retain) {
     await deleteSmokeBank(ctx, base);
     const hint =
-      expandSmokeHint(ctx, p.wizard.retainHint || p.wizard.recallHint, logs) ||
+      expandSmokeHint(ctx, p.wizard.retainHint || p.wizard.recallHint, logs, base) ||
       `check model route and LLM queue (${logs}); open ${cp}`;
     warn(`smoke retain timed out or failed — continuing setup. ${hint}`);
     ctx.smokeFailed = true;
@@ -482,7 +482,7 @@ async function smokeTest(ctx) {
   const needle = p.wizard.recallMustMatch || "heron";
   if (!new RegExp(needle, "i").test(recall)) {
     const hint =
-      expandSmokeHint(ctx, p.wizard.recallHint, logs) ||
+      expandSmokeHint(ctx, p.wizard.recallHint, logs, base) ||
       `recall empty; ${logs}; open ${cp}`;
     warn(`smoke recall did not return the fact — continuing setup. ${hint}`);
     ctx.smokeFailed = true;
@@ -508,7 +508,7 @@ async function startStack(ctx) {
   if (wantNotebooklm) {
     await buildService(ctx, "notebooklm", "personal-memory-notebooklm:local");
   }
-  // NotebookLM sync shares Hindsight's LLM with smoke retain. Bring the core stack
+  // NotebookLM sync shares the stack LLM with smoke retain. Bring the core stack
   // up first (omit notebooklm profile), run smoke, then start NotebookLM.
   const profilesForSmoke = (ctx.extraComposeProfiles || []).filter((p) => p !== "notebooklm");
   const savedExtras = ctx.extraComposeProfiles;
@@ -530,7 +530,7 @@ async function startStack(ctx) {
 }
 
 /**
- * PATH binary → @vectorize-io/hindsight-coding-agents harness id.
+ * PATH binary → coding-agent plugin harness id.
  * Binary names often differ from harness ids (`claude` → `claude-code`,
  * `agent` / `cursor-agent` → `cursor-cli`). Detection mirrors the upstream
  * installer's `detect` checks where practical.
@@ -573,7 +573,7 @@ async function setupCodingAgents(ctx) {
   }
   const apiUrl = await resolveApiBase(ctx);
   // Scripted install: --server/--api-url skip the "Where should memory live?" prompt
-  // (see @vectorize-io/hindsight-coding-agents README "Where memory lives").
+  // (--server/--api-url skip the installer's memory-location prompt.)
   const installArgs = [
     ...harnesses,
     "--server",
