@@ -15,17 +15,44 @@ changed document never collides with an old one) and free of path text. The add 
 `datasetName` (the same name cognify takes), so it also works if the cached dataset id went stale.
 
 `add` is quick; building the graph is the slow, separate `POST /api/v1/cognify` step, so
-`capabilities.async_ingest` is True and a retained document is not searchable until cognify finishes. The sink
-only marks the bank dirty on retain/delete; `flush(bank)` (optional hook, see `sinks.flush_sink`) issues one
-cognify per dirty bank (`{"datasets": [name], "runInBackground": true}`) and clears the flag only on success.
-`flush()` with no bank flushes every dirty bank; a clean bank sends nothing.
+`capabilities.async_ingest` is True and a retained document is not searchable until cognify finishes.
+
+Flush: `flush(bank)` (optional hook, see `sinks.flush_sink`) always means "process this bank now". The indexer
+calls it with an explicit bank after a changed batch or when an earlier flush is still pending, possibly in a fresh
+process, so it never relies on this instance's memory: it resolves the dataset by name (cached id, else
+`GET /api/v1/datasets`; never created), and when the dataset is missing or holds no data item
+(`GET .../data?limit=1`) it sends nothing (cognify on an empty dataset is an error; this covers delete-only
+batches that emptied a bank). Otherwise it sends one `POST /api/v1/cognify {"datasets": [name], "runInBackground":
+true}`. `flush(None)` flushes only the banks this instance dirtied (retain or a delete that removed something) and
+is meant for direct callers and tests; the indexer never uses it. The dirty flag is cleared on success or when
+there was nothing to process, never on an error.
+
+Document text: Cognee deduplicates an add by content hash within a dataset (and owner), so two documents with
+different `doc_id` and identical bytes would collapse into one row (the second add keeps the first's metadata, and
+deleting either removes the shared content). The uploaded text is therefore `content` plus a footer line
+`<!-- personal-memory:doc:<first 16 hex of sha256(doc_id)> -->`, which makes every document's bytes unique and
+leaks no id or path text.
 
 Delete: a bank with no dataset (looked up by name, never created) has nothing to delete. A 404 on listing (dataset
 gone) or on the data DELETE (data gone) is swallowed. Cognee answers 401 for "dataset missing or no permission"
 and 403 for permission, which cannot be told apart from an auth failure, so 401 and 403 always raise.
 
 Auth: env `COGNEE_API_KEY`, read in `create`, is sent as `X-Api-Key` on every request when set. It never appears
-in URLs, errors or logs. URL: `create(url)`, else env `MEMORY_API_URL`; there is no default.
+in URLs, errors or logs. URL: `create(url)`, else env `MEMORY_API_URL`; there is no default. Every request goes
+through `sinks._http.open_url`: no redirect is ever followed (so the key cannot reach another host and a write is
+never replayed as a GET) and a malformed HTTP reply is an `OSError`.
+
+Failure windows. Upsert is delete-then-add, so between the two a document is missing until the retry; the indexer
+retries because it saves a document's digest only after `retain` returns. A client-side add timeout can leave the
+add completed on the server; the retry then deletes that copy and adds again, which is harmless. A cognify
+requested while the previous pipeline run for the dataset is still running may be skipped or queued by Cognee
+(unverified); the indexer's pending marker only guarantees that a cognify call is issued after the last change, so
+check `GET /api/v1/datasets/status` when a document does not become searchable.
+
+Not verified offline against a real server: the key casing of the stored metadata in the data listing
+(`externalMetadata` per the OpenAPI schema, `external_metadata` per its prose; both are accepted), what `name`
+the server stores for an uploaded file (the sink never reads it), that a `.md` upload with `text/markdown` is
+accepted by the loaders, and the exact cognify behaviour for a dataset that is already processing.
 """
 
 import hashlib
@@ -39,6 +66,7 @@ import uuid
 from collections.abc import Mapping
 
 from sinks import Capabilities, SinkError
+from sinks._http import open_url, read_all
 
 PAGE = 1000
 SLUG_MAX = 40
@@ -61,6 +89,11 @@ def dataset_name(bank: str) -> str:
 def upload_name(doc_id: str, content: str) -> str:
     """Upload file name: unique per document version, with no doc id or path text in it."""
     return f"{hashlib.sha256(doc_id.encode()).hexdigest()[:16]}-{hashlib.sha256(content.encode()).hexdigest()[:8]}.md"
+
+
+def upload_text(doc_id: str, content: str) -> str:
+    """`content` plus a per-document footer, so identical texts of two documents never share a content hash."""
+    return f"{content}\n\n<!-- personal-memory:doc:{hashlib.sha256(doc_id.encode()).hexdigest()[:16]} -->\n"
 
 
 def multipart(fields: Mapping[str, str], filename: str, content: bytes) -> tuple[bytes, str]:
@@ -110,10 +143,10 @@ class CogneeSink:
             data, extra = None, {}
         request = urllib.request.Request(url, data=data, headers=self._headers(extra), method=method)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = response.read()
+            with open_url(request, timeout) as response:
+                body = read_all(response)
         except urllib.error.HTTPError as error:
-            text = error.read().decode(errors="replace")
+            text = read_all(error).decode(errors="replace")
             if self._api_key:
                 text = text.replace(self._api_key, "***")
             raise HttpError(method, url, error.code, text[:300]) from error
@@ -127,9 +160,9 @@ class CogneeSink:
     def health(self) -> bool:
         try:
             request = urllib.request.Request(self.url + "/health", headers=self._headers())
-            with urllib.request.urlopen(request, timeout=HEALTH_TIMEOUT) as response:
+            with open_url(request, HEALTH_TIMEOUT) as response:
                 return 200 <= response.status < 300
-        except (OSError, ValueError):
+        except (OSError, ValueError):  # includes HTTPError (3xx and errors), URLError and malformed replies
             return False
 
     # Datasets
@@ -226,7 +259,7 @@ class CogneeSink:
         fields = {"datasetName": dataset_name(bank), "external_metadata": json.dumps([meta])}
         if tags:
             fields["labels"] = json.dumps([clean_label(tags[0])])
-        body, content_type = multipart(fields, upload_name(doc_id, content), content.encode())
+        body, content_type = multipart(fields, upload_name(doc_id, content), upload_text(doc_id, content).encode())
         self._request("POST", "/api/v1/add", raw=body, content_type=content_type, timeout=ADD_TIMEOUT)
         self._dirty.add(bank)
 
@@ -247,13 +280,31 @@ class CogneeSink:
             self._dirty.add(bank)
 
     def flush(self, bank: str | None = None) -> None:
-        """Run cognify (in the background on the server) for `bank`, or every dirty bank, if it has changed."""
-        banks = sorted(self._dirty) if bank is None else [bank]
-        for name in banks:
-            if name not in self._dirty:
-                continue
-            self._request("POST", "/api/v1/cognify", {"datasets": [dataset_name(name)], "runInBackground": True})
-            self._dirty.discard(name)
+        """`flush(bank)`: run cognify for `bank` now (see the module docstring). `flush(None)`: every dirty bank."""
+        for name in sorted(self._dirty) if bank is None else [bank]:
+            self._cognify(name)
+
+    def _peek(self, dataset_id: str) -> list | None:
+        """One data item of the dataset ([] when empty), or None when the dataset is gone (404)."""
+        try:
+            page = self._request("GET", f"/api/v1/datasets/{urllib.parse.quote(dataset_id, safe='')}/data?limit=1&offset=0")
+        except HttpError as error:
+            if error.status != 404:
+                raise
+            return None
+        return page if isinstance(page, list) else []
+
+    def _cognify(self, bank: str) -> None:
+        dataset_id = self._find_dataset(bank)
+        page = self._peek(dataset_id) if dataset_id else None
+        if page is None and dataset_id:
+            # The cached id went stale: look the dataset up by name once more.
+            self._datasets.pop(bank, None)
+            dataset_id = self._find_dataset(bank)
+            page = self._peek(dataset_id) if dataset_id else None
+        if page:
+            self._request("POST", "/api/v1/cognify", {"datasets": [dataset_name(bank)], "runInBackground": True})
+        self._dirty.discard(bank)
 
 
 def create(url: str | None = None, **_cfg) -> CogneeSink:

@@ -1,12 +1,74 @@
-# PLACEHOLDER — Wave 2 will pin a Cognee image, healthcheck, and wire the shared indexer.
-# Layer: docker compose -f compose.yaml -f providers/cognee/compose.yaml --profile cognee up -d
+# Cognee provider fragment: one `cognee` service (single container, SQLite + LanceDB + Ladybug under /cognee-storage)
+# and the wiring that points the shared indexer at it. Modeled on Cognee's official minimal compose file
+# (docs/minimal-docker-compose.md in github.com/topoteretes/cognee), with a pinned image and a loopback-only port.
 #
-# The indexer sink maps indexer "bank" strings to Cognee dataset names (see indexer/sinks/__init__.py).
+# Layering (the wizard passes both, then `up -d`):
+#   docker compose -f compose.yaml -f providers/cognee/compose.yaml --profile cognee up -d
+# Add `-f compose.override.yaml` when you use the generated secret masks (Compose skips that file once -f is given).
+#
+# Notes:
+#   - The indexer maps each bank to a Cognee dataset (see indexer/sinks/cognee.py). Ingestion is asynchronous: the
+#     sink adds documents, then its flush() step runs cognify per dataset, so a document is stored first and becomes
+#     searchable only after cognify finishes. Cognify needs a working LLM key (below).
+#   - Secrets stay out of the repo. LLM_API_KEY (and any LLM_* / EMBEDDING_* overrides, e.g. a local model server on
+#     the host through host.docker.internal) go in the cognee env file, created by the operator with mode 600. The
+#     indexer reads a SEPARATE env file, so the indexer receives only COGNEE_API_KEY in its environment, never
+#     LLM_API_KEY. The directory holding cognee.env (~/.config/personal-memory) is masked from the indexer's $HOME
+#     mount by compose.override.yaml once the wizard has created it; until then the read-only $HOME mount can see it.
+#   - Authentication: ENABLE_BACKEND_ACCESS_CONTROL is fixed to "false" below and wins over the env file. Auth can
+#     only be switched on with REQUIRE_AUTHENTICATION=true in cognee.env; the indexer then needs COGNEE_API_KEY in
+#     cognee-indexer.env (the sink sends it as X-Api-Key).
+#   - Both env files are optional (required: false, Compose 2.24+) so `config` and `up` work before they exist.
 
 services:
   cognee:
     profiles: ["cognee"]
-    image: cognee/cognee:placeholder
+    # Release 1.6.5, pinned by index digest (pushed 2026-10-16; `latest` pointed at the same digest then).
+    # Do not use the `main` tag from the minimal compose file. Bump deliberately.
+    image: cognee/cognee@sha256:29427e968f8b273db0bb7b037a7bb119d7695d960f73a59d649f00c5111a85bd
+    # Loopback only. Host port from .env (COGNEE_PORT); the container listens on 8000.
     ports:
       - "127.0.0.1:${COGNEE_PORT:-8766}:8000"
+    env_file:
+      - path: ${COGNEE_ENV_FILE:-${HOME}/.config/personal-memory/cognee.env}
+        required: false
+    environment:
+      # Documented single-user mode: no auth, one shared set of databases. Safe here because the only published port
+      # is bound to 127.0.0.1 and the indexer reaches the server on the compose network.
+      ENABLE_BACKEND_ACCESS_CONTROL: "false"
+    volumes:
+      # /cognee-storage is baked into the image owned by its non-root user (uid 1000), and the image defaults
+      # DATA_ROOT_DIRECTORY / SYSTEM_ROOT_DIRECTORY under it. A fresh named volume copies that ownership; a volume
+      # at any other path would be root-owned and unwritable.
+      - cognee-data:/cognee-storage
+    extra_hosts:
+      # A local LLM or embedding server on the host is reachable as http://host.docker.internal:<port>.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    # Upstream's compose uses 15s: the server drains background tasks and checkpoints SQLite on shutdown.
+    stop_grace_period: 15s
+    healthcheck:
+      # The image is Python, so python3 is there; curl may not be.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  indexer:
+    environment:
+      # Selects indexer/sinks/cognee.py and gives it the API base URL (the compose service name, not localhost).
+      MEMORY_SINK: cognee
+      MEMORY_API_URL: http://cognee:8000
+    env_file:
+      # Only COGNEE_API_KEY belongs here. Never put LLM_API_KEY in this file.
+      - path: ${COGNEE_INDEXER_ENV_FILE:-${HOME}/.config/personal-memory/cognee-indexer.env}
+        required: false
+    depends_on:
+      # Hard dependency (required defaults to true): this fragment is only layered together with --profile cognee,
+      # so a missing profile fails loudly instead of starting an indexer with nothing to write to.
+      cognee:
+        condition: service_healthy
+
+volumes:
+  cognee-data:

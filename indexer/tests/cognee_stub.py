@@ -13,12 +13,16 @@ emulated endpoints and the quirks the sink has to live with:
 - `POST /api/v1/add` (multipart: `datasetName`, optional `external_metadata` / `labels` JSON arrays, one `data`
   file). Creates the dataset when `datasetName` is new. A file whose name already exists in the dataset with
   different content is a 409 (identical content is a no-op), which is why the sink uploads one name per version.
-- `POST /api/v1/cognify {"datasets": [...], "runInBackground"}` -> 200, recorded in `state.cognified`.
+  Like the real server, identical bytes already in the dataset under another name are deduplicated: the existing
+  row (and its metadata) is kept and no row is added, which is why the sink makes every document's text unique.
+- `POST /api/v1/cognify {"datasets": [...], "runInBackground"}` -> 200, recorded in `state.cognified`; an unknown
+  or empty dataset is a 400 (nothing recorded), because cognify has nothing to process there.
 
 `route.state` exposes the stored data for assertions; `state.fail[(method, path_prefix)] = (status, json)` makes
 a matching request fail (until removed), for error-path tests.
 """
 
+import hashlib
 import json
 import re
 import uuid
@@ -109,6 +113,9 @@ def cognee_route():
                     return 409, {"detail": "file exists with different content; use PATCH /api/v1/update"}
                 if same_name:
                     continue
+                digest = hashlib.sha256(upload["content"].encode()).hexdigest()
+                if any(hashlib.sha256(item["content"].encode()).hexdigest() == digest for item in dataset["data"].values()):
+                    continue
                 data_id = str(uuid.uuid4())
                 dataset["data"][data_id] = {
                     "id": data_id,
@@ -119,6 +126,10 @@ def cognee_route():
                 }
             return 200, {"status": "PipelineRunCompleted", "dataset_id": dataset["id"]}
         if bare == "/api/v1/cognify" and method == "POST":
+            for name in body["datasets"]:
+                dataset = state.by_name(name)
+                if dataset is None or not dataset["data"]:
+                    return 400, {"detail": f"dataset {name} has no data to cognify"}
             state.cognified.append(body)
             return 200, {"pipeline_run_id": str(uuid.uuid4())}
         return 500, {"detail": f"unexpected {method} {path}"}

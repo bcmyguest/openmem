@@ -40,18 +40,12 @@ check(
 );
 
 const mem0 = listAllProviders().find((m) => m.id === "mem0");
-check("mem0 manifest exists (planned)", mem0?.status === "planned");
-check(
-  "mem0 planned skips smoke requirements",
-  mem0 ? validateManifest(mem0).length === 0 : false,
-);
+check("mem0 manifest is experimental", mem0?.status === "experimental");
+check("mem0 experimental manifest validates", mem0 ? validateManifest(mem0).length === 0 : false);
 
 const cognee = listAllProviders().find((m) => m.id === "cognee");
-check("cognee manifest exists (planned)", cognee?.status === "planned");
-check(
-  "cognee planned skips smoke requirements",
-  cognee ? validateManifest(cognee).length === 0 : false,
-);
+check("cognee manifest is experimental", cognee?.status === "experimental");
+check("cognee experimental manifest validates", cognee ? validateManifest(cognee).length === 0 : false);
 
 // indexer.sink: the MEMORY_SINK value, required once a provider is experimental or supported.
 check("hindsight declares indexer.sink 'hindsight'", hindsight?.indexer?.sink === "hindsight");
@@ -97,6 +91,15 @@ check(
   ) && validateManifest({ ...experimental, status: "planned", indexer: { sink: "good_name" } }).length === 0,
 );
 const repoRoot = path.resolve(here, "../..");
+// The manifest rule and the Python rule must stay the same pattern.
+const registrySource = fs.readFileSync(path.join(repoRoot, "wizard/lib/providers/registry.mjs"), "utf8");
+const sinksSource = fs.readFileSync(path.join(repoRoot, "indexer/sinks/__init__.py"), "utf8");
+const jsSinkPattern = registrySource.match(/const SINK_NAME_RE = \/(.+)\/;/)?.[1];
+const pySinkPattern = sinksSource.match(/^NAME = re\.compile\(r"(.+)"\)$/m)?.[1];
+check(
+  `registry SINK_NAME_RE equals indexer/sinks NAME (${jsSinkPattern})`,
+  Boolean(jsSinkPattern) && jsSinkPattern === pySinkPattern,
+);
 for (const m of listAllProviders()) {
   if (m.indexer?.sink && (m.status === "supported" || m.status === "experimental")) {
     check(

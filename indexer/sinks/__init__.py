@@ -28,11 +28,15 @@ that cannot be reached raises `SinkError` or `OSError` (urllib's URLError is an 
 that is already gone is NOT an error. `health()` never raises.
 
 Optional `flush(bank: str) -> None`. A sink whose provider ingests asynchronously (for example Cognee, where
-cognify builds the graph after add) may define `flush`. The indexer calls it once per bank, after a batch of
-retains and deletes for that bank that changed at least one document, and never on a dry run or when nothing
-changed. It is NOT part of the `Sink` protocol (so sinks without it still satisfy `isinstance`); callers go
-through `flush_sink`, which does nothing for a sink that has no callable `flush`. A flush error is handled like
-a retain error: it raises `SinkError` (or `OSError`) and fails that source.
+cognify builds the graph after add) may define `flush`. The indexer calls `flush(bank)` with an explicit bank,
+once per bank per run, whenever a batch retained or deleted at least one document for that bank OR a previous
+flush for that bank is still pending (it failed, or the run died before reaching it). The pending state is
+persisted in the indexer state file, so a fresh process retries it even when nothing changed. A sink must
+therefore treat `flush(bank)` as "process this bank now", even if its own in-memory bookkeeping says the bank is
+clean. `flush(None)` is never called, and a dry run never flushes. `flush` is NOT part of the `Sink` protocol
+(so sinks without it still satisfy `isinstance`); callers go through `flush_sink`, which does nothing for a sink
+that has no callable `flush`. A flush error is handled like a retain error: it raises `SinkError` (or `OSError`)
+and fails that source, and the pending marker stays so the next run flushes again.
 
 URL. `get_sink(name, url=...)` passes the API base URL; the CLI resolves it from `--url`, then `HINDSIGHT_URL`
 for the hindsight sink, or `MEMORY_API_URL` for every other sink. A sink reads any credentials from its own env
@@ -45,7 +49,6 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
-
 
 DEFAULT_SINK = "hindsight"
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")

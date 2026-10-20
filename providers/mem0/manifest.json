@@ -1,26 +1,25 @@
 {
   "id": "mem0",
   "label": "mem0",
-  "status": "planned",
-  "notes": "Requires Phase B sink + compose profile. API and agent plugin differ from Hindsight.",
+  "status": "experimental",
+  "notes": "URL-only v1: the operator runs a mem0 REST server (docs.mem0.ai open-source REST server) and this stack points the shared indexer at it; no mem0 container yet (a docker mode is a follow-up). The API key lives in ~/.config/personal-memory/mem0.env (mode 600), never the stack .env. Not verified against a live server.",
   "settings": {
-    "nativeDocs": "https://docs.mem0.ai/",
-    "nativeConfigPaths": [],
-    "wizardOwns": [
-      "compose profile or external URL hookup (TBD)",
-      "index.yml sources (shared indexer)",
-      "provider-specific wizard steps (TBD)"
-    ]
+    "nativeDocs": "https://docs.mem0.ai/open-source/features/rest-api",
+    "nativeConfigPaths": ["~/.config/personal-memory/mem0.env"],
+    "wizardOwns": ["indexer URL and the host-gateway rewrite", "API key file for the indexer (mode 600)", "index.yml sources (shared indexer)"]
   },
   "compose": {
-    "services": [],
+    "profile": "mem0",
+    "files": ["providers/mem0/compose.yaml"],
+    "services": ["indexer"],
     "healthService": null,
-    "healthPath": "/health",
+    "healthPath": "/docs",
     "hostPortEnv": "MEM0_PORT",
-    "defaultHostPort": 8765
+    "defaultHostPort": 18888
   },
   "indexer": {
     "apiUrlEnv": "MEM0_API_URL",
+    "sink": "mem0",
     "sinkDriver": "mem0-rest"
   },
   "codingAgent": {
@@ -38,11 +37,15 @@
   },
   "wizard": {
     "smokeBank": "wizard-smoke",
-    "retainMethod": null,
-    "retainPath": null,
-    "recallMethod": null,
-    "recallPath": null,
-    "deleteMethod": null,
-    "deletePath": null
+    "retainMethod": "POST",
+    "retainPath": "/memories",
+    "retainBody": "{\"messages\":[{\"role\":\"user\",\"content\":\"Wizard smoke test: the project codename is heron.\"}],\"user_id\":\"wizard-smoke\",\"agent_id\":\"personal-memory-wizard\",\"run_id\":\"wizard-smoke-doc\",\"infer\":false}",
+    "recallMethod": "POST",
+    "recallPath": "/search",
+    "recallBody": "{\"query\":\"What is the project codename?\",\"filters\":{\"user_id\":\"wizard-smoke\"}}",
+    "recallMustMatch": "heron",
+    "recallHint": "check the mem0 server logs and its embedder key",
+    "deleteMethod": "DELETE",
+    "deletePath": "/memories?user_id={bank}"
   }
 }

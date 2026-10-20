@@ -114,13 +114,25 @@ Cognee, where `cognify` builds the graph after `add`) may define `flush(bank: st
 indexer calls it once per bank after that bank's batch of retains and deletes, so the provider starts
 processing once per batch rather than once per document.
 
-- The call happens only with `--apply`, and only when the batch retained or deleted at least one
-  document. A dry run, or a run where nothing changed, never flushes.
+- The call happens only with `--apply`. The indexer calls `flush(bank)` with an explicit bank when the
+  batch retained or deleted at least one document for that bank, **or** when a previous flush for that
+  bank is still pending. A dry run never flushes, and `flush(None)` is never called.
+- A sink must treat `flush(bank)` as "process this bank now", even when its own in-memory bookkeeping
+  says the bank is clean: the indexer may call it from a fresh process in which that bookkeeping is gone.
+- Pending flushes are persisted. Per-document progress is saved to the indexer state file as it goes, so
+  a failed flush (or a run that died after some retains) would otherwise never be retried. For a sink
+  with a `flush`, the bank is recorded under the state key `::flush-pending` (a sorted list of banks)
+  before the first write of a batch and removed after `flush` succeeds. Every `--apply` run flushes the
+  banks it handles that are still pending, even when nothing changed. A bank whose source is no longer
+  indexed is left alone. Sinks without `flush` (Hindsight) never get the key, so their state file is
+  unchanged.
 - `flush` is not part of the `Sink` protocol, so sinks without it (Hindsight among them) still satisfy
   `isinstance(sink, Sink)` and see no change in behavior. Callers use `sinks.flush_sink(sink, bank)`,
   which does nothing when the sink has no callable `flush`.
-- A flush error is handled like a retain error: the source is reported as failed and the other
-  sources still run.
+- A flush error is handled like a retain error: the source is reported as failed, the other sources
+  still run, and the pending marker stays so the next run flushes again.
+- The watcher (`indexer/watch.py`) spawns this same CLI once per source, so flush runs there too. In
+  the indexer container the sink and URL come from `MEMORY_SINK` and `MEMORY_API_URL`.
 
 Default provider id: **`hindsight`**. Change it in **interactive `./setup`** (Clack “Memory provider”,
 defaults to `wizard.conf` / `machine.env`), or set `MEMORY_PROVIDER` for `--yes`. The wizard records

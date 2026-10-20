@@ -6,10 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest
-
 import index_config
-
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "bin" / "hindsight-project-index"
 

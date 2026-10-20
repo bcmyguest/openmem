@@ -2,13 +2,17 @@
 
 import json
 import re
+import socket
+import threading
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 import sinks
 import sinks.cognee as cognee_sink
 from cognee_stub import cognee_route
-from hindsight_stub import build_fixture, run_script, scenario_args
+from hindsight_stub import build_fixture, mutate_fixture, run_script, scenario_args
 from sink_contract import AWKWARD_BANK, run_sink_contract
 from stub_server import closed_port_url, serving
 
@@ -26,6 +30,14 @@ def clean_env(monkeypatch):
 
 def make(url):
     return sinks.get_sink("cognee", url=url)
+
+
+FOOTER = re.compile(r"\n\n<!-- personal-memory:doc:[0-9a-f]{16} -->\n$")
+
+
+def plain(document):
+    """A stored document's text without the per-document footer the sink appends."""
+    return FOOTER.sub("", document["content"])
 
 
 def shape(requests):
@@ -95,8 +107,8 @@ def test_banks_that_slug_identically_get_different_datasets():
         sink.retain(first, "d", "one")
         sink.retain(second, "d", "two")
         state = stub.route.state
-        assert [d["content"] for d in state.documents(cognee_sink.dataset_name(first))] == ["one"]
-        assert [d["content"] for d in state.documents(cognee_sink.dataset_name(second))] == ["two"]
+        assert [plain(d) for d in state.documents(cognee_sink.dataset_name(first))] == ["one"]
+        assert [plain(d) for d in state.documents(cognee_sink.dataset_name(second))] == ["two"]
 
 
 # Contract
@@ -133,8 +145,8 @@ def test_upsert_leaves_exactly_one_live_document():
         sink.retain(BANK, "doc-1", "second")
         sink.retain(BANK, "doc-2", "other")
         docs = route.state.documents(cognee_sink.dataset_name(BANK))
-        assert sorted(d["content"] for d in docs) == ["other", "second"]
-        assert [d["externalMetadata"]["doc_id"] for d in docs if d["content"] == "second"] == ["doc-1"]
+        assert sorted(plain(d) for d in docs) == ["other", "second"]
+        assert [d["externalMetadata"]["doc_id"] for d in docs if plain(d) == "second"] == ["doc-1"]
 
 
 def test_upsert_with_identical_content_does_not_conflict_or_duplicate():
@@ -194,7 +206,7 @@ def test_retain_recovers_when_the_cached_dataset_vanished():
         sink.retain(BANK, "doc-1", "body")
         route.state.datasets.clear()
         sink.retain(BANK, "doc-1", "body v2")
-        assert [d["content"] for d in route.state.documents(cognee_sink.dataset_name(BANK))] == ["body v2"]
+        assert [plain(d) for d in route.state.documents(cognee_sink.dataset_name(BANK))] == ["body v2"]
 
 
 # Wire shape of add
@@ -233,7 +245,9 @@ def test_add_multipart_shape_full():
     assert json.loads(fields["labels"]) == ["alpha_beta"]
     [upload] = body["files"]
     assert upload["name"] == "data"
-    assert upload["content"] == "body text\nline 2\r\n"
+    assert upload["content"] == cognee_sink.upload_text("project-index:v1:abc", "body text\nline 2\r\n")
+    assert upload["content"].startswith("body text\nline 2\r\n\n\n<!-- personal-memory:doc:")
+    assert "project-index" not in upload["content"].split("<!--")[1]
     assert re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{8}\.md", upload["filename"])
     assert "project" not in upload["filename"] and "/" not in upload["filename"]
 
@@ -258,7 +272,7 @@ def test_content_that_looks_like_multipart_markup_survives():
     route = cognee_route()
     with serving(route) as stub:
         make(stub.url).retain(BANK, "d", nasty)
-        assert [d["content"] for d in route.state.documents(cognee_sink.dataset_name(BANK))] == [nasty]
+        assert [plain(d) for d in route.state.documents(cognee_sink.dataset_name(BANK))] == [nasty]
 
 
 def test_listing_tolerates_snake_case_and_missing_metadata():
@@ -288,7 +302,7 @@ def test_listing_pages_past_1000_items():
         stub.clear()
         sink.retain(BANK, "seed-0", "replaced")
         assert len(route.state.documents(name)) == 2499
-        assert [d["content"] for d in route.state.documents(name) if d["externalMetadata"]["doc_id"] == "seed-0"] == ["replaced"]
+        assert [plain(d) for d in route.state.documents(name) if d["externalMetadata"]["doc_id"] == "seed-0"] == ["replaced"]
         assert sum(1 for r in stub.requests if r["method"] == "DELETE") == 1
 
 
@@ -387,27 +401,212 @@ def test_api_key_is_sent_on_every_request(monkeypatch):
         assert not any("sekrit" in request["path"] for request in stub.requests)
 
 
-def test_api_key_never_appears_in_error_strings(monkeypatch):
+def test_api_key_never_appears_in_repr_or_error_messages(monkeypatch):
     monkeypatch.setenv("COGNEE_API_KEY", "sekrit-key-123")
     route = cognee_route()
     with serving(route) as stub:
         sink = make(stub.url)
+        assert "sekrit" not in repr(sink)
         # A server that echoes the credential back must not leak it through the error text.
         route.state.fail[("POST", "/api/v1/add")] = (401, {"detail": "bad key sekrit-key-123"})
-        with pytest.raises(sinks.SinkError) as caught:
+        with pytest.raises(cognee_sink.HttpError) as caught:
             sink.retain(BANK, "d", "x")
-        assert "sekrit" not in str(caught.value)
-        assert "sekrit" not in repr(caught.value)
         assert caught.value.status == 401
+        assert "sekrit" not in str(caught.value) and "sekrit" not in repr(caught.value)
+        assert "***" in str(caught.value)
+        del route.state.fail[("POST", "/api/v1/add")]
+        route.state.fail[("GET", "/api/v1/datasets")] = (500, {"detail": "boom"})
+        with pytest.raises(cognee_sink.HttpError) as caught:
+            sink.delete("other::bank", "d")
+        assert "sekrit" not in str(caught.value)
     with pytest.raises(OSError) as dead:
         make(closed_port_url()).prepare(BANK)
     assert "sekrit" not in str(dead.value)
-    assert "sekrit" not in repr(make(stub.url).__dict__.get("url"))
+
+
+# Redirects and malformed replies
+
+@contextmanager
+def raw_http(handler):
+    """A loopback HTTP server whose reply is `handler(method, path, headers) -> (status, headers, body_bytes)`."""
+    seen: list[tuple[str, str, dict]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def _handle(self) -> None:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
+            headers = {key.lower(): value for key, value in self.headers.items()}
+            seen.append((self.command, self.path, headers))
+            status, reply_headers, payload = handler(self.command, self.path, headers)
+            self.send_response(status)
+            for key, value in reply_headers.items():
+                self.send_header(key, value)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            self.close_connection = True
+
+        do_GET = do_POST = do_DELETE = _handle
+
+        def log_message(self, *_args) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", seen
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@contextmanager
+def garbage_listener():
+    """A TCP listener that answers every connection with bytes that are not HTTP, then closes."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(8)
+    stop = threading.Event()
+
+    def serve() -> None:
+        while not stop.is_set():
+            try:
+                connection, _ = listener.accept()
+            except OSError:
+                return
+            with connection:
+                connection.settimeout(1)
+                try:
+                    connection.recv(65536)
+                    connection.sendall(b"this is not http\r\n\r\n")
+                except OSError:
+                    pass
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{listener.getsockname()[1]}"
+    finally:
+        stop.set()
+        listener.close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_a_redirect_is_an_http_error_and_the_key_never_reaches_the_second_host(monkeypatch, method):
+    monkeypatch.setenv("COGNEE_API_KEY", "sekrit-key-123")
+    with raw_http(lambda *_: (200, {"Content-Type": "application/json"}, b"{}")) as (second_url, second_seen):
+        with raw_http(lambda *_: (302, {"Location": second_url + "/elsewhere"}, b"")) as (url, first_seen):
+            sink = make(url)
+            call = (lambda: sink.prepare(BANK)) if method == "POST" else (lambda: sink.delete("other::bank", "d"))
+            with pytest.raises(cognee_sink.HttpError) as caught:
+                call()
+            assert caught.value.status == 302 and "HTTP 302" in str(caught.value)
+            assert "sekrit" not in str(caught.value)
+            assert [m for m, _p, _h in first_seen] == [method]
+            assert first_seen[0][2].get("x-api-key") == "sekrit-key-123"
+    assert second_seen == []
+
+
+def test_health_is_false_on_a_redirect_and_never_follows_it(monkeypatch):
+    monkeypatch.setenv("COGNEE_API_KEY", "sekrit-key-123")
+    with raw_http(lambda *_: (200, {}, b"{}")) as (second_url, second_seen):
+        with raw_http(lambda *_: (301, {"Location": second_url + "/health"}, b"")) as (url, _seen):
+            assert make(url).health() is False
+    assert second_seen == []
+
+
+def test_non_http_reply_is_unreachable_and_never_leaks_an_exception():
+    with garbage_listener() as url:
+        sink = make(url)
+        assert sink.health() is False
+        for call in (lambda: sink.prepare(BANK), lambda: sink.retain(BANK, "d", "x"), lambda: sink.delete(BANK, "d"), lambda: sink.flush(BANK)):
+            with pytest.raises((sinks.SinkError, OSError)):
+                call()
+
+
+def test_truncated_reply_body_is_an_os_error():
+    def handler(method, path, headers):
+        return 200, {"Content-Type": "application/json", "Content-Length": "500"}, b'[{"id": '
+
+    with raw_http(handler) as (url, _seen):
+        with pytest.raises(OSError, match="IncompleteRead"):
+            make(url).delete(BANK, "d")
 
 
 # flush
 
-def test_flush_sends_one_cognify_per_dirty_bank_with_dataset_names():
+def cognified_datasets(route):
+    return [c["datasets"] for c in route.state.cognified]
+
+
+def test_flush_with_an_explicit_bank_always_requests_cognify_even_from_a_fresh_instance():
+    route = cognee_route()
+    with serving(route) as stub:
+        make(stub.url).retain(BANK, "d", "x")
+        fresh = make(stub.url)  # a new process: no in-memory dirty set, no cached dataset id
+        stub.clear()
+        fresh.flush(BANK)
+        assert generic(stub.requests) == [("GET", "/api/v1/datasets"), ("GET", "/api/v1/datasets/<id>/data"), ("POST", "/api/v1/cognify")]
+        assert cognified_datasets(route) == [[cognee_sink.dataset_name(BANK)]]
+        assert route.state.cognified[0] == {"datasets": [cognee_sink.dataset_name(BANK)], "runInBackground": True}
+        # Explicit flush is not skipped on a second call either: the caller (the indexer) decides.
+        fresh.flush(BANK)
+        assert len(route.state.cognified) == 2
+
+
+def test_flush_uses_the_cached_dataset_id_without_listing_datasets():
+    route = cognee_route()
+    with serving(route) as stub:
+        sink = make(stub.url)
+        sink.retain(BANK, "d", "x")
+        stub.clear()
+        sink.flush(BANK)
+        assert generic(stub.requests) == [("GET", "/api/v1/datasets/<id>/data"), ("POST", "/api/v1/cognify")]
+        assert next(r for r in stub.requests if "/data?" in r["path"])["path"].endswith("?limit=1&offset=0")
+
+
+def test_flush_on_an_unknown_dataset_sends_no_cognify_and_creates_nothing():
+    route = cognee_route()
+    with serving(route) as stub:
+        make(stub.url).flush("never::touched")
+        assert shape(stub.requests) == [("GET", "/api/v1/datasets")]
+        assert route.state.datasets == {} and route.state.cognified == []
+
+
+def test_flush_on_an_empty_dataset_sends_no_cognify():
+    route = cognee_route()
+    with serving(route) as stub:
+        sink = make(stub.url)
+        sink.retain(BANK, "d", "x")
+        sink.delete(BANK, "d")  # delete-only batch that emptied the bank
+        stub.clear()
+        sink.flush(BANK)
+        assert route.state.cognified == []
+        assert not any(r["path"] == "/api/v1/cognify" for r in stub.requests)
+        sink.flush()  # nothing left dirty either
+        assert route.state.cognified == []
+
+
+def test_flush_recovers_from_a_stale_cached_dataset_id():
+    route = cognee_route()
+    with serving(route) as stub:
+        sink = make(stub.url)
+        sink.retain(BANK, "d", "x")
+        route.state.datasets.clear()
+        sink.flush(BANK)  # dataset gone: nothing to process, no error
+        assert route.state.cognified == []
+        sink.retain(BANK, "d", "y")
+        route.state.datasets.clear()
+        route.state.seed(cognee_sink.dataset_name(BANK), 1)  # same name, new id
+        sink.flush(BANK)
+        assert len(route.state.cognified) == 1
+
+
+def test_flush_none_flushes_only_dirty_banks():
     route = cognee_route()
     with serving(route) as stub:
         sink = make(stub.url)
@@ -416,34 +615,25 @@ def test_flush_sends_one_cognify_per_dirty_bank_with_dataset_names():
         sink.retain("bank::two", "d1", "z")
         assert route.state.cognified == []
         sink.flush()
-        assert sorted(c["datasets"][0] for c in route.state.cognified) == sorted(cognee_sink.dataset_name(b) for b in ("bank::one", "bank::two"))
-        assert all(len(c["datasets"]) == 1 and c["runInBackground"] is True and set(c) == {"datasets", "runInBackground"} for c in route.state.cognified)
+        assert sorted(sum(cognified_datasets(route), [])) == sorted(cognee_sink.dataset_name(b) for b in ("bank::one", "bank::two"))
+        count = len(route.state.cognified)
+        stub.clear()
+        sink.flush()
+        assert stub.requests == [] and len(route.state.cognified) == count
+        make(stub.url).flush()  # a fresh instance has nothing dirty
+        assert len(route.state.cognified) == count
 
 
-def test_flush_a_single_bank_leaves_the_other_dirty():
+def test_flush_none_leaves_other_banks_dirty_after_a_single_bank_flush():
     route = cognee_route()
     with serving(route) as stub:
         sink = make(stub.url)
         sink.retain("bank::one", "d1", "x")
         sink.retain("bank::two", "d1", "z")
         sink.flush("bank::one")
-        assert [c["datasets"] for c in route.state.cognified] == [[cognee_sink.dataset_name("bank::one")]]
+        assert cognified_datasets(route) == [[cognee_sink.dataset_name("bank::one")]]
         sink.flush()
-        assert [c["datasets"] for c in route.state.cognified][1:] == [[cognee_sink.dataset_name("bank::two")]]
-
-
-def test_flush_on_a_clean_bank_issues_no_request():
-    with serving(cognee_route()) as stub:
-        sink = make(stub.url)
-        sink.flush("never::touched")
-        sink.flush()
-        assert stub.requests == []
-        sink.retain(BANK, "d", "x")
-        sink.flush(BANK)
-        stub.clear()
-        sink.flush(BANK)
-        sink.flush()
-        assert stub.requests == []
+        assert cognified_datasets(route)[1:] == [[cognee_sink.dataset_name("bank::two")]]
 
 
 def test_flush_clears_the_dirty_flag_only_on_success():
@@ -453,14 +643,15 @@ def test_flush_clears_the_dirty_flag_only_on_success():
         sink.retain(BANK, "d", "x")
         route.state.fail[("POST", "/api/v1/cognify")] = (500, {"detail": "llm key missing"})
         with pytest.raises(sinks.SinkError) as caught:
-            sink.flush(BANK)
+            sink.flush()
         assert caught.value.status == 500
         assert route.state.cognified == []
         del route.state.fail[("POST", "/api/v1/cognify")]
-        sink.flush(BANK)
+        sink.flush()  # still dirty after the failure, so the retry goes out
         assert len(route.state.cognified) == 1
-        sink.flush(BANK)
-        assert len(route.state.cognified) == 1
+        stub.clear()
+        sink.flush()
+        assert stub.requests == []
 
 
 def test_delete_marks_the_bank_dirty_only_when_something_was_removed():
@@ -468,6 +659,7 @@ def test_delete_marks_the_bank_dirty_only_when_something_was_removed():
     with serving(route) as stub:
         sink = make(stub.url)
         sink.retain(BANK, "d", "x")
+        sink.retain(BANK, "e", "y")
         sink.flush()
         assert len(route.state.cognified) == 1
         sink.delete(BANK, "absent")
@@ -487,20 +679,58 @@ def test_flush_sink_helper_calls_the_cognee_flush():
         assert len(route.state.cognified) == 1
 
 
-# Indexer CLI
+# Identical content in two documents
 
-def test_cli_writes_documents_into_datasets_for_both_banks(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    repo, vault = build_fixture(tmp_path)
-    state = tmp_path / "state" / "state.json"
+def test_identical_content_in_two_documents_uploads_distinct_bytes_and_keeps_both():
     route = cognee_route()
     with serving(route) as stub:
-        env = {"MEMORY_SINK": "cognee", "MEMORY_API_URL": stub.url}
-        result = run_script(SCRIPT, scenario_args(repo, vault, state), env, home)
-        assert result.returncode == 0, result.stderr
+        sink = make(stub.url)
+        sink.retain(BANK, "doc-a", "same words")
+        sink.retain(BANK, "doc-b", "same words")
+        uploads = [r["body"]["files"][0]["content"] for r in stub.requests if r["path"] == "/api/v1/add"]
+        assert len(set(uploads)) == 2
+        assert all(u.startswith("same words\n\n<!-- personal-memory:doc:") for u in uploads)
+        assert not any("doc-a" in u or "doc-b" in u for u in uploads)
+        docs = route.state.documents(cognee_sink.dataset_name(BANK))
+        assert sorted(d["externalMetadata"]["doc_id"] for d in docs) == ["doc-a", "doc-b"]
+        sink.delete(BANK, "doc-a")
+        assert [d["externalMetadata"]["doc_id"] for d in route.state.documents(cognee_sink.dataset_name(BANK))] == ["doc-b"]
+
+
+def test_stub_deduplicates_identical_bytes_like_cognee():
+    # Without the footer the second document would be swallowed by the first row, metadata and all.
+    with serving(cognee_route()) as stub:
+        sink = make(stub.url)
+        name = cognee_sink.dataset_name(BANK)
+        for filename, doc_id in (("a.md", "doc-a"), ("b.md", "doc-b")):
+            fields = {"datasetName": name, "external_metadata": json.dumps([{"doc_id": doc_id}])}
+            body, content_type = cognee_sink.multipart(fields, filename, b"same bytes")
+            sink._request("POST", "/api/v1/add", raw=body, content_type=content_type)
+        docs = stub.route.state.documents(name)
+        assert [d["externalMetadata"]["doc_id"] for d in docs] == ["doc-a"]
+
+
+# Indexer CLI
+
+BANKS = ("coding-agent::proj", "obsidian::my-vault")
+
+
+def cli_run(tmp_path, stub_url, repo, vault):
+    env = {"MEMORY_SINK": "cognee", "MEMORY_API_URL": stub_url}
+    result = run_script(SCRIPT, scenario_args(repo, vault, tmp_path / "state" / "state.json"), env, tmp_path / "home")
+    assert result.returncode == 0, result.stderr
+    return result
+
+
+def test_cli_writes_documents_and_flushes_once_per_bank_per_change(tmp_path):
+    (tmp_path / "home").mkdir()
+    repo, vault = build_fixture(tmp_path)
+    route = cognee_route()
+    expected = sorted(cognee_sink.dataset_name(bank) for bank in BANKS)
+    with serving(route) as stub:
+        cli_run(tmp_path, stub.url, repo, vault)
         names = {d["name"] for d in route.state.datasets.values()}
-        for bank in ("coding-agent::proj", "obsidian::my-vault"):
+        for bank in BANKS:
             assert cognee_sink.dataset_name(bank) in names, (bank, names)
             documents = route.state.documents(cognee_sink.dataset_name(bank))
             assert documents, bank
@@ -508,6 +738,33 @@ def test_cli_writes_documents_into_datasets_for_both_banks(tmp_path):
                 assert document["externalMetadata"]["bank"] == bank
                 assert document["externalMetadata"]["doc_id"]
                 assert re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{8}\.md", document["name"])
-        # Whether the CLI also issues cognify after each bank's batch is covered by test_flush.py; this test
-        # only asserts the stored documents.
-        assert not any(r["path"] == "/api/v1/datasets/status" for r in stub.requests)
+        # First apply run: exactly one cognify per bank, addressed by dataset name.
+        assert sorted(sum(cognified_datasets(route), [])) == expected
+        assert all(len(datasets) == 1 for datasets in cognified_datasets(route))
+
+        # A second run with nothing changed sends no cognify.
+        route.state.cognified.clear()
+        cli_run(tmp_path, stub.url, repo, vault)
+        assert route.state.cognified == []
+
+        # After a change, one cognify per bank again.
+        mutate_fixture(repo, vault)
+        cli_run(tmp_path, stub.url, repo, vault)
+        assert sorted(sum(cognified_datasets(route), [])) == expected
+        assert all(len(datasets) == 1 for datasets in cognified_datasets(route))
+
+
+def test_cli_delete_only_batch_that_empties_a_bank_sends_no_failing_cognify(tmp_path):
+    (tmp_path / "home").mkdir()
+    repo, vault = build_fixture(tmp_path)
+    route = cognee_route()
+    with serving(route) as stub:
+        cli_run(tmp_path, stub.url, repo, vault)
+        route.state.cognified.clear()
+        (vault / "plan.md").unlink()  # the vault bank's only document goes away
+        cli_run(tmp_path, stub.url, repo, vault)  # exit 0 even though cognify would 400 on an empty dataset
+        assert route.state.documents(cognee_sink.dataset_name(BANKS[1])) == []
+        assert route.state.cognified == []
+        # The marker was cleared, so another run stays quiet.
+        cli_run(tmp_path, stub.url, repo, vault)
+        assert route.state.cognified == []

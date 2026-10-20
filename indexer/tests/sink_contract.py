@@ -32,10 +32,8 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 
 import pytest
-
 import sinks
 from stub_server import RecordingStub, closed_port_url
-
 
 AWKWARD_BANK = "coding-agent::proj with space/and slash"
 

@@ -8,12 +8,15 @@
   the stub reads them from the `RecordingStub` bound by `mem0_serving` (a wrapper around `serving`); with no key
   configured there is nothing to check and plain `serving` works too.
 - `POST /memories` with `{"messages", "user_id", "agent_id", "run_id", "metadata", "infer"}`: 400 when no identifier
-  is given or `messages` is empty, 400 when `metadata` uses a key the real payload reserves. With `infer` exactly
-  false, each message becomes one memory whose text is stored verbatim. With `infer` true or missing the stub
+  is given. Like the server's `_validate_and_trim_entity_id`, an id is trimmed and then a 400 when it is empty or
+  still contains whitespace (user_id, agent_id and run_id, on writes and on list filters alike). Caller metadata is
+  treated as the real payload treats it: the keys mem0 owns or overwrites (`RESERVED_KEYS`, identity keys included)
+  are silently dropped, never an error, so a sink that forgets to rename them loses data here too. With `infer`
+  exactly false, each message becomes one memory whose text is stored verbatim. With `infer` true or missing the stub
   stores a rewritten text, as the real server's LLM would, so a sink that forgets `infer: false` is caught. Memory
   ids are server-generated UUIDs; the memories are keyed by (user_id, run_id, id).
 - `GET /memories?user_id=&run_id=&agent_id=&top_k=`: `{"results": [...]}` of the memories matching every given
-  filter, at most `top_k` of them (default 20, like a client that forgot the parameter; above 1000 is a 422). With
+  (trimmed) filter, at most `top_k` of them (default 20, like a client that forgot the parameter; above 1000 is a 422). With
   no identifier it answers 403 (admin only). Each result carries `id`, `memory`, `user_id`, `agent_id`, `run_id`,
   `metadata`.
 - `DELETE /memories/{id}`: 200 `{"message": "Memory deleted successfully"}`, or 404 for an unknown id.
@@ -28,10 +31,22 @@ from contextlib import contextmanager
 
 from stub_server import RecordingStub, serving
 
-RESERVED_KEYS = {"data", "user_id", "agent_id", "run_id", "hash", "created_at", "updated_at", "expiration_date"}
+RESERVED_KEYS = {"data", "user_id", "agent_id", "run_id", "actor_id", "hash", "created_at", "updated_at", "expiration_date", "role", "text_lemmatized", "attributed_to"}
 DEFAULT_TOP_K = 20
 MAX_TOP_K = 1000
 MEMORY_PATH = re.compile(r"^/memories/([^/?]+)$")
+
+
+def trim_entity_id(value, name: str) -> tuple[str | None, str | None]:
+    """The server's `_validate_and_trim_entity_id`: (trimmed id or None, error message or None)."""
+    if value is None:
+        return None, None
+    trimmed = str(value).strip()
+    if trimmed == "":
+        return None, f"Invalid {name}: cannot be empty or whitespace-only. Provide a valid identifier."
+    if any(char.isspace() for char in trimmed):
+        return None, f"Invalid {name}: cannot contain whitespace. Provide a valid identifier without spaces."
+    return trimmed, None
 
 
 class Mem0Stub:
@@ -54,7 +69,9 @@ class Mem0Stub:
         if self.api_key is None or path.split("?", 1)[0] in {"/docs", "/openapi.json"}:
             return True
         assert self.recording is not None, "use mem0_serving(route) so the stub can read request headers"
-        return self.recording.headers[-1].get("x-api-key") == self.api_key
+        with self.recording._lock:  # RecordingStub appends this request's headers under the same lock
+            sent = self.recording.headers[-1].get("x-api-key")
+        return sent == self.api_key
 
     def __call__(self, method: str, path: str, body):
         if method == "GET" and path == "/docs":
@@ -80,26 +97,27 @@ class Mem0Stub:
             return 422, {"detail": "messages required"}
         if not any(body.get(key) for key in ("user_id", "agent_id", "run_id")):
             return 400, {"detail": "At least one identifier (user_id, agent_id, run_id) is required."}
-        metadata = body.get("metadata") or {}
-        if reserved := sorted(RESERVED_KEYS & set(metadata)):
-            return 400, {"detail": f"metadata uses reserved keys {reserved}"}
+        ids = {}
+        for key in ("user_id", "agent_id", "run_id"):
+            ids[key], problem = trim_entity_id(body.get(key), key)
+            if problem:
+                return 400, {"detail": problem}
+        metadata = {key: value for key, value in (body.get("metadata") or {}).items() if key not in RESERVED_KEYS}
         results = []
         for message in body["messages"]:
             text = message["content"] if body.get("infer") is False else "inferred: " + message["content"][:20]
             memory_id = str(uuid.uuid4())
-            self.memories[memory_id] = {
-                "id": memory_id,
-                "memory": text,
-                "user_id": body.get("user_id"),
-                "agent_id": body.get("agent_id"),
-                "run_id": body.get("run_id"),
-                "metadata": dict(metadata),
-            }
+            self.memories[memory_id] = {"id": memory_id, "memory": text, **ids, "metadata": dict(metadata)}
             results.append({"id": memory_id, "memory": text, "event": "ADD"})
         return 200, {"results": results}
 
     def _list(self, query: dict[str, list[str]]):
-        filters = {key: query[key][0] for key in ("user_id", "run_id", "agent_id") if query.get(key) and query[key][0]}
+        filters = {}
+        for key in ("user_id", "run_id", "agent_id"):
+            if query.get(key) and query[key][0]:
+                filters[key], problem = trim_entity_id(query[key][0], key)
+                if problem:
+                    return 400, {"detail": problem}
         if not filters:
             return 403, {"detail": "Admin role required to list all memories."}
         top_k = int(query["top_k"][0]) if query.get("top_k") else DEFAULT_TOP_K

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from stub_server import RecordingStub, serving
 
-
 DOC_ID = re.compile(r"(?:project-index|obsidian-index)(?::|%3A)v1(?::|%3A)[0-9a-f]{32}")
 BANK_CONFIG = re.compile(r"^/v1/default/banks/([^/]+)/config$")
 BANK = re.compile(r"^/v1/default/banks/([^/]+)$")

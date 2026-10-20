@@ -2,14 +2,13 @@
 
 import importlib.machinery
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
 import pytest
-
 import sinks
 from hindsight_stub import build_fixture, mutate_fixture
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "bin" / "hindsight-project-index"
@@ -163,3 +162,127 @@ def test_flush_error_fails_that_source_like_a_retain_error(indexer, monkeypatch,
     assert code == 1
     err = capsys.readouterr().err
     assert "SinkError: cognify failed" in err and "2 source(s) failed" in err
+
+
+# Pending-flush marker: a failed or interrupted flush is retried by the next process.
+
+
+class Scripted(FlushingSink):
+    """Shared `plan` drives failures across runs; every run builds a fresh instance, like a fresh process."""
+
+    def __init__(self, plan):
+        super().__init__()
+        self.plan = plan
+
+    def retain(self, bank, doc_id, content, **kwargs):
+        if self.plan.get("fail_retain_bank") == bank:
+            retains = [call for call in self.calls if call[0] == "retain" and call[1] == bank]
+            if retains:
+                self.plan.pop("fail_retain_bank")
+                raise sinks.SinkError("retain failed", status=500)
+        super().retain(bank, doc_id, content, **kwargs)
+
+    def flush(self, bank):
+        if bank in self.plan.get("fail_flush_banks", set()):
+            self.plan["fail_flush_banks"].discard(bank)
+            raise sinks.SinkError("cognify failed", status=500)
+        super().flush(bank)
+
+
+def load_state(tmp_path):
+    return json.loads((tmp_path / "state.json").read_text())
+
+
+def pending(indexer, tmp_path):
+    return load_state(tmp_path).get(indexer.PENDING_FLUSH_KEY)
+
+
+def test_failed_flush_is_retried_by_the_next_apply_even_when_nothing_changed(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    plan = {"fail_flush_banks": set(BANKS)}
+    run = lambda: run_main(indexer, monkeypatch, tmp_path, lambda url: Scripted(plan), source_argv(repo, vault))
+
+    code, (first,) = run()
+    assert code == 1
+    assert flushes(first) == []
+    assert pending(indexer, tmp_path) == BANKS
+
+    code, (second,) = run()
+    assert code == 0
+    assert [call[0] for call in second.calls] == ["flush", "flush"]  # no prepare, no retain: nothing changed
+    assert sorted(flushes(second)) == [("flush", bank) for bank in BANKS]
+    assert pending(indexer, tmp_path) is None
+
+    code, (third,) = run()
+    assert code == 0
+    assert third.calls == []
+
+
+def test_retain_failure_keeps_the_marker_and_the_next_run_flushes(indexer, monkeypatch, tmp_path, capsys):
+    repo, vault = build_fixture(tmp_path)
+    plan = {"fail_retain_bank": "coding-agent::proj"}
+    run = lambda: run_main(indexer, monkeypatch, tmp_path, lambda url: Scripted(plan), source_argv(repo, vault))
+
+    code, (first,) = run()
+    assert code == 1
+    assert "retain failed" in capsys.readouterr().err
+    assert ("flush", "coding-agent::proj") not in first.calls
+    assert ("flush", "obsidian::my-vault") in first.calls
+    assert pending(indexer, tmp_path) == ["coding-agent::proj"]
+
+    code, (second,) = run()
+    assert code == 0
+    assert [call[0] for call in second.calls if call[1] == "coding-agent::proj"][-1] == "flush"
+    assert len(flushes(second)) == 1
+    assert pending(indexer, tmp_path) is None
+
+
+def test_dry_run_neither_flushes_nor_touches_the_marker(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    plan = {"fail_flush_banks": set(BANKS)}
+    run_main(indexer, monkeypatch, tmp_path, lambda url: Scripted(plan), source_argv(repo, vault))
+    before = (tmp_path / "state.json").read_bytes()
+    code, built = run_main(indexer, monkeypatch, tmp_path, lambda url: Scripted(plan), source_argv(repo, vault, apply=False))
+    assert code == 0
+    assert built == []
+    assert (tmp_path / "state.json").read_bytes() == before
+
+
+def test_dry_run_on_a_fresh_state_writes_no_marker(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    run_main(indexer, monkeypatch, tmp_path, FlushingSink, source_argv(repo, vault, apply=False))
+    assert not (tmp_path / "state.json").exists()
+
+
+def test_sink_without_flush_leaves_the_state_free_of_any_marker(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    code, _ = run_main(indexer, monkeypatch, tmp_path, PlainSink, source_argv(repo, vault))
+    assert code == 0
+    state = load_state(tmp_path)
+    assert indexer.PENDING_FLUSH_KEY not in state
+    assert set(state) == {str(repo), str(vault), indexer.kinds_key(repo), indexer.kinds_key(vault)}
+
+
+def test_successful_flush_leaves_the_state_free_of_the_marker(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    code, _ = run_main(indexer, monkeypatch, tmp_path, FlushingSink, source_argv(repo, vault))
+    assert code == 0
+    assert indexer.PENDING_FLUSH_KEY not in load_state(tmp_path)
+
+
+def test_marker_is_scoped_to_the_banks_a_run_handles(indexer, monkeypatch, tmp_path):
+    repo, vault = build_fixture(tmp_path)
+    plan = {"fail_flush_banks": set(BANKS)}
+    factory = lambda url: Scripted(plan)
+    run_main(indexer, monkeypatch, tmp_path, factory, source_argv(repo, vault))
+    assert pending(indexer, tmp_path) == BANKS
+
+    code, (repo_only,) = run_main(indexer, monkeypatch, tmp_path, factory, ["--apply", "--repo", str(repo)])
+    assert code == 0
+    assert flushes(repo_only) == [("flush", "coding-agent::proj")]
+    assert pending(indexer, tmp_path) == ["obsidian::my-vault"]
+
+    code, (rest,) = run_main(indexer, monkeypatch, tmp_path, factory, source_argv(repo, vault))
+    assert code == 0
+    assert flushes(rest) == [("flush", "obsidian::my-vault")]
+    assert pending(indexer, tmp_path) is None

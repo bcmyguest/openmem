@@ -192,12 +192,12 @@ Filled in when the wave finishes.
 
 | Slice | Worker | Reviewer | Files touched |
 | --- | --- | --- | --- |
-| 0 | pending | pending | |
-| M1 | pending | pending | |
-| C1 | pending | pending | |
-| M2 | pending | pending | |
-| C2 | pending | pending | |
-| M3 | pending | pending | |
-| C3 | pending | pending | |
-| I | pending | n/a | |
-| F | n/a | pending | |
+| 0 | done (`6d68084`) | done | flush hook, manifest `indexer.sink`, docs |
+| M1 | done (`7dd98d2`) | done | `indexer/sinks/mem0.py`, stubs/tests |
+| C1 | done (`ecc5bb2`) | done | `indexer/sinks/cognee.py`, stubs/tests |
+| M2 | done (integrator) | pending | `providers/mem0/compose.yaml`, `lib/stack-env.mjs` |
+| C2 | done (integrator) | pending | `providers/cognee/compose.yaml`, `lib/stack-env.mjs` |
+| M3 | done (integrator) | pending | `providers/mem0/wizard.mjs`, `lib/*`, wizard tests |
+| C3 | done (integrator) | pending | `providers/cognee/wizard.mjs`, `lib/*`, wizard tests |
+| I | in progress | n/a | manifests `experimental`, sink hardening, docs |
+| F | pending | n/a | |
