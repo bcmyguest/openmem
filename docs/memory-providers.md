@@ -143,7 +143,7 @@ first step); default action is full **configure and start**.
 
 ### Phase A — Registry and docs (this commitset)
 
-- Manifests for `hindsight` (supported) and `mem0` (planned).
+- Manifests for `hindsight` (supported), `mem0` and `cognee` (`experimental` after Wave 2).
 - Wizard reads manifest for health/smoke URLs; behavior unchanged for Hindsight.
 - Document extension points (this file).
 
