@@ -13,10 +13,11 @@ import { posix } from 'node:path';
 export const PAGES = [
   {
     slug: 'getting-started',
-    kind: 'hand',
+    kind: 'doc',
+    source: 'docs/quickstart.md',
     group: 'Start',
-    title: 'Getting started',
-    description: 'Prerequisites and install via npx (or a git checkout), plus MCP install and provider switch.',
+    title: 'Quickstart',
+    description: 'Run the wizard once (npx or git checkout), verify health, optional MCP install.',
   },
   {
     slug: 'npx-install',

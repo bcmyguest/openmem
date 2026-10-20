@@ -1,100 +1,88 @@
 ---
-title: "Getting started"
-description: "Install personal-memory, run the setup wizard once, then use day-2 CLI tasks."
+title: "Quickstart"
+description: "Run the wizard once (npx or git checkout), verify health, optional MCP install."
 ---
 
-personal-memory wires coding agents to a **local memory provider** (Docker Compose + indexer). You run a wizard once; later you use `up`, `down`, and `doctor`.
+Get from zero to a running memory stack in one wizard run. Cloning the repo is optional — **`npx personal-memory`** is the usual path.
 
-**Provider support today:** see [Provider status](../provider-status/). Hindsight is supported; mem0 and Cognee are experimental.
+## Before you start
 
-## Requirements
-
-| Requirement | Notes |
+| Requirement | Why |
 | --- | --- |
-| Docker + Compose v2 | Your user must run `docker` without sudo |
-| Node.js ≥ 20.12 | Wizard UI and CLI (`package.json` engines) |
-| Model access (Hindsight) | lemond, Ollama, or any OpenAI-compatible server behind LiteLLM — configured in the wizard |
-| curl, git | Checked in wizard preflight |
+| Docker + Compose v2 | Runs the stack; your user must run `docker` without sudo |
+| Node.js ≥ 20.12 | CLI and setup wizard |
+| LLM for Hindsight (default provider) | lemond, Ollama, or OpenAI-compatible — wizard wires LiteLLM |
+| git, curl | Wizard preflight |
 
-No cloud account unless you point a model route at one.
+If you are not using Hindsight, pick a provider in the wizard or run `npx personal-memory providers` first ([memory providers](../memory-providers/)).
 
-## Install and first run
+## 1. Run the wizard
 
-| Path | Commands |
-| --- | --- |
-| **npm (recommended)** | `npx personal-memory` |
-| **Git checkout** | `git clone https://github.com/bcmyguest/personal-memory.git && cd personal-memory && npm install && npx . setup` |
-
-Useful first-run variants:
+**From npm (recommended):**
 
 ```sh
-npx personal-memory setup --dry-run    # plan only
-npx personal-memory configure --yes    # non-interactive defaults + start
-npx personal-memory doctor               # validate without smoke
+npx personal-memory
 ```
 
-![Setup wizard dry-run](/personal-memory/setup-demo.gif)
+**From a git checkout** (repo directory is the stack root):
 
-After a successful configure, the Hindsight API is on `http://127.0.0.1:8888` by default (ports stored in stack `.env`). mem0 and Cognee use the ports their manifests define.
+```sh
+git clone https://github.com/bcmyguest/personal-memory.git
+cd personal-memory
+npm install
+npx . setup
+```
 
-**Checkout vs npx:** a git clone uses the repo directory as the stack root. `npx personal-memory` copies compose files to `~/.local/share/personal-memory/stack` (overridable with `PM_STACK_ROOT`). See [Install with npx](../npx-install/).
+The wizard asks for a memory provider, provider settings, what to index, then starts Docker and runs a smoke test.
 
-## What the wizard does
+Useful variants:
 
-Short version: pick a provider → provider-specific settings → write secrets and index config → start Docker → smoke test → optional coding-agent install.
+```sh
+npx personal-memory setup --dry-run     # plan only, no writes
+npx personal-memory configure --yes       # defaults + start, no prompts
+```
 
-Step-by-step tables, flags, and file paths: [Setup wizard](../setup-wizard/). Stack layout for npx: [Install with npx](../npx-install/#stack-root).
+## 2. Confirm it is up
 
-## Day-2 CLI
+```sh
+npx personal-memory doctor
+curl -fsS http://127.0.0.1:8888/health   # Hindsight default; see wizard output for other providers
+```
+
+## 3. Wire your coding agent (optional)
+
+```sh
+npx personal-memory install-mcp --yes
+```
+
+Accept the wizard’s coding-agent step on first setup, or install the Hindsight plugin when prompted. Restart Cursor Agent (or your agent) after MCP changes.
+
+## Day-2
 
 | Command | Purpose |
 | --- | --- |
-| `npx personal-memory up` | Start stack from saved config |
-| `npx personal-memory down` | Stop stack (keeps DB volume) |
-| `npx personal-memory doctor` | Config checks (no smoke) |
-| `npx personal-memory install-mcp --yes` | Merge memory MCP entries into `~/.cursor/mcp.json` |
+| `npx personal-memory up` | Start stack |
+| `npx personal-memory down` | Stop stack (keeps data volume) |
 | `npx personal-memory switch <id> --yes` | Change provider (no memory migration) |
-| `npx personal-memory providers` | List shipped providers |
 
-In a checkout, prefix with `npx .` instead of `npx personal-memory`.
+In a checkout, use `npx .` instead of `npx personal-memory`.
 
-### install-mcp flags
+## Where files live
 
-| Flag | Effect |
+| Install | Stack root (compose, `.env`) |
 | --- | --- |
-| `--yes` | Write without prompting |
-| `--provider-only` | Provider MCP only |
-| `--notebooklm-only` | NotebookLM MCP only |
-| `--dry-run` | Print planned merge |
+| `npx personal-memory` | `~/.local/share/personal-memory/stack` (override: `PM_STACK_ROOT`) |
+| Git checkout | The clone directory |
 
-Restart Cursor Agent after MCP or provider changes.
+Secrets and index config: `~/.config/hindsight/` (and optional `~/.config/personal-memory/config.toml`).
 
-### switch flags
+## Next
 
-| Flag | Effect |
-| --- | --- |
-| `--no-stack` | Skip compose restart |
-| `--no-mcp` | Skip provider MCP refresh |
-| `--dry-run` | Plan only |
+- [Setup wizard](../setup-wizard/) — phases, flags, file paths
+- [Install with npx](../npx-install/) — upgrades, troubleshooting
+- [Configuration file](../personal-memory-config/) — declarative `config.toml`
 
-## Optional: NotebookLM for agents
 
-When sync is enabled, agents can query `notebooklm::*` banks via MCP (`notebooklm_list_banks`, `notebooklm_search`). Prefer keyword search; LLM recall can be slow on CPU.
+---
 
-See [NotebookLM](../notebooklm/).
-
-## Stop and reset
-
-```sh
-npx personal-memory down
-docker compose down -v   # from stack root: delete memory database volume
-```
-
-## Next reads
-
-| Topic | Page |
-| --- | --- |
-| npx stack root, upgrades, troubleshooting | [Install with npx](../npx-install/) |
-| Wizard phases and flags | [Setup wizard](../setup-wizard/) |
-| `config.toml` | [Configuration file](../personal-memory-config/) |
-| Provider architecture | [Pluggable memory providers](../memory-providers/) |
+This page is generated from [`docs/quickstart.md`](https://github.com/bcmyguest/personal-memory/blob/main/docs/quickstart.md) in the repository.
