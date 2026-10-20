@@ -45,6 +45,7 @@
     "LICENSE",
     "docs/",
     "!docs/ROADMAP*",
+    "!docs/WAVE2*",
     "!**/__pycache__",
     "!**/*.pyc",
     "!**/tests",

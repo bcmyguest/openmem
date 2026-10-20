@@ -9,7 +9,7 @@
     "hostPortEnv": "NOHOOKS_PORT",
     "defaultHostPort": 18765
   },
-  "indexer": { "apiUrlEnv": "NOHOOKS_URL", "sinkDriver": "nohooks-rest" },
+  "indexer": { "apiUrlEnv": "NOHOOKS_URL", "sink": "nohooks", "sinkDriver": "nohooks-rest" },
   "codingAgent": { "pluginPackage": null, "configTemplate": null },
   "wizard": {
     "smokeBank": "wizard-smoke",

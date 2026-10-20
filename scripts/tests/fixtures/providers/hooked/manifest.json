@@ -12,7 +12,7 @@
     "files": ["fixture-fragment.yaml"],
     "logServices": ["memory"]
   },
-  "indexer": { "apiUrlEnv": "HOOKED_URL", "sinkDriver": "hooked-rest" },
+  "indexer": { "apiUrlEnv": "HOOKED_URL", "sink": "hooked", "sinkDriver": "hooked-rest" },
   "codingAgent": { "pluginPackage": null, "configTemplate": null },
   "wizardHooks": { "module": "wizard.mjs" },
   "wizard": {

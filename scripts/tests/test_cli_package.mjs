@@ -397,7 +397,11 @@ check("wizard entry refuses to run inside the npm package dir without PM_STACK_R
 
 const cfg = cli(bin, ["configure", "--dry-run", "--yes"], env);
 check("configure --dry-run --yes exits 0", cfg.status === 0, (cfg.stdout + cfg.stderr).slice(-1500));
-check("configure --dry-run --yes plans a compose up in project pm-test-w4", /docker compose -p pm-test-w4 up -d/.test(cfg.stdout + cfg.stderr), (cfg.stdout + cfg.stderr).slice(-800));
+check(
+  "configure --dry-run --yes plans a compose up in project pm-test-w4",
+  /docker compose -p pm-test-w4 --profile hindsight up -d/.test(cfg.stdout + cfg.stderr),
+  (cfg.stdout + cfg.stderr).slice(-800),
+);
 check("stack root materialized (compose, build contexts, templates, manifest)", ["compose.yaml", "compose.bench.yaml", "indexer/Dockerfile", "indexer/watch.py", "bin/hindsight-project-index", "sync/Dockerfile", "config/index.yml", "config/machine.env.example", MANIFEST_NAME].every((f) => fs.existsSync(path.join(stackRoot, f))));
 check("stack bin/ keeps the executable bit", (fs.statSync(path.join(stackRoot, "bin/hindsight-project-index")).mode & 0o111) !== 0);
 check("stack root has no code that must stay in the package", !fs.existsSync(path.join(stackRoot, "wizard")) && !fs.existsSync(path.join(stackRoot, "scripts")) && !fs.existsSync(path.join(stackRoot, "providers/hindsight/manifest.json")));

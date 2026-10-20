@@ -27,6 +27,13 @@ Errors. HTTP error replies raise `SinkError` (or a subclass); `SinkError.status`
 that cannot be reached raises `SinkError` or `OSError` (urllib's URLError is an OSError). `delete` of a document
 that is already gone is NOT an error. `health()` never raises.
 
+Optional `flush(bank: str) -> None`. A sink whose provider ingests asynchronously (for example Cognee, where
+cognify builds the graph after add) may define `flush`. The indexer calls it once per bank, after a batch of
+retains and deletes for that bank that changed at least one document, and never on a dry run or when nothing
+changed. It is NOT part of the `Sink` protocol (so sinks without it still satisfy `isinstance`); callers go
+through `flush_sink`, which does nothing for a sink that has no callable `flush`. A flush error is handled like
+a retain error: it raises `SinkError` (or `OSError`) and fails that source.
+
 URL. `get_sink(name, url=...)` passes the API base URL; the CLI resolves it from `--url`, then `HINDSIGHT_URL`
 for the hindsight sink, or `MEMORY_API_URL` for every other sink. A sink reads any credentials from its own env
 vars inside `create`, never from the document path.
@@ -100,6 +107,13 @@ class Sink(Protocol):
     def delete(self, bank: str, doc_id: str) -> None:
         """Remove a document. A document that does not exist is not an error."""
         ...
+
+
+def flush_sink(sink: Any, bank: str) -> None:
+    """Call the optional `sink.flush(bank)` when the sink defines it; otherwise do nothing."""
+    flush = getattr(sink, "flush", None)
+    if callable(flush):
+        flush(bank)
 
 
 _registry: dict[str, Callable[..., Sink]] = {}

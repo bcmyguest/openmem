@@ -73,9 +73,54 @@ provider needs them.
 
 - **`status`**: `supported` | `experimental` | `planned`
 - **`compose`**: which services belong to this provider, health check, default host port env var
-- **`indexer`**: env var for API base URL, sink driver id (for future Python dispatch)
+- **`indexer`**: env var for API base URL, `sink`, and `sinkDriver` (see the table below)
 - **`codingAgent`**: optional npx package and config template path
 - **`wizard`**: smoke test bank name and HTTP paths (templates may include `{bank}`)
+
+| `indexer` field | Meaning | Required |
+| --- | --- | --- |
+| `apiUrlEnv` | Env var that holds the provider's API base URL for the wizard | Per provider |
+| `sink` | The `MEMORY_SINK` value, which equals the `indexer/sinks/<sink>.py` module name. Must match `^[a-z][a-z0-9_]*$` (the same rule as `indexer/sinks/__init__.py`). | `supported` and `experimental`; optional but validated for `planned` |
+| `sinkDriver` | Human-readable wire-dialect label (for example `hindsight-rest-v1`). It names no module and drives no dispatch. | `supported` and `experimental` |
+
+`scripts/tests/test_provider_manifests.mjs` checks that every `supported` or `experimental` manifest
+with an `indexer.sink` has a matching `indexer/sinks/<sink>.py`.
+
+## Selecting a sink
+
+The indexer picks its provider with `--sink NAME`, falling back to the `MEMORY_SINK` environment
+variable, then `hindsight`. Compose fragments for alternate providers set both `MEMORY_SINK` and
+`MEMORY_API_URL` on the `indexer` service from stack `.env` values.
+
+| Variable | Used by | Meaning |
+| --- | --- | --- |
+| `MEMORY_SINK` | indexer | Sink module name (`indexer.sink` in the manifest). Default `hindsight`. |
+| `MEMORY_API_URL` | indexer, every non-Hindsight sink | Generic API base URL of the provider. |
+| `HINDSIGHT_URL` | indexer, Hindsight sink only | API base URL for Hindsight (default `http://127.0.0.1:8888`). |
+
+`--url` overrides either URL variable. A sink reads its credentials from its own environment
+variables inside `create`, never from the document path.
+
+Provider secrets (for example `MEM0_API_KEY`, `COGNEE_API_KEY`, `LLM_API_KEY`) live in
+`~/.config/personal-memory/<id>.env`, outside the repo, mode 600. A provider's compose fragment loads
+that file through an `env_file` entry with `required: false`, so a stack without the file still
+starts. Secrets do not belong in the stack `.env` or in `wizard.conf`, and the wizard never prints
+them.
+
+### Optional `flush()`
+
+A sink for a provider that ingests asynchronously (`capabilities.async_ingest=True`, for example
+Cognee, where `cognify` builds the graph after `add`) may define `flush(bank: str) -> None`. The
+indexer calls it once per bank after that bank's batch of retains and deletes, so the provider starts
+processing once per batch rather than once per document.
+
+- The call happens only with `--apply`, and only when the batch retained or deleted at least one
+  document. A dry run, or a run where nothing changed, never flushes.
+- `flush` is not part of the `Sink` protocol, so sinks without it (Hindsight among them) still satisfy
+  `isinstance(sink, Sink)` and see no change in behavior. Callers use `sinks.flush_sink(sink, bank)`,
+  which does nothing when the sink has no callable `flush`.
+- A flush error is handled like a retain error: the source is reported as failed and the other
+  sources still run.
 
 Default provider id: **`hindsight`**. Change it in **interactive `./setup`** (Clack “Memory provider”,
 defaults to `wizard.conf` / `machine.env`), or set `MEMORY_PROVIDER` for `--yes`. The wizard records
@@ -102,10 +147,16 @@ first step); default action is full **configure and start**.
 - `./setup` passes `--profile hindsight` on compose commands; `scripts/setup.mjs` writes `COMPOSE_PROFILES=hindsight` into the stack `.env`.
 - Alternate providers layer `providers/<id>/compose.yaml` with their own profile (`MEMORY_SINK`, `MEMORY_API_URL`, `depends_on`).
 
-### Phase C — mem0 (or first alternate provider)
+### Phase C — mem0 and Cognee (Wave 2)
 
-- `providers/mem0/manifest.json` → `supported`, compose overlay or external URL-only mode.
-- `indexer/sinks/mem0.py` implementing the sink protocol.
+- mem0 is **URL-only** in v1: the indexer talks to a mem0 server the operator already runs, and this
+  repo ships no mem0 container yet. A mem0 service built from a pinned upstream ref is a follow-up.
+- Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
+  an optional env file.
+- `providers/<id>/manifest.json` moves from `planned` to `experimental` only after the Wave 2
+  acceptance gate passes; `supported` additionally needs a live end-to-end run.
+- `indexer/sinks/mem0.py` and `indexer/sinks/cognee.py` implementing the sink protocol (Cognee also
+  implements the optional `flush()`).
 - Wizard branch: provider select (Clack) before model backend when multiple providers are supported.
 - Coding-agent story: mem0’s own SDK/plugin or a thin local proxy—document limitations.
 

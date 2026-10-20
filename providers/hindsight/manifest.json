@@ -14,6 +14,7 @@
   },
   "indexer": {
     "apiUrlEnv": "HINDSIGHT_URL",
+    "sink": "hindsight",
     "sinkDriver": "hindsight-rest-v1"
   },
   "codingAgent": {
