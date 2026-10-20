@@ -1,5 +1,6 @@
 /** Hindsight's contribution to the wizard's closing summary. */
 import fs from "node:fs";
+import { composeCommandText } from "../../../wizard/lib/compose.mjs";
 import { ensureState } from "./state.mjs";
 
 /**
@@ -20,10 +21,10 @@ export function summary(ctx) {
   } else if (ctx.backend === "custom") {
     configFiles.push(`  ${ctx.litellmOverride} (missing: custom backend needs it)`);
   } else configFiles.push(`  config/litellm.${ctx.backend}.yaml (shipped routes)`);
+  const litellmUp = composeCommandText(ctx, "up", "-d", "litellm");
   const notes = [
-    `Reflect needs a capable model (memory-reflect alias). On a weak or remote LLM, edit ${ctx.litellmOverride} and point memory-reflect at Meridian, an OpenAI-compatible host, or a stronger local model — then: docker compose -p ${ctx.project} up -d litellm`,
-    // Kept verbatim from the pre-plugin wizard, including the literal ${ctx.project}.
-    "Change later: rerun ./setup. For a route-only edit, run: docker compose -p ${ctx.project} up -d litellm",
+    `Reflect needs a capable model (memory-reflect alias). On a weak or remote LLM, edit ${ctx.litellmOverride} and point memory-reflect at Meridian, an OpenAI-compatible host, or a stronger local model — then: ${litellmUp}`,
+    `Change later: rerun ./setup. For a route-only edit, run: ${litellmUp}`,
   ];
   return { running, configFiles, notes, logServices: ["hindsight", "litellm"] };
 }
