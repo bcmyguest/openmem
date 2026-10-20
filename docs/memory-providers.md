@@ -11,7 +11,7 @@ local model is not yet a promotion bar — see `docs/WAVE3-orchestrator.md`. Man
 
 `npm run setup` (checkout), `npx personal-memory setup`, or `./setup` is a **meta** wizard: it
 orchestrates **machine-local plumbing** that is the same idea across providers (Docker project,
-ports, indexer sources, smoke “is the API alive?”, coding-agent symlink, compose up/down). It does
+ports, indexer sources, smoke “is the API alive?”, coding-agent config file, compose up/down). It does
 **not** replace each provider’s **native** settings UI, CLI, or config format.
 
 | This wizard owns (cross-cutting) | Provider still owns (native) |

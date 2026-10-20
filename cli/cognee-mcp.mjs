@@ -151,11 +151,15 @@ export async function callTool(access, name, args = {}, fetchFn = fetch) {
 export async function handleMessage(msg, access, fetchFn = fetch) {
   const { id, method, params } = msg;
   if (method === "initialize") {
+    const protocolVersion =
+      typeof params?.protocolVersion === "string" && params.protocolVersion
+        ? params.protocolVersion
+        : "2024-11-05";
     return {
       jsonrpc: "2.0",
       id,
       result: {
-        protocolVersion: "2024-11-05",
+        protocolVersion,
         capabilities: { tools: {} },
         serverInfo: { name: "cognee", version: "0.1.0" },
       },
@@ -175,13 +179,19 @@ export async function handleMessage(msg, access, fetchFn = fetch) {
   return { jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } };
 }
 
-function writeMessage(obj) {
+/** @param {"ndjson" | "content-length"} framing */
+function writeMessage(obj, framing = "ndjson") {
   if (obj == null) return;
   const body = JSON.stringify(obj);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
+  // Cursor Agent CLI speaks NDJSON on stdio. Content-Length kept for LSP-style clients.
+  if (framing === "content-length") {
+    process.stdout.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
+    return;
+  }
+  process.stdout.write(`${body}\n`);
 }
 
-/** Content-Length frames; NDJSON fallback. */
+/** Content-Length frames or NDJSON; reply using the same framing the request used. */
 export async function serveStdio(input, onMsg) {
   let buf = Buffer.alloc(0);
   for await (const chunk of input) {
@@ -207,14 +217,17 @@ export async function serveStdio(input, onMsg) {
         try {
           msg = JSON.parse(body);
         } catch (err) {
-          writeMessage({
-            jsonrpc: "2.0",
-            id: null,
-            error: { code: -32700, message: `Parse error: ${err instanceof Error ? err.message : err}` },
-          });
+          writeMessage(
+            {
+              jsonrpc: "2.0",
+              id: null,
+              error: { code: -32700, message: `Parse error: ${err instanceof Error ? err.message : err}` },
+            },
+            "content-length",
+          );
           continue;
         }
-        writeMessage(await onMsg(msg));
+        writeMessage(await onMsg(msg), "content-length");
         continue;
       }
       const nl = asStr.indexOf("\n");
@@ -223,7 +236,7 @@ export async function serveStdio(input, onMsg) {
       buf = buf.subarray(Buffer.byteLength(asStr.slice(0, nl + 1), "utf8"));
       if (!line.startsWith("{")) continue;
       try {
-        writeMessage(await onMsg(JSON.parse(line)));
+        writeMessage(await onMsg(JSON.parse(line)), "ndjson");
       } catch {
         /* skip bad line */
       }

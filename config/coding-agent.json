@@ -6,6 +6,8 @@
   "mapPathToBank": {},
   "notebooklmAccess": {
     "enabled": false,
-    "banks": []
+    "banks": [
+      "*"
+    ]
   }
 }

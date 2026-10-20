@@ -273,6 +273,50 @@ const shippedBefore = fs.readFileSync(SHIPPED, "utf8");
   fs.rmSync(home, { recursive: true, force: true });
 }
 
+// --- setupCodingAgent: symlink → real file + MCP when NotebookLM sync is on ---
+{
+  const { setupCodingAgent } = await import("../../providers/hindsight/lib/coding-agent.mjs");
+  const home = tmpHome();
+  const agent = path.join(home, ".hindsight", "coding-agent.json");
+  fs.mkdirSync(path.dirname(agent), { recursive: true });
+  fs.symlinkSync(SHIPPED, agent);
+  fs.writeFileSync(path.join(home, ".config/hindsight/notebooklm.yml"), "enabled: true\n");
+  // Minimal index.yml so optInPaths check has something to cover (none → ok).
+  const indexFile = path.join(home, ".config/hindsight/index.yml");
+  fs.writeFileSync(indexFile, "roots: []\n");
+  const logs = [];
+  const h = {
+    ok: (m) => logs.push(`ok:${m}`),
+    info: (m) => logs.push(`info:${m}`),
+    warn: (m) => logs.push(`warn:${m}`),
+    confirm: async () => false,
+    expandHome: (p, homeDir) => (p.startsWith("~/") ? path.join(homeDir, p.slice(2)) : p),
+  };
+  const ctx = {
+    ...baseCtx(home),
+    indexFile,
+    dry: false,
+    memoryProvider: { id: "hindsight", codingAgent: { configTemplate: "config/coding-agent.json" } },
+  };
+  await setupCodingAgent(ctx, h);
+  check(
+    "setupCodingAgent materializes symlink to real file",
+    fs.existsSync(agent) && !fs.lstatSync(agent).isSymbolicLink(),
+  );
+  const cfg = JSON.parse(fs.readFileSync(agent, "utf8"));
+  check("setupCodingAgent enables notebooklmAccess when sync on", cfg.notebooklmAccess.enabled === true);
+  const mcp = JSON.parse(fs.readFileSync(path.join(home, ".cursor", "mcp.json"), "utf8"));
+  const nlm = mcp.mcpServers?.notebooklm;
+  check(
+    "setupCodingAgent registers notebooklm MCP with absolute node + agentJson env",
+    nlm?.command === process.execPath &&
+      nlm?.args?.[0]?.endsWith("cli/notebooklm-mcp.mjs") &&
+      nlm?.env?.HINDSIGHT_CODING_AGENT_JSON === agent,
+  );
+  check("setupCodingAgent leaves shipped template alone", fs.readFileSync(SHIPPED, "utf8") === shippedBefore);
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
 check("shipped template untouched at end", fs.readFileSync(SHIPPED, "utf8") === shippedBefore);
 
 if (failed) {
