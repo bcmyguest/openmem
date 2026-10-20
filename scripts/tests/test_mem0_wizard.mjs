@@ -6,7 +6,7 @@
  * scratch HOME and the same stub. Nothing here touches the operator's config or any real
  * stack: every path is under a temp dir and every URL is a loopback stub on an ephemeral port.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -957,13 +957,31 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
 
 function copyTree(dest) {
   const skip = /(^|\/)(__pycache__|\.pytest_cache|tests|\.git|site|\.codegraph|\.ruff_cache)(\/|$)/;
-  for (const entry of ["bin", "cli", "config", "indexer", "providers", "scripts", "sync", "wizard", "compose.yaml", "package.json"]) {
+  for (const entry of [
+    "bin",
+    "cli",
+    "config",
+    "indexer",
+    "providers",
+    "scripts",
+    "sync",
+    "wizard",
+    "compose.yaml",
+    "package.json",
+    "package-lock.json",
+  ]) {
     fs.cpSync(path.join(root, entry), path.join(dest, entry), {
       recursive: true,
       filter: (src) => !skip.test(path.relative(root, src)),
     });
   }
-  // copyTree mirrors the shipped tree (mem0 is experimental on main).
+  const r = spawnSync("npm", ["install", "--no-fund", "--no-audit", "--silent"], {
+    cwd: dest,
+    encoding: "utf8",
+  });
+  if (r.status !== 0) {
+    throw new Error(`npm install failed in ${dest}: ${(r.stderr || r.stdout || "").trim()}`);
+  }
 }
 
 function writeDockerStub(dir) {
