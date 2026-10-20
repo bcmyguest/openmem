@@ -30,6 +30,7 @@ make_stubs() {
     cat > "${dir}/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $*" >> "${STUB_LOG}"
+case "$*" in "compose -p"*) echo "$PWD" >> "${STUB_LOG}.cwd" ;; esac
 case "$1" in
     info|ps) exit 0 ;;
     compose)
@@ -258,6 +259,103 @@ test_stack_down_dry_run() {
     check "stack down dry run skips full configure" bash -c "! grep -q 'Sources to index' '${out}'"
 }
 
+# run_fixture HOME COPY LOG OUT PROVIDER [env...] -- [args...]: wizard run against the test-only provider
+# fixtures in scripts/tests/fixtures/providers (PM_PROVIDERS_DIR). No HINDSIGHT_* variables are passed.
+run_fixture() {
+    local home="$1" copy="$2" log="$3" out="$4" provider="$5"; shift 5
+    local envs=()
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
+    [ "$#" -gt 0 ] && shift
+    env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit MEMORY_PROVIDER="${provider}" \
+        PM_PROVIDERS_DIR="${REPO}/scripts/tests/fixtures/providers" "${envs[@]}" \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" "$@" > "${out}" 2>&1
+}
+
+# (f) a provider with no model backend and no hooks: nothing Hindsight-shaped is created, required or printed.
+# The planned mem0 manifest cannot run yet, so the test-only fixture provider "nohooks" stands in for it.
+test_provider_without_model_backend() {
+    local home="${WORK}/home-nohooks" copy="${WORK}/copy-nohooks" out="${WORK}/nohooks-dry.out" log="${WORK}/nohooks.log"
+    mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+    local before rc=0
+    before="$(cd "${home}" && find . | sort)"
+    run_fixture "${home}" "${copy}" "${log}" "${out}" nohooks NOHOOKS_PORT=28765 -- --yes --dry-run || rc=$?
+    check "no-hooks provider: dry run exits 0" [ "${rc}" -eq 0 ]
+    check "no-hooks provider: selected" grep -q 'memory provider No-hooks fixture' "${out}"
+    check "no-hooks provider: dry run never mentions hindsight.env, litellm, HINDSIGHT_*, lemond or ollama" \
+        bash -c "! grep -q -E 'hindsight\\.env|litellm|HINDSIGHT_|Hindsight|lemond|ollama' '${out}'"
+    check "no-hooks provider: no provider hook lines (every phase is a no-op)" bash -c "! grep -q '^  provider ' '${out}'"
+    check "no-hooks provider: scratch HOME unchanged" [ "$(cd "${home}" && find . | sort)" = "${before}" ]
+    check "no-hooks provider: health URL comes from the manifest port env" grep -q 'wait for http://127.0.0.1:28765/health' "${out}"
+
+    rc=0
+    run_fixture "${home}" "${copy}" "${log}" "${WORK}/nohooks.out" nohooks NOHOOKS_PORT=28765 -- --yes || rc=$?
+    check "no-hooks provider: real run exits 0" [ "${rc}" -eq 0 ]
+    local hs="${home}/.config/hindsight"
+    check "no-hooks provider: no hindsight.env or litellm.env created" bash -c "[ ! -e '${hs}/hindsight.env' ] && [ ! -e '${hs}/litellm.env' ] && [ ! -e '${hs}/litellm.yaml' ]"
+    check "no-hooks provider: wizard.conf holds only MEMORY_PROVIDER" bash -c "[ \"\$(cat '${hs}/wizard.conf')\" = 'MEMORY_PROVIDER=nohooks' ]"
+    check "no-hooks provider: config.toml written without model or port tables" bash -c \
+        "grep -q 'provider = \"nohooks\"' '${home}/.config/personal-memory/config.toml' && ! grep -q -E '\\[model|api_port' '${home}/.config/personal-memory/config.toml'"
+    check "no-hooks provider: stack .env has host ids only" bash -c \
+        "grep -q '^HOST_UID=' '${copy}/.env' && grep -q '^HOST_GID=' '${copy}/.env' && ! grep -q -E 'HINDSIGHT|LITELLM|COMPOSE_PROFILES' '${copy}/.env'"
+    check "no-hooks provider: validation passes without MEMORY_BACKEND/MEMORY_MODEL" grep -q 'memory setup validation passed' "${WORK}/nohooks.out"
+    check "no-hooks provider: no Hindsight text in a real run" \
+        bash -c "! grep -q -E 'hindsight\\.env|litellm|HINDSIGHT_|Hindsight|lemond|ollama' '${WORK}/nohooks.out'"
+    check "no-hooks provider: compose up has no --profile or -f flags" grep -q 'docker compose -p pm-wizard-unit up -d --no-build' "${log}"
+    check "no-hooks provider: smoke runs from the manifest template" grep -q 'retain and recall worked' "${WORK}/nohooks.out"
+    check "no-hooks provider: smoke URLs use the manifest port" grep -q 'curl .*127.0.0.1:28765/fixture/wizard-smoke/memories' "${log}"
+    rc=0
+    run_fixture "${home}" "${copy}" "${log}.2" "${WORK}/nohooks2.out" nohooks NOHOOKS_PORT=28765 -- --yes || rc=$?
+    check "no-hooks provider: second run exits 0 with zero changes" bash -c "[ ${rc} -eq 0 ] && grep -qx 'wizard: changed=0' '${WORK}/nohooks2.out'"
+}
+
+# (g) a provider with v2 hooks, a compose profile and a compose fragment: hooks run, compose calls carry
+# --profile and -f, the smoke hook replaces the HTTP template, the apiBase hook feeds the health check.
+test_provider_with_hooks() {
+    local home="${WORK}/home-hooked" copy="${WORK}/copy-hooked" out="${WORK}/hooked.out" log="${WORK}/hooked.log"
+    mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+    echo "services: {}" > "${copy}/fixture-fragment.yaml"
+    local rc=0
+    run_fixture "${home}" "${copy}" "${log}" "${out}" hooked HOOKED_PORT=28766 -- --yes || rc=$?
+    check "hooked provider: real run exits 0" [ "${rc}" -eq 0 ]
+    check "hooked provider: resolvePorts hook used helpers.resolveHostPort" grep -q 'Hooked API port 28766 is free' "${out}"
+    check "hooked provider: hook announced" grep -q 'provider hooked: resolvePorts' "${out}"
+    check "hooked provider: apiBase hook feeds the health check" grep -q 'curl .*http://127.0.0.1:28766/health' "${log}"
+    check "hooked provider: smoke hook replaces the HTTP template" bash -c "grep -q 'hooked smoke override ran' '${out}' && ! grep -q '/memories' '${log}'"
+    check "hooked provider: summary hook lines printed" bash -c "grep -q 'Hooked API         http://127.0.0.1:28766' '${out}' && grep -q 'Hooked note line' '${out}'"
+    check "hooked provider: extendValidation check merged" grep -q 'check: hooked validation ran' "${out}"
+    check "hooked provider: up has -f files and --profile" grep -q 'docker compose -p pm-wizard-unit -f compose.yaml -f compose.override.yaml -f fixture-fragment.yaml --profile hooked up -d --no-build' "${log}"
+    check "hooked provider: build has -f files and --profile" grep -q 'docker compose -p pm-wizard-unit -f compose.yaml -f compose.override.yaml -f fixture-fragment.yaml --profile hooked build indexer' "${log}"
+    check "hooked provider: indexer listing uses the same flags" grep -q -- '-f fixture-fragment.yaml --profile hooked run --rm --no-deps -T' "${log}"
+    check "hooked provider: ps uses the same flags" grep -q -- '--profile hooked ps -q' "${log}"
+    check "hooked provider: summary Stop line carries the flags" grep -q 'Stop:  docker compose -p pm-wizard-unit -f compose.yaml -f compose.override.yaml -f fixture-fragment.yaml --profile hooked down' "${out}"
+    check "hooked provider: every compose call ran in the stack root" bash -c "[ \"\$(sort -u '${log}.cwd')\" = '${copy}' ]"
+    rc=0
+    run_fixture "${home}" "${copy}" "${log}.d" "${WORK}/hooked-down.out" hooked HOOKED_PORT=28766 -- --down --yes --dry-run || rc=$?
+    check "hooked provider: down dry run carries the profile" bash -c "[ ${rc} -eq 0 ] && grep -q '\\[dry-run\\] docker compose -p pm-wizard-unit -f compose.yaml -f compose.override.yaml -f fixture-fragment.yaml --profile hooked down' '${WORK}/hooked-down.out'"
+}
+
+# (h) PM_PACKAGE_ROOT: code (wizard, providers, scripts) comes from the package root, every generated file
+# (.env, compose.override.yaml, .build-hash) and every docker call lives in the stack root.
+test_package_root_split() {
+    local home="${WORK}/home-split" pkg="${WORK}/copy-pkg" stack="${WORK}/copy-stack" out="${WORK}/split.out" log="${WORK}/split.log"
+    mkdir -p "${home}" "${WORK}/elsewhere"; make_home "${home}"; copy_repo "${pkg}"; copy_repo "${stack}"
+    rm -rf "${stack}/wizard" "${stack}/providers" "${stack}/scripts" "${stack}/setup" "${stack}/pm"
+    local rc=0
+    (cd "${WORK}/elsewhere" && env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        PM_PACKAGE_ROOT="${pkg}" "${TEST_NODE}" --input-type=module -e \
+        "import { runWizard } from '${pkg}/wizard/lib/run-wizard.mjs'; await runWizard('${stack}', ['--yes']);" > "${out}" 2>&1) || rc=$?
+    check "package/stack split: wizard run exits 0" [ "${rc}" -eq 0 ]
+    check "package/stack split: .env and compose.override.yaml written in the stack root" bash -c "[ -f '${stack}/.env' ] && [ -f '${stack}/compose.override.yaml' ]"
+    check "package/stack split: nothing generated in the package root" bash -c "[ ! -e '${pkg}/.env' ] && [ ! -e '${pkg}/compose.override.yaml' ] && [ ! -e '${pkg}/.build-hash' ]"
+    check "package/stack split: .build-hash lives in the stack root" [ -f "${stack}/.build-hash" ]
+    check "package/stack split: provider hooks loaded from the package root" grep -q 'provider hindsight: configureModelRouting' "${out}"
+    check "package/stack split: every compose call ran in the stack root" bash -c \
+        "[ \"\$(sort -u '${log}.cwd')\" = '${stack}' ]"
+    check "package/stack split: validation passed" grep -q 'memory setup validation passed' "${out}"
+}
+
 test_dry_run
 test_setup_entry_dry_run
 test_clack_backend_handoff
@@ -265,6 +363,9 @@ test_idempotent
 test_reflect_route
 test_build_cache
 test_stack_down_dry_run
+test_provider_without_model_backend
+test_provider_with_hooks
+test_package_root_split
 
 if [ -n "${TEST_NODE}" ]; then
     npm install --prefix "${REPO}/wizard" --no-fund --no-audit --silent

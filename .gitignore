@@ -10,3 +10,5 @@ compose.override.yaml
 .env
 .build-hash
 *.tgz
+docs/ROADMAP*.md
+.pytest_cache/

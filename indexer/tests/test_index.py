@@ -21,7 +21,7 @@ def indexer():
 
 
 def test_vault_bank_slugifies_name(indexer):
-    assert indexer.vault_bank(Path("/home/example/Documents/Acme Notes")) == "obsidian::acme-notes"
+    assert indexer.vault_bank(Path("/home/alice/Documents/Acme Notes")) == "obsidian::acme-notes"
     assert indexer.vault_bank(Path("/tmp/Personal")) == "obsidian::personal"
 
 
@@ -78,7 +78,7 @@ def test_opt_in_paths_missing_config_means_no_filter(indexer, tmp_path):
 
 def test_opt_in_filter_keeps_only_listed_trees(indexer, tmp_path):
     config = tmp_path / "coding-agent.json"
-    allowed_root = tmp_path / "home" / "b"
+    allowed_root = tmp_path / "home" / "alice"
     config.write_text(json.dumps({"optInPaths": [str(allowed_root)]}))
     allowed = indexer.load_opt_in_paths(config)
 
