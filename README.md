@@ -205,7 +205,7 @@ npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode
 ln -s ~/personal-memory/config/coding-agent.json ~/.hindsight/coding-agent.json
 ```
 
-`config/coding-agent.json` sets the plugin options, including `optInPaths` (`/home/example`). The indexer reads the same file through the `$HOME` mount. If the file is missing, the indexer logs a warning and still indexes everything under `$HOME`.
+`config/coding-agent.json` sets the plugin options (`optInPaths`, `mapPathToBank`, and related fields). Edit it for your machine before symlinking. The indexer reads the same file through the `$HOME` mount. If the file is missing, the indexer logs a warning and still indexes everything under `$HOME`.
 
 ## Indexing
 
