@@ -3,7 +3,7 @@
  * Unit tests for cli/notebooklm-mcp.mjs + providers/hindsight/lib/notebooklm-mcp-install.mjs.
  * No live Hindsight: mock fetch + temp HOME/config.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -165,7 +165,7 @@ process.on("exit", () => {
   check("initialized notification has no response", note === null);
 }
 
-// --- disabled mode exits 1 ---
+// --- disabled mode stays alive (Cursor must not see Connection closed) ---
 {
   const home = tmp("disabled");
   const cfgPath = path.join(home, "coding-agent.json");
@@ -173,13 +173,35 @@ process.on("exit", () => {
     cfgPath,
     JSON.stringify({ apiUrl: "http://127.0.0.1:8888", notebooklmAccess: { enabled: false, banks: ["*"] } }),
   );
-  const r = spawnSync(process.execPath, [MCP], {
+  const child = spawn(process.execPath, [MCP], {
     env: { ...process.env, HINDSIGHT_CODING_AGENT_JSON: cfgPath },
-    encoding: "utf8",
-    timeout: 5000,
+    stdio: ["pipe", "pipe", "pipe"],
   });
-  check("disabled mode exit 1", r.status === 1);
-  check("disabled mode stderr mentions enabled", /notebooklmAccess\.enabled/i.test(r.stderr || ""));
+  let stderr = "";
+  child.stderr.on("data", (c) => {
+    stderr += c;
+  });
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+  });
+  child.stdin.write(`${line}\n`);
+  const got = await new Promise((resolve) => {
+    let buf = "";
+    const t = setTimeout(() => resolve(null), 3000);
+    child.stdout.on("data", (c) => {
+      buf += c;
+      if (buf.includes("notebooklm")) {
+        clearTimeout(t);
+        resolve(buf);
+      }
+    });
+  });
+  child.kill();
+  check("disabled mode stays up for initialize", !!got && /notebooklm/.test(got));
+  check("disabled mode stderr mentions enabled", /notebooklmAccess\.enabled/i.test(stderr));
 }
 
 // --- mcp.json merge ---
@@ -194,7 +216,13 @@ process.on("exit", () => {
     },
   };
   const { mcp, changed } = mergeNotebooklmMcpServer(base, script);
-  check("merge adds notebooklm", changed && mcp.mcpServers.notebooklm.command === "node" && mcp.mcpServers.notebooklm.args[0] === script);
+  check(
+    "merge adds notebooklm",
+    changed &&
+      mcp.mcpServers.notebooklm.command === process.execPath &&
+      mcp.mcpServers.notebooklm.args[0] === script &&
+      mcp.mcpServers.notebooklm.type === "stdio",
+  );
   check("merge keeps hindsight", mcp.mcpServers.hindsight === base.mcpServers.hindsight);
   check("merge keeps codegraph", mcp.mcpServers.codegraph === base.mcpServers.codegraph);
 
