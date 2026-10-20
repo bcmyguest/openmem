@@ -1,0 +1,12 @@
+# PLACEHOLDER — Wave 2 will pin a Cognee image, healthcheck, and wire the shared indexer.
+# Layer: docker compose -f compose.yaml -f providers/cognee/compose.yaml --profile cognee up -d
+#
+# The indexer sink maps indexer "bank" strings to Cognee dataset names (see indexer/sinks/__init__.py).
+
+services:
+  cognee:
+    profiles: ["cognee"]
+    image: cognee/cognee:placeholder
+    ports:
+      - "127.0.0.1:${COGNEE_PORT:-8766}:8000"
+    restart: unless-stopped
