@@ -102,8 +102,10 @@ copy_repo() {
     local dest="$1"
     mkdir -p "${dest}"
     (cd "${REPO}" && tar --exclude=.git --exclude=.env --exclude=compose.override.yaml --exclude=.build-hash \
-        --exclude=wizard/node_modules -cf - .) | tar -xf - -C "${dest}"
-    npm install --prefix "${dest}/wizard" --no-fund --no-audit --silent
+        --exclude=node_modules --exclude=wizard/node_modules -cf - .) | tar -xf - -C "${dest}"
+    # Match ensureWizardDeps (cli/roots.mjs): deps live at the package root, not wizard/ only.
+    (cd "${dest}" && npm ci --no-fund --no-audit --silent 2>/dev/null) ||
+        (cd "${dest}" && npm install --no-fund --no-audit --silent)
 }
 
 make_stubs "${WORK}/stubs"
@@ -423,8 +425,9 @@ test_compose_version_guard
 test_package_root_split
 
 if [ -n "${TEST_NODE}" ]; then
-    npm install --prefix "${REPO}/wizard" --no-fund --no-audit --silent
-    NODE_PATH="${REPO}/wizard/node_modules" \
+    (cd "${REPO}" && npm ci --no-fund --no-audit --silent 2>/dev/null) ||
+        (cd "${REPO}" && npm install --no-fund --no-audit --silent)
+    NODE_PATH="${REPO}/node_modules" \
         "${TEST_NODE}" "${REPO}/scripts/tests/test_provider_manifests.mjs" || FAILS=$((FAILS + 1))
     NODE_PATH="${REPO}/wizard/node_modules" \
         "${TEST_NODE}" "${REPO}/scripts/tests/test_memory_setup.mjs" || FAILS=$((FAILS + 1))
