@@ -5,9 +5,11 @@ checkout. The package name lives in one place, the `name` field of `package.json
 command stays `personal-memory` if you switch to a scoped name such as
 `@bcmyguest/personal-memory`).
 
-Requirements: Node >= 20.12 (the floor of `@clack/prompts`), Docker with the compose v2
+Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the compose v2
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
 bash dependency in the CLI (macOS ships bash 3.2).
+
+Wizard phases and flags: [setup-wizard.md](setup-wizard.md).
 
 ## Install paths
 
