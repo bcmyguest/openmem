@@ -46,6 +46,13 @@ check(
   mem0 ? validateManifest(mem0).length === 0 : false,
 );
 
+const cognee = listAllProviders().find((m) => m.id === "cognee");
+check("cognee manifest exists (planned)", cognee?.status === "planned");
+check(
+  "cognee planned skips smoke requirements",
+  cognee ? validateManifest(cognee).length === 0 : false,
+);
+
 // compose.profile and compose.files: schema validation.
 const base = {
   id: "fake",

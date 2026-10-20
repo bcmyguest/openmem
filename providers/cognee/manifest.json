@@ -1,0 +1,45 @@
+{
+  "id": "cognee",
+  "label": "Cognee",
+  "status": "planned",
+  "notes": "Self-hosted graph/RAG memory; sink + compose profile in Wave 2.",
+  "settings": {
+    "nativeDocs": "https://docs.cognee.ai/",
+    "nativeConfigPaths": [],
+    "wizardOwns": [
+      "compose profile and API URL (TBD)",
+      "index.yml sources (shared indexer)",
+      "Cognee dataset mapping from indexer banks (TBD)"
+    ]
+  },
+  "compose": {
+    "services": [],
+    "healthService": null,
+    "healthPath": "/health",
+    "hostPortEnv": "COGNEE_PORT",
+    "defaultHostPort": 8766,
+    "profile": "cognee",
+    "files": ["providers/cognee/compose.yaml"]
+  },
+  "indexer": {
+    "apiUrlEnv": "COGNEE_API_URL",
+    "sinkDriver": "cognee-rest"
+  },
+  "codingAgent": {
+    "pluginPackage": null,
+    "configTemplate": null
+  },
+  "wizardHooks": {
+    "module": "wizard.mjs",
+    "delegates": {}
+  },
+  "wizard": {
+    "smokeBank": "wizard-smoke",
+    "retainMethod": null,
+    "retainPath": null,
+    "recallMethod": null,
+    "recallPath": null,
+    "deleteMethod": null,
+    "deletePath": null
+  }
+}

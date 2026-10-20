@@ -2,8 +2,10 @@
 
 This repo today ships **one** supported backend: [Hindsight](https://github.com/vectorize-io/hindsight)
 (API + retain/reflect/consolidate, LiteLLM in front of local models). The goal is to treat Hindsight as
-the first **memory provider plugin**, not as implicit global state, so other stores (e.g. **mem0**, a
-hosted API, or a future self-hosted stack) can be added without rewriting indexing and setup from scratch.
+the first **memory provider plugin**, not as implicit global state, so other stores (**mem0**, **Cognee**,
+or a hosted API) can be added without rewriting indexing and setup from scratch. Wave 2 adds indexer
+sinks and compose profiles for those providers; manifests under `providers/` show `planned` vs
+`supported` today.
 
 ## Meta setup wizard (what this is — and is not)
 
