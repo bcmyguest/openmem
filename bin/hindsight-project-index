@@ -302,6 +302,9 @@ def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, 
             old.pop(doc_id)
             kinds.pop(doc_id, None)
             save_state(state_path, state)
+        if changed or stale:
+            # Optional hook for async-ingest sinks: start processing once per bank batch, not per document.
+            sinks.flush_sink(sink, bank)
         state[str(source)] = old
         state[kinds_key(source)] = kinds
     return len(changed), len(stale)

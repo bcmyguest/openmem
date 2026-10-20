@@ -66,6 +66,7 @@ export const FORBIDDEN = [
   [/(^|\/)\.agents(\/|$)/, ".agents"],
   [/^site(\/|$)/, "site/"],
   [/ROADMAP/, "ROADMAP*"],
+  [/WAVE2/, "WAVE2*"],
   [/\.(tgz|tar|log)$/, "archives/logs"],
 ];
 

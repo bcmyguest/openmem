@@ -13,6 +13,8 @@ export const DEFAULT_PROVIDER_ID = "hindsight";
 
 const PROVIDER_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const PROFILE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+/** Same rule as indexer/sinks/__init__.py NAME: the sink module name and the MEMORY_SINK value. */
+const SINK_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
 /**
  * Directory that holds `<id>/manifest.json` and `<id>/wizard.mjs`. Read-only code root.
@@ -180,6 +182,11 @@ export function validateManifest(manifest) {
     }
     if (!manifest.compose?.healthPath) errors.push("compose.healthPath required");
     if (!manifest.indexer?.sinkDriver) errors.push("indexer.sinkDriver required");
+    if (!manifest.indexer?.sink) errors.push("indexer.sink required");
+  }
+  const sink = manifest.indexer?.sink;
+  if (sink !== undefined && (typeof sink !== "string" || !SINK_NAME_RE.test(sink))) {
+    errors.push(`indexer.sink must match ${SINK_NAME_RE} (got ${JSON.stringify(sink)})`);
   }
 
   const compose = manifest.compose;

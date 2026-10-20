@@ -53,6 +53,59 @@ check(
   cognee ? validateManifest(cognee).length === 0 : false,
 );
 
+// indexer.sink: the MEMORY_SINK value, required once a provider is experimental or supported.
+check("hindsight declares indexer.sink 'hindsight'", hindsight?.indexer?.sink === "hindsight");
+const experimental = {
+  id: "fake",
+  label: "Fake",
+  status: "experimental",
+  compose: { healthPath: "/health" },
+  wizard: {
+    smokeBank: "b",
+    retainPath: "/r",
+    recallPath: "/q",
+    deletePath: "/d",
+    retainBody: "{}",
+    recallBody: "{}",
+  },
+  indexer: { apiUrlEnv: "FAKE_URL", sinkDriver: "fake-rest" },
+};
+check(
+  "indexer.sink is required for experimental",
+  validateManifest(experimental).includes("indexer.sink required"),
+);
+check(
+  "experimental with indexer.sink validates",
+  validateManifest({ ...experimental, indexer: { ...experimental.indexer, sink: "fake" } }).length === 0,
+);
+check(
+  "indexer.sink is required for supported",
+  validateManifest({ ...experimental, status: "supported" }).includes("indexer.sink required"),
+);
+for (const sink of ["Fake", "fake-sink", "../x", "1fake", "", "a.b", 7]) {
+  check(
+    `invalid indexer.sink ${JSON.stringify(sink)} is rejected`,
+    validateManifest({ ...experimental, indexer: { ...experimental.indexer, sink } }).some((e) =>
+      e.startsWith("indexer.sink must match"),
+    ),
+  );
+}
+check(
+  "invalid indexer.sink is rejected for planned too",
+  validateManifest({ ...experimental, status: "planned", indexer: { sink: "Bad-Name" } }).some((e) =>
+    e.startsWith("indexer.sink must match"),
+  ) && validateManifest({ ...experimental, status: "planned", indexer: { sink: "good_name" } }).length === 0,
+);
+const repoRoot = path.resolve(here, "../..");
+for (const m of listAllProviders()) {
+  if (m.indexer?.sink && (m.status === "supported" || m.status === "experimental")) {
+    check(
+      `${m.id} indexer.sink '${m.indexer.sink}' has indexer/sinks/${m.indexer.sink}.py`,
+      fs.existsSync(path.join(repoRoot, "indexer", "sinks", `${m.indexer.sink}.py`)),
+    );
+  }
+}
+
 // compose.profile and compose.files: schema validation.
 const base = {
   id: "fake",
