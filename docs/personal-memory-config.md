@@ -112,7 +112,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 
   ```env
   LLM_PROVIDER=ollama
-  LLM_API_KEY=ollama
+  LLM_API_KEY=replace-me
   LLM_ENDPOINT=http://host.docker.internal:11434
   EMBEDDING_PROVIDER=ollama
   EMBEDDING_MODEL=nomic-embed-text:latest
@@ -129,8 +129,9 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   same Docker network as the `ollama` service. Slow local models may need
   `COGNEE_SKIP_CONNECTION_TEST=true` in `cognee.env`. The interactive setup offers OpenAI key
   vs Ollama; the OpenAI path uses a hidden prompt. Do not type the key into a non-Clack
-  `./setup` prompt — put `LLM_API_KEY=...` in `cognee.env` (mode 600) by hand, or use the UI /
-  `--yes` with `PM_COGNEE_LLM_API_KEY`. Secret variables (including plain `LLM_API_KEY` /
+  `./setup` prompt — put `LLM_API_KEY` in `cognee.env` (mode 600) by hand (Ollama accepts any
+  non-empty value), or use the UI / `--yes` with `PM_COGNEE_LLM_API_KEY`. Secret variables
+  (including plain `LLM_API_KEY` /
   `EMBEDDING_API_KEY` / `COGNEE_API_KEY`) are removed from the wizard's environment before it
   starts docker. With no cognify-ready config under `--yes` the wizard warns and carries on.
   Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the summary.

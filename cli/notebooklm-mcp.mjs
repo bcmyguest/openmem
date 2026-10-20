@@ -56,13 +56,40 @@ export async function listBanks(apiUrl, fetchFn = fetch) {
   return Array.isArray(data?.banks) ? data.banks : Array.isArray(data) ? data : [];
 }
 
-/** @param {string} apiUrl @param {string} bankId @param {string} query @param {typeof fetch} [fetchFn] */
-export async function recallBank(apiUrl, bankId, query, fetchFn = fetch) {
+/**
+ * Fast full-text list (no LLM). Prefer this for MCP — local recall often exceeds
+ * Cursor's tool timeout (~30–60s) when memory-reflect runs on CPU.
+ * @param {string} apiUrl @param {string} bankId @param {string} query
+ * @param {{ limit?: number, offset?: number }} [opts] @param {typeof fetch} [fetchFn]
+ */
+export async function listMemories(apiUrl, bankId, query, opts = {}, fetchFn = fetch) {
+  const limit = Number.isFinite(opts.limit) ? Math.max(0, Math.floor(opts.limit)) : 20;
+  const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.floor(opts.offset)) : 0;
+  const qs = new URLSearchParams({ q: query, limit: String(limit), offset: String(offset) });
+  const url = `${apiUrl}/v1/default/banks/${encodeURIComponent(bankId)}/memories/list?${qs}`;
+  const res = await fetchFn(url);
+  const text = await res.text();
+  if (!res.ok) throw new Error(`GET memories/list ${bankId} → ${res.status}: ${text.slice(0, 400)}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/** @param {string} apiUrl @param {string} bankId @param {string} query @param {typeof fetch} [fetchFn] @param {{ budget?: string, max_tokens?: number }} [opts] */
+export async function recallBank(apiUrl, bankId, query, fetchFn = fetch, opts = {}) {
   const url = `${apiUrl}/v1/default/banks/${encodeURIComponent(bankId)}/memories/recall`;
+  const body = {
+    query,
+    budget: opts.budget || "low",
+    max_tokens: opts.max_tokens ?? 1024,
+    include: { entities: null, chunks: null, source_facts: null },
+  };
   const res = await fetchFn(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(body),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`POST recall ${bankId} → ${res.status}: ${text.slice(0, 400)}`);
@@ -83,12 +110,20 @@ const TOOLS = [
   {
     name: "notebooklm_search",
     description:
-      "Recall on one allowlisted notebooklm::* bank. Args: bank_id + query. Read-only; does not replace coding-agent::* memory.",
+      "Search one allowlisted notebooklm::* bank. Default mode=list is fast full-text (memories/list, no LLM). " +
+      "Use mode=recall only when you need Hindsight LLM synthesis — often 30–90s on CPU and may hit MCP timeouts. " +
+      "Prefer short keyword queries (e.g. \"time series\") over long phrases. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
         bank_id: { type: "string", description: "e.g. notebooklm::my-notebook" },
-        query: { type: "string" },
+        query: { type: "string", description: "Full-text keywords (list) or natural-language (recall)" },
+        mode: {
+          type: "string",
+          enum: ["list", "recall"],
+          description: "list (default, fast) or recall (LLM, slow)",
+        },
+        limit: { type: "integer", description: "list mode page size (default 20)" },
       },
       required: ["bank_id", "query"],
       additionalProperties: false,
@@ -121,11 +156,37 @@ export async function callTool(access, name, args = {}, fetchFn = fetch) {
   if (name === "notebooklm_search") {
     const bankId = String(args.bank_id || "");
     const query = String(args.query || "");
+    const mode = String(args.mode || "list").toLowerCase() === "recall" ? "recall" : "list";
     if (!bankId || !query) return textResult("bank_id and query are required", true);
     if (!bankAllowed(bankId, access.banks)) {
       return textResult(`bank not allowlisted or not a notebooklm::* bank: ${bankId}`, true);
     }
-    return textResult({ bank_id: bankId, query, result: await recallBank(access.apiUrl, bankId, query, fetchFn) });
+    if (mode === "recall") {
+      return textResult({
+        bank_id: bankId,
+        query,
+        mode,
+        result: await recallBank(access.apiUrl, bankId, query, fetchFn),
+      });
+    }
+    const limit = args.limit != null ? Number(args.limit) : 20;
+    const listed = await listMemories(access.apiUrl, bankId, query, { limit }, fetchFn);
+    const items = Array.isArray(listed?.items)
+      ? listed.items.map((m) => ({
+          id: m.id ?? m.memory_id ?? null,
+          type: m.type ?? null,
+          text: m.text ?? m.content ?? null,
+        }))
+      : listed;
+    return textResult({
+      bank_id: bankId,
+      query,
+      mode: "list",
+      total: listed?.total ?? null,
+      limit: listed?.limit ?? limit,
+      offset: listed?.offset ?? 0,
+      items,
+    });
   }
   return textResult(`unknown tool: ${name}`, true);
 }

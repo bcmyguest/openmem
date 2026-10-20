@@ -15,5 +15,15 @@
       "dist/llms-full.txt"
     ],
     "reason": "Documented Docker host alias for mem0 indexer URL rewrite and host-resident LLM endpoints; generic compose term, not an operator path."
+  },
+  {
+    "rule": "docker-host",
+    "match": "host.docker.internal",
+    "files": [
+      "docs/memory-providers.md",
+      "dist/docs/memory-providers",
+      "dist/llms-full.txt"
+    ],
+    "reason": "Cognee+Ollama compose note uses the generic Docker host alias in code; not an operator hostname."
   }
 ]

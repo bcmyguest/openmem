@@ -115,9 +115,50 @@ process.on("exit", () => {
   check("list_banks filters allowlist", listedBody.count === 1 && listedBody.banks[0].bank_id === "notebooklm::keep-me");
 
   /** @type {typeof fetch} */
+  const fetchListSearch = async (url, init) => {
+    check("list search is GET", !init?.method || init.method === "GET");
+    check(
+      "list search hits memories/list",
+      String(url).includes("notebooklm%3A%3Akeep-me") && String(url).includes("/memories/list?"),
+    );
+    check("list search encodes q", String(url).includes("q=hello"));
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () =>
+        JSON.stringify({
+          items: [{ id: "1", type: "world", text: "hit from list" }],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        }),
+      json: async () => ({ items: [{ text: "hit from list" }], total: 1, limit: 20, offset: 0 }),
+    };
+  };
+  const searched = await callTool(
+    access,
+    "notebooklm_search",
+    { bank_id: "notebooklm::keep-me", query: "hello" },
+    fetchListSearch,
+  );
+  const searchedBody = JSON.parse(searched.content[0].text);
+  check(
+    "search defaults to list mode",
+    searchedBody.mode === "list" &&
+      searchedBody.items?.[0]?.text === "hit from list" &&
+      !searched.isError,
+  );
+
+  /** @type {typeof fetch} */
   const fetchRecall = async (url, init) => {
-    check("recall URL encodes bank", String(url).includes("notebooklm%3A%3Akeep-me") && String(url).endsWith("/memories/recall"));
-    check("recall POST body", init?.method === "POST" && JSON.parse(init.body).query === "hello");
+    check(
+      "recall URL encodes bank",
+      String(url).includes("notebooklm%3A%3Akeep-me") && String(url).endsWith("/memories/recall"),
+    );
+    const body = JSON.parse(init.body);
+    check("recall POST body", init?.method === "POST" && body.query === "hello");
+    check("recall uses low budget by default", body.budget === "low");
     return {
       ok: true,
       status: 200,
@@ -126,19 +167,19 @@ process.on("exit", () => {
       json: async () => ({ results: [{ text: "hit" }] }),
     };
   };
-  const searched = await callTool(
+  const recalled = await callTool(
     access,
     "notebooklm_search",
-    { bank_id: "notebooklm::keep-me", query: "hello" },
+    { bank_id: "notebooklm::keep-me", query: "hello", mode: "recall" },
     fetchRecall,
   );
-  check("search returns recall JSON", /"hit"/.test(searched.content[0].text) && !searched.isError);
+  check("search mode=recall returns recall JSON", /"hit"/.test(recalled.content[0].text) && !recalled.isError);
 
   const denied = await callTool(
     access,
     "notebooklm_search",
     { bank_id: "notebooklm::skip-me", query: "x" },
-    fetchRecall,
+    fetchListSearch,
   );
   check("search rejects non-allowlisted bank", denied.isError === true && /allowlisted/.test(denied.content[0].text));
 

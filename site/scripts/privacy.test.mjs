@@ -39,6 +39,12 @@ test('flags env-style secret assignments but not placeholders', () => {
   for (const ok of ['ANTHROPIC_API_KEY=...', 'API_KEY=<your-key>', 'TOKEN=$TOKEN', 'KEY=val', 'API_KEY=replace-me', 'API_KEY=${API_KEY}']) {
     assert.deepEqual(rules(ok), [], ok);
   }
+  // Starlight wraps fenced lines in <span>; the value must not swallow the markup.
+  assert.deepEqual(
+    rules('<span>LLM_API_KEY=replace-me</span><div', { kind: 'html' }),
+    [],
+    'html-wrapped placeholder',
+  );
   // A max-token setting is not a secret.
   assert.deepEqual(rules('HINDSIGHT_API_RETAIN_MAX_COMPLETION_TOKENS=16384'), []);
 });

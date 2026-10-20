@@ -1,6 +1,6 @@
 ---
 title: "Getting started"
-description: "Prerequisites and the from-source install that works today, plus the planned npx path."
+description: "Prerequisites and the from-source install that works today, plus MCP install and provider switch."
 ---
 
 personal-memory sets up memory for coding agents on one machine. A wizard configures a memory provider, starts a Docker Compose stack, indexes your repositories and Obsidian vaults, and checks that the provider answers.
@@ -22,7 +22,8 @@ This is the path that works today.
 ```sh
 git clone https://github.com/bcmyguest/personal-memory.git
 cd personal-memory
-./setup
+npm install
+npm run setup          # same as ./setup
 ```
 
 ![Setup wizard dry-run: preflight, provider choice, model backend, and stack plan](/personal-memory/setup-demo.gif)
@@ -46,11 +47,13 @@ The first interactive run installs the wizard's npm dependencies. To see what th
 3. Provider-specific steps: Hindsight asks for the model backend (lemond, Ollama, or a custom OpenAI-compatible server) and the route for each model alias; mem0 asks for your mem0 REST server URL and API key file; Cognee asks for a loopback port and `LLM_API_KEY` for graph build.
 4. Secrets and env files under `~/.config/hindsight/` with mode 600.
 5. Source roots to index and the Obsidian vaults it finds.
-6. Whether to enable the opt-in NotebookLM sync (default no).
+6. Whether to enable the opt-in NotebookLM sync (default no). When yes, it can also enable coding-agent access (`notebooklmAccess`) and register the NotebookLM MCP in `~/.cursor/mcp.json`.
 7. Start the stack, wait for health, and run a smoke retain and recall in a temporary bank.
-8. Whether to link the coding-agent config and install the plugin (default no).
+8. Whether to link the coding-agent config and install the plugin (default no). Provider MCP entries can be merged here or later with `./pm install-mcp`.
 
 Rerun `./setup` at any time. It shows current values as defaults and keeps what you do not change. The last line is `wizard: changed=N`, the number of config files and containers the run altered; a rerun on an unchanged setup prints `changed=0`.
+
+Machine settings such as `optInPaths` and `notebooklmAccess` live in a **real** `~/.hindsight/coding-agent.json` (seeded from the shipped template). Do not symlink that path at the repo file, or pack checks and machine config will fight.
 
 ## Flags
 
@@ -62,7 +65,7 @@ Rerun `./setup` at any time. It shows current values as defaults and keeps what 
 | `--rebuild` | Rebuild the indexer image even when its sources are unchanged. |
 | `--up`, `--down` | Start or stop the stack without the configure steps. |
 
-## Declarative config
+## Declarative config and `./pm` tasks
 
 Instead of answering prompts, describe the setup in `~/.config/personal-memory/config.toml` and run the tasks:
 
@@ -74,8 +77,39 @@ Instead of answering prompts, describe the setup in `~/.config/personal-memory/c
 ./pm switch mem0 --yes          # change MEMORY_PROVIDER (no data migration)
 ```
 
-See [Configuration file](../personal-memory-config/) for the files, precedence, and sections.
-Provider switch and MCP install details live in the repo [README](https://github.com/bcmyguest/personal-memory#switch-memory-provider).
+See [Configuration file](../personal-memory-config/) for the files, precedence, sections, and task flags (`--dry-run`, `--no-stack`, `--no-mcp`).
+
+### Memory MCP (`install-mcp`)
+
+Registers provider MCP servers for Cursor without a full setup re-run:
+
+```sh
+./pm install-mcp --yes
+# NotebookLM only:  ./pm install-mcp --yes --notebooklm-only
+# Provider MCP only: ./pm install-mcp --yes --provider-only
+```
+
+Provider comes from `MEMORY_PROVIDER`, else `wizard.conf`, else `hindsight`. Restart Cursor Agent after install.
+
+### Switch memory provider
+
+```sh
+./pm switch cognee --yes
+# or: npm run switch-provider -- hindsight --yes
+```
+
+Updates `wizard.conf` and `[memory].provider` in `config.toml` when present, restarts the stack unless `--no-stack`, and runs `install-mcp --provider-only` unless `--no-mcp`. Does **not** migrate memories. NotebookLM sync/MCP is left alone. After a switch: restart Cursor Agent, then `./pm doctor`.
+
+## NotebookLM banks for agents
+
+Synced notebooks land in `notebooklm::*` banks. With `notebooklmAccess.enabled: true`, the `notebooklm` MCP exposes:
+
+| Tool | Purpose |
+| --- | --- |
+| `notebooklm_list_banks` | Allowlisted banks |
+| `notebooklm_search` | Fast full-text search by default (`mode=list`); optional `mode=recall` for slow LLM synthesis |
+
+Prefer short keyword queries. LLM recall can take tens of seconds on CPU and may hit MCP timeouts.
 
 ## Stop and reset
 
@@ -87,5 +121,6 @@ docker compose down -v   # stop and delete the memory database
 ## Next
 
 - [Provider status](../provider-status/): what each provider is and how it self-hosts.
-- [Pluggable memory providers](../memory-providers/): what the wizard owns and what a provider owns.
+- [Pluggable memory providers](../memory-providers/): what the wizard owns and what a provider owns (including `./pm switch`).
 - [Provider wizard hooks](../provider-wizard-hooks/): the phase order and the hook contract.
+- [Configuration file](../personal-memory-config/): `config.toml` and `./pm` tasks.
