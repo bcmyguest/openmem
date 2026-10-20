@@ -27,6 +27,8 @@ Hindsight listens on `http://127.0.0.1:8888` and the coding-agent plugin uses
 
 ## Quick start: `./setup`
 
+![Setup wizard dry-run](docs/assets/setup-demo.gif)
+
 `./setup` is a **Node** wizard (`wizard/bin/setup.mjs`): Clack asks **stack action** (configure /
 start / stop — default is configure), **memory provider** (default from `wizard.conf` or
 `hindsight`), then model backend and routes. Works on Linux and macOS. Non-interactive:
