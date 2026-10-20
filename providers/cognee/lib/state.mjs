@@ -8,6 +8,7 @@
  * COGNEE_INDEXER_ENV_FILE, defaulting to ~/.config/personal-memory/.
  */
 import path from "node:path";
+import { envValue } from "../../../wizard/lib/paths.mjs";
 
 export const DEFAULT_PORT = 8766;
 export const DEFAULT_ENV_FILE = "~/.config/personal-memory/cognee.env";
@@ -37,24 +38,46 @@ export function resolveFile(value, ctx) {
 }
 
 /**
+ * One env-file setting, most specific first: the environment variable, the `[memory.cognee]`
+ * TOML value, the stack .env (where a previous run persisted it), then the default.
+ * @param {Record<string, any>} ctx
+ * @param {string} name COGNEE_ENV_FILE or COGNEE_INDEXER_ENV_FILE
+ * @param {string} fromToml
+ * @param {string} fallback
+ */
+function envFileSetting(ctx, name, fromToml, fallback) {
+  const fromStack = ctx.repoRoot ? envValue(path.join(ctx.repoRoot, ".env"), name) : "";
+  return resolveFile(process.env[name] || fromToml || fromStack || fallback, ctx);
+}
+
+/**
  * Fill the Cognee fields of the wizard context. Idempotent: a field that is already set
- * is kept. The env file paths are recomputed on every call because the environment
- * (COGNEE_ENV_FILE) and the TOML table (applied in `init`) can change between phases.
+ * is kept. The env file paths are recomputed on every call because the environment, the
+ * TOML table (applied in `init`) and the stack .env can change between phases.
  * @param {Record<string, any>} ctx
  */
 export function ensureState(ctx) {
   const cognee = (ctx.cognee ||= { port: "", envFile: "", indexerEnvFile: "" });
-  cognee.envFile = resolveFile(
-    process.env.COGNEE_ENV_FILE || cognee.configEnvFile || DEFAULT_ENV_FILE,
+  cognee.envFile = envFileSetting(ctx, "COGNEE_ENV_FILE", cognee.configEnvFile || "", DEFAULT_ENV_FILE);
+  cognee.indexerEnvFile = envFileSetting(
     ctx,
-  );
-  cognee.indexerEnvFile = resolveFile(
-    process.env.COGNEE_INDEXER_ENV_FILE || DEFAULT_INDEXER_ENV_FILE,
-    ctx,
+    "COGNEE_INDEXER_ENV_FILE",
+    cognee.configIndexerEnvFile || "",
+    DEFAULT_INDEXER_ENV_FILE,
   );
   if (ctx.portCognee === undefined) ctx.portCognee = "";
   if (ctx.cogneeUrl === undefined) ctx.cogneeUrl = "";
   return ctx;
+}
+
+/**
+ * Whether an env file path differs from its shipped default (and so must be persisted).
+ * @param {Record<string, any>} ctx
+ * @param {"envFile"|"indexerEnvFile"} which
+ */
+export function isCustomPath(ctx, which) {
+  const fallback = which === "envFile" ? DEFAULT_ENV_FILE : DEFAULT_INDEXER_ENV_FILE;
+  return ctx.cognee[which] !== resolveFile(fallback, ctx);
 }
 
 /**

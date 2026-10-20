@@ -1,5 +1,6 @@
 /** mem0's contribution to the wizard's closing summary. */
 import path from "node:path";
+import { readKey } from "./env-file.mjs";
 import { resolveEnvFile, ensureState } from "./state.mjs";
 import { containerUrl, displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 
@@ -30,6 +31,7 @@ export function summary(ctx, h) {
 
   /** @type {string[]} */
   const notes = [];
+  if (ctx.action === "down") return { running, configFiles, notes, logServices: ["indexer"] };
   let hostname = "<host>";
   let loopback = false;
   if (valid) {
@@ -37,9 +39,19 @@ export function summary(ctx, h) {
     hostname = parsed.hostname;
     loopback = ["127.0.0.1", "localhost", "0.0.0.0", "[::1]"].includes(hostname);
   }
+  let hasKey = false;
+  try {
+    hasKey = readKey(envFile) !== "";
+  } catch {
+    hasKey = false;
+  }
+  if (!hasKey) {
+    notes.push(
+      `API key: create one in the mem0 dashboard (http://${hostname}:3000) or with POST /api-keys, then put MEM0_API_KEY=<key> in ${envFile} (mode 600). ` +
+        "A server run with AUTH_DISABLED=true needs none (development only).",
+    );
+  }
   notes.push(
-    `API key: create one in the mem0 dashboard (http://${hostname}:3000) or with POST /api-keys, then put MEM0_API_KEY=<key> in ${envFile} (mode 600). ` +
-      "A server run with AUTH_DISABLED=true needs none (development only).",
     `The mem0 server is yours to run: its first-time setup (JWT_SECRET, embedder keys) is provider-native, see ${DOCS}`,
     loopback
       ? "The indexer container reaches a loopback server as host.docker.internal; on Linux a server bound only to 127.0.0.1 is not reachable that way: bind it to 0.0.0.0 or the docker bridge IP, or use a hostname in MEM0_API_URL."

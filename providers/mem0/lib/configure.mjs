@@ -4,37 +4,14 @@
  * keeps the key in the mode 600 env file and never anywhere else. Keys can also be placed in
  * that file by hand.
  */
+import path from "node:path";
 import { applyConfig, configToml } from "./config.mjs";
-import { fileMode, keyProblem, readKey, tooOpen, writeKey } from "./env-file.mjs";
+import { dirTooOpen, fileMode, keyProblem, readKey, tooOpen, writeKey } from "./env-file.mjs";
+import { capturedKey, captureKeyFromEnv } from "./secret.mjs";
 import { ensureState, envFileProblem, resolveEnvFile } from "./state.mjs";
 import { displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
-
-/**
- * A key handed over by the environment: PM_MEM0_API_KEY (the Clack hand-off; consumed so
- * it does not stay in the wizard's environment) or MEM0_API_KEY.
- * @returns {string}
- */
-function keyFromEnv() {
-  const handoff = (process.env.PM_MEM0_API_KEY || "").trim();
-  delete process.env.PM_MEM0_API_KEY;
-  return handoff || (process.env.MEM0_API_KEY || "").trim();
-}
-
-/**
- * @param {Record<string, any>} ctx
- * @param {Helpers} h
- * @param {boolean} hasExisting
- * @returns {Promise<string>}
- */
-async function askKey(ctx, h, hasExisting) {
-  const visible = process.stdin.isTTY ? " (typed text is visible; the setup UI hides it)" : "";
-  const prompt = hasExisting
-    ? `mem0 API key, empty keeps the one in the env file${visible}`
-    : `mem0 API key, empty if the server has auth disabled${visible}`;
-  return String(await h.ask(ctx, prompt, "")).trim();
-}
 
 /**
  * @param {Record<string, any>} ctx
@@ -70,9 +47,11 @@ export async function configureUrlAndKey(ctx, h) {
     return;
   }
   const existing = readKey(envFile);
-  let key = keyFromEnv();
+  // Normally captured by the init hook (before any child process starts); this covers a caller
+  // that skipped init and is a no-op once the variables are gone.
+  captureKeyFromEnv();
+  const key = capturedKey();
   if (key) h.info("using the API key from the environment");
-  else if (interactive) key = await askKey(ctx, h, Boolean(existing));
 
   if (key) {
     const keyIssue = keyProblem(key);
@@ -93,10 +72,15 @@ export async function configureUrlAndKey(ctx, h) {
       h.warn(`${envFile} is group/other accessible (mode ${fileMode(envFile).toString(8)}); run: chmod 600 ${envFile}`);
     }
   } else {
+    // No prompt here: helpers.ask echoes what is typed. The setup UI (Clack) asks with a masked prompt.
     h.info(
-      `no API key given. A server with auth enabled (the default) needs one: put MEM0_API_KEY=<key> in ${envFile} (mode 600) ` +
-        "and rerun, or export MEM0_API_KEY. A server run with AUTH_DISABLED does not need a key.",
+      `no API key given. A server with auth enabled (the default) needs one: put MEM0_API_KEY=<key> in ${envFile} (mode 600), ` +
+        "or rerun with MEM0_API_KEY (or PM_MEM0_API_KEY) in the environment under --yes. " +
+        "A server run with AUTH_DISABLED does not need a key.",
     );
+  }
+  if (dirTooOpen(envFile)) {
+    h.warn(`${path.dirname(envFile)} is accessible to group or others; run: chmod 700 ${path.dirname(envFile)}`);
   }
 
   const login = ctx.memoryProvider?.wizardHooks?.delegates?.login;

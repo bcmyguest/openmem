@@ -14,7 +14,9 @@ import { ensureState } from "./state.mjs";
 // Spelled in two pieces: indexer/tests/test_cognee_compose.py asserts that no file under
 // providers/cognee contains the word, so this module must not either.
 const UNFINISHED = new RegExp(["place", "holder"].join(""), "i");
-const SECRET_NAMES = /LLM_API_KEY|COGNEE_API_KEY/;
+// The key names never appear in the stack .env. The path entries COGNEE_ENV_FILE and
+// COGNEE_INDEXER_ENV_FILE are allowed there and do not match this pattern.
+const SECRET_NAMES = /(?:LLM|COGNEE|EMBEDDING)_API_KEY/;
 
 /**
  * Appends to ctx.validationErrors and ctx.validationChecks.

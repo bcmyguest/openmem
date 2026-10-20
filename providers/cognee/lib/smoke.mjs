@@ -47,14 +47,18 @@ export function apiKeyFor(ctx) {
 }
 
 /**
- * A short, secret-free reason from an error response: the `detail` string when there is one.
+ * A short, secret-free reason from an error response: the `detail` string when there is one
+ * (control characters removed, at most 80 characters).
  * @param {Response} res
  */
 async function reason(res) {
   let detail = "";
   try {
     const body = JSON.parse(await res.text());
-    if (typeof body?.detail === "string") detail = `: ${body.detail.slice(0, 160)}`;
+    if (typeof body?.detail === "string") {
+      // Short and printable: a server message can carry control characters or a long dump.
+      detail = `: ${body.detail.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 80)}`;
+    }
   } catch {
     // not JSON: the status line is enough
   }
@@ -130,6 +134,19 @@ export async function runSmoke(ctx, h, opts = {}) {
     });
   };
 
+  /** Id of the dataset named wizard_smoke, from the listing; "" when absent or unlistable. */
+  const findDatasetId = async () => {
+    try {
+      const res = await call("GET", "/api/v1/datasets");
+      if (!res.ok) return "";
+      const list = await res.json().catch(() => null);
+      const found = (Array.isArray(list) ? list : []).find((d) => d?.name === SMOKE_DATASET);
+      return typeof found?.id === "string" ? found.id : "";
+    } catch {
+      return "";
+    }
+  };
+
   /** @type {string} */
   let datasetId = "";
   /** @type {string} */
@@ -150,12 +167,24 @@ export async function runSmoke(ctx, h, opts = {}) {
     }
     if (!healthy) throw new SmokeError(`GET /health did not answer 2xx within ${Math.round(o.healthTimeoutMs / 1000)}s`);
 
-    // 2. dataset
-    const created = await call("POST", "/api/v1/datasets", { json: { name: SMOKE_DATASET } });
-    if (!created.ok) throw new SmokeError(`create dataset failed (${await reason(created)})`);
-    const dataset = await created.json().catch(() => null);
-    datasetId = typeof dataset?.id === "string" ? dataset.id : "";
-    if (!datasetId) throw new SmokeError("create dataset returned no id");
+    // 2. dataset. A create that times out or gets a 5xx may still have created it: look the
+    // dataset up by name so the cleanup below deletes an orphan.
+    /** @type {Response | null} */
+    let created = null;
+    let createError = "";
+    try {
+      created = await call("POST", "/api/v1/datasets", { json: { name: SMOKE_DATASET } });
+    } catch (e) {
+      createError = `create dataset request failed (${/** @type {Error} */ (e).name})`;
+    }
+    if (created?.ok) {
+      const dataset = await created.json().catch(() => null);
+      datasetId = typeof dataset?.id === "string" ? dataset.id : "";
+    }
+    if (!datasetId) {
+      if (!created || created.status >= 500 || created.ok) datasetId = await findDatasetId();
+      throw new SmokeError(createError || (created?.ok ? "create dataset returned no id" : `create dataset failed (${await reason(/** @type {Response} */ (created))})`));
+    }
 
     // 3. add (multipart)
     const form = new FormData();

@@ -9,6 +9,7 @@
  */
 import { applyConfig, configToml as buildConfigToml } from "./lib/config.mjs";
 import { clackSetup as askInClack, configureUrlAndKey } from "./lib/configure.mjs";
+import { captureKeyFromEnv } from "./lib/secret.mjs";
 import { smoke as mem0Smoke } from "./lib/smoke.mjs";
 import { ensureState } from "./lib/state.mjs";
 import { summary as mem0Summary } from "./lib/summary.mjs";
@@ -21,10 +22,13 @@ export { prepareStackEnv, setupNotices } from "./lib/stack-env.mjs";
 /** @typedef {import('../../wizard/lib/provider-wizard/helpers.mjs').ProviderWizardHelpers} Helpers */
 
 /**
- * Quiet: seed ctx.mem0 and read the [memory.mem0] table (api_url, env_file).
+ * Quiet: seed ctx.mem0 and read the [memory.mem0] table (api_url, env_file). Also takes the
+ * API key out of process.env (a module-private variable), before preflight starts docker and
+ * curl, so no child process inherits it.
  * @param {Record<string, any>} ctx
  */
 export async function init(ctx) {
+  captureKeyFromEnv();
   ensureState(ctx);
   applyConfig(ctx);
 }

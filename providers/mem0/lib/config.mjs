@@ -29,9 +29,8 @@ export function applyConfig(ctx) {
 }
 
 /**
- * Tables merged into config.toml. pm-config spreads provider sections after its own
- * `memory = { provider }`, so a `memory` key here REPLACES that table: carry the
- * provider id along or the next run would fall back to the default provider.
+ * Tables merged into config.toml: `memory.mem0`, which the wizard merges into [memory] (it
+ * always sets `provider` itself).
  * @param {Record<string, any>} ctx
  * @param {string} url the resolved host-view server URL
  * @returns {Record<string, Record<string, unknown>>}
@@ -42,5 +41,5 @@ export function configToml(ctx, url) {
   const mem0 = { api_url: url };
   const envFile = (process.env.MEM0_ENV_FILE || state.tomlEnvFile || "").trim();
   if (envFile) mem0.env_file = envFile;
-  return { memory: { provider: ctx.memoryProvider?.id || "mem0", mem0 } };
+  return { memory: { mem0 } };
 }

@@ -87,7 +87,7 @@ The path must stay inside the provider directory. Every export is an optional
 | `afterStackHealthy` | announced | ignored | After health and smoke |
 | `setupCodingAgent` | announced | ignored | After the generic coding-agent plugin step |
 | `extendValidation` | announced | ignored | Push to `ctx.validationErrors` / `ctx.validationChecks`; runs after the generic checks |
-| `configToml` | quiet | `{ stack?, <table>: {...} }` | Sections for `config.toml`: `stack` merges into `[stack]`, every other key is a table |
+| `configToml` | quiet | `{ stack?, memory?, <table>: {...} }` | Sections for `config.toml`: `stack` merges into `[stack]`, `memory` sub-tables (for example `memory.mem0`) merge into `[memory]` and `provider` there is always set by the wizard, every other key is a table |
 | `summary` | quiet | `{ running?, configFiles?, notes?, logServices? }` | Lines for the closing summary |
 | `clackSetup` | none | `{ env }` | Called by the Clack front end as `(ctxStub, ui, helpers)` |
 | `prepareStackEnv` | script | `{ entries, drop, report }` | Called by `scripts/setup.mjs`; `.env` always gets `HOST_UID`/`HOST_GID` |

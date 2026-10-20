@@ -66,6 +66,16 @@ const hsd = defaultsFromConfig(loaded.merged);
 check("hindsight defaults read [model] from the example", hsd.modelBackend === "lemond");
 check("provider-neutral defaults carry no model keys", !("modelBackend" in d) && !("apiPort" in d));
 
+// A provider's `memory` sub-tables are merged into [memory]; the provider id always wins.
+const mem0Ctx = { ...ctx, memoryProvider: { id: "mem0" } };
+const sub = buildPmConfigToml(mem0Ctx, { memory: { mem0: { api_url: "http://127.0.0.1:18888" } } });
+check("memory sub-table without provider keeps provider = mem0", /\[memory\]\nprovider = "mem0"/.test(sub) && /\[memory\.mem0\]\n\s*api_url = "http:\/\/127\.0\.0\.1:18888"/.test(sub));
+const forced = buildPmConfigToml(mem0Ctx, { memory: { provider: "other", mem0: { api_url: "http://x:1" } } });
+check("a provider section cannot override memory.provider", /provider = "mem0"/.test(forced) && !/provider = "other"/.test(forced));
+// Hindsight output is unchanged by the merge: the document equals the pre-change layout.
+const hsDoc = buildPmConfigToml(ctx, configToml(ctx));
+check("hindsight document layout unchanged ([memory] holds only provider)", /\[memory\]\nprovider = "hindsight"\n\n\[stack\]/.test(hsDoc) && !/\[memory\./.test(hsDoc));
+
 fs.rmSync(tmp, { recursive: true, force: true });
 
 if (fails) {

@@ -6,8 +6,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describeError, request } from "./http.mjs";
-import { fileMode, tooOpen } from "./env-file.mjs";
-import { ensureState, envFileProblem, resolveEnvFile } from "./state.mjs";
+import { dirTooOpen, fileMode, tooOpen } from "./env-file.mjs";
+import { defaultEnvFile, ensureState, envFileProblem, resolveEnvFile } from "./state.mjs";
 import { displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -52,6 +52,9 @@ export async function beforeStack(ctx, h) {
   if (tooOpen(envFile)) {
     h.warn(`${envFile} is group/other accessible (mode ${fileMode(envFile).toString(8)}); run: chmod 600 ${envFile}`);
   }
+  if (fs.existsSync(envFile) && dirTooOpen(envFile)) {
+    h.warn(`${path.dirname(envFile)} is accessible to group or others; run: chmod 700 ${path.dirname(envFile)}`);
+  }
 }
 
 /**
@@ -86,6 +89,14 @@ export function validateMem0(ctx, h) {
       errors.push("repo .env must not hold MEM0_API_KEY (the stack .env is world-readable; use the mem0 env file)");
     }
     checks.push("repo .env mem0 URLs and no key");
+  }
+
+  // A custom key file must reach compose through the stack .env, or a hand-run compose would
+  // read the default file while the wizard reads another.
+  if (!fileIssue && fs.existsSync(stackEnv) && envFile !== defaultEnvFile(ctx.home)) {
+    if (h.envValue(stackEnv, "MEM0_ENV_FILE") !== envFile) {
+      errors.push("repo .env MEM0_ENV_FILE does not match the mem0 env file in use (rerun ./setup)");
+    } else checks.push("repo .env MEM0_ENV_FILE matches");
   }
 
   for (const file of ctx.memoryProvider?.compose?.files || []) {

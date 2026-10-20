@@ -15,6 +15,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadManifest } from "../../wizard/lib/providers/registry.mjs";
 import { createHelpers } from "../../wizard/lib/provider-wizard/helpers.mjs";
+import { parseEnvValue } from "../../providers/mem0/lib/dotenv.mjs";
+import { readKey, writeKey } from "../../providers/mem0/lib/env-file.mjs";
+import { captureKeyFromEnv, capturedKey, clearCapturedKey } from "../../providers/mem0/lib/secret.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 let fails = 0;
@@ -40,6 +43,7 @@ const ENV_KEYS = [
 ];
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 function resetEnv(extra = {}) {
+  clearCapturedKey();
   for (const k of ENV_KEYS) delete process.env[k];
   Object.assign(process.env, extra);
 }
@@ -162,8 +166,8 @@ async function dies(fn) {
   );
   const sections = saved[0].opts.pmSections;
   check(
-    "--yes + key: config.toml section is [memory.mem0] api_url and carries the provider id",
-    sections.memory.provider === "mem0" && sections.memory.mem0.api_url === "http://127.0.0.1:19999" && !("api_key" in sections.memory.mem0),
+    "--yes + key: config.toml section is [memory.mem0] api_url only (the wizard sets provider)",
+    sections.memory.mem0.api_url === "http://127.0.0.1:19999" && !("provider" in sections.memory) && !("api_key" in sections.memory.mem0),
   );
   check("--yes + key: the old throw is gone and the step is announced", text(out).includes("step 3. mem0 server URL and API key"));
   check("--yes + key: MEM0_API_URL exported for compose", process.env.MEM0_API_URL === "http://127.0.0.1:19999");
@@ -246,17 +250,15 @@ async function dies(fn) {
   check("dry run: an invalid URL is a warning, not a stop", text(dry.out).includes("warn mem0 API URL:") && dry.saved.length === 0);
 }
 
-// Interactive answers (not --yes): URL and key come from the prompts.
+// Interactive answers (not --yes): the URL is asked; the key is NOT (helpers.ask would echo it).
 {
   resetEnv();
   const ctx = freshCtx("interactive", { yes: false });
-  const { h, out, saved, asked } = stubHelpers({
-    answers: { "REST server URL": "http://mem0.internal:8000/", "API key": KEY },
-  });
+  const { h, out, saved, asked } = stubHelpers({ answers: { "REST server URL": "http://mem0.internal:8000/" } });
   await mem0.configureModelRouting(ctx, h);
-  check("interactive: both prompts asked", asked.length === 2 && asked[0].includes("URL") && asked[1].includes("API key"));
+  check("interactive: only the URL is asked, never the key", asked.length === 1 && asked[0].includes("URL"));
   check("interactive: URL answer saved (trailing slash dropped)", saved[0]?.extra.MEM0_API_URL === "http://mem0.internal:8000");
-  check("interactive: key written 0600 and not printed", fs.readFileSync(envFileOf(ctx), "utf8") === `MEM0_API_KEY=${KEY}\n` && modeOf(envFileOf(ctx)) === 0o600 && !text(out).includes(KEY));
+  check("interactive: info points at the env file and the env variables", text(out).includes(envFileOf(ctx)) && text(out).includes("PM_MEM0_API_KEY") && !fs.existsSync(envFileOf(ctx)));
 }
 
 // skipBackendStep: the Clack hand-off (PM_MEM0_API_KEY) is consumed, nothing is asked.
@@ -291,7 +293,7 @@ async function dies(fn) {
   const env = mem0.stackEnv(ctx, h);
   check("stackEnv hands the host URL to scripts/setup.mjs and nothing else", Object.keys(env.env).join() === "MEM0_API_URL" && env.env.MEM0_API_URL === "http://127.0.0.1:19999" && !JSON.stringify(env).includes(KEY));
   const toml = mem0.configToml(ctx, h);
-  check("configToml: memory.provider kept, [memory.mem0].api_url, no secret", toml.memory.provider === "mem0" && toml.memory.mem0.api_url === "http://127.0.0.1:19999" && !JSON.stringify(toml).includes(KEY));
+  check("configToml: [memory.mem0].api_url only, no secret", toml.memory.mem0.api_url === "http://127.0.0.1:19999" && Object.keys(toml).join() === "memory" && !JSON.stringify(toml).includes(KEY));
   const sum = mem0.summary(ctx, h);
   const sumText = JSON.stringify(sum);
   check("summary: running lines say external server and show the container URL", sum.running[0].includes("external server (not managed by this stack)") && sum.running[1].includes("mem0 -> http://host.docker.internal:19999"));
@@ -342,8 +344,9 @@ async function dies(fn) {
 // ---------------------------------------------------------------------------
 // A node:http stand-in for the mem0 REST server.
 
-async function startMem0({ key = KEY, auth = true, searchMode = "match", retainStatus = 200, deleteStatus = 200, echoKeyOnError = false } = {}) {
+async function startMem0({ key = KEY, auth = true, searchMode = "match", retainStatus = 200, deleteStatus = 200, echoKeyOnError = false, errorBody = "", seed = [], idFor = () => randomUUID() } = {}) {
   const store = new Map();
+  for (const m of seed) store.set(m.id, m);
   const log = [];
   const violations = [];
   const server = http.createServer((req, res) => {
@@ -367,10 +370,10 @@ async function startMem0({ key = KEY, auth = true, searchMode = "match", retainS
       if (req.method === "GET" && u.pathname === "/docs") return send(200, null, "<html>docs</html>");
       if (auth && sent !== key) return send(401, { detail: "Invalid or missing API key" });
       if (req.method === "POST" && u.pathname === "/memories") {
-        if (retainStatus !== 200) return send(retainStatus, { detail: echoKeyOnError ? `server error for ${sent}` : "server error" });
+        if (retainStatus !== 200) return send(retainStatus, { detail: errorBody || (echoKeyOnError ? `server error for ${sent}` : "server error") });
         if (body?.infer !== false) violations.push("retain without infer:false");
         if (!body?.user_id) violations.push("retain without user_id");
-        const id = randomUUID();
+        const id = idFor();
         const memory = body?.messages?.[0]?.content ?? "";
         store.set(id, { id, memory, user_id: body?.user_id, agent_id: body?.agent_id, run_id: body?.run_id });
         return send(200, { results: [{ id, memory, event: "ADD" }] });
@@ -423,7 +426,8 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   const { h, out } = stubHelpers();
   await mem0.smoke(ctx, h);
   const routes = stub.log.map((r) => `${r.method} ${r.path}`);
-  check("smoke: four-step sequence (docs, retain, search, delete by id)", routes[0] === "GET /docs" && routes[1] === "POST /memories" && routes[2] === "POST /search" && routes[3].startsWith("DELETE /memories/") && routes.length === 4);
+  check("smoke: docs, retain, search, cleanup lookup, delete by id", routes[0] === "GET /docs" && routes[1] === "POST /memories" && routes[2] === "POST /search" && routes[3] === "GET /memories" && routes[4].startsWith("DELETE /memories/") && routes.length === 5);
+  check("smoke: the cleanup lookup is scoped to the wizard's user_id and run_id with top_k 1000", stub.log[3].search === "?user_id=wizard-smoke&run_id=wizard-smoke-doc&top_k=1000");
   check("smoke: X-API-Key sent on authenticated calls, not on /docs", stub.log[0].key === "" && stub.log.slice(1).every((r) => r.key === KEY));
   const retain = stub.log[1].body;
   check("smoke: retain body is verbatim (infer false) with the fixed ids", retain.infer === false && retain.user_id === "wizard-smoke" && retain.run_id === "wizard-smoke-doc" && retain.agent_id === "personal-memory-wizard" && /heron/.test(retain.messages[0].content));
@@ -514,6 +518,45 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   await stub.close();
 }
 
+// NIT 4 and 5: cleanup deletes everything under the wizard's ids, whatever happened; server text is sanitised.
+{
+  const leftover = { id: randomUUID(), memory: "Wizard smoke test: the project codename is heron.", user_id: "wizard-smoke", run_id: "wizard-smoke-doc" };
+  const real = { id: randomUUID(), memory: "my real memory", user_id: "someone", run_id: "other" };
+  const stub = await startMem0({ seed: [leftover, real] });
+  const ctx = smokeCtx("smoke-leftover", stub);
+  await mem0.smoke(ctx, stubHelpers().h);
+  check("smoke cleanup removes leftovers of an earlier run, and only the wizard's own", !stub.store.has(leftover.id) && stub.store.has(real.id) && stub.store.size === 1);
+  await stub.close();
+
+  const failing = await startMem0({ searchMode: "empty", seed: [{ ...leftover, id: randomUUID() }] });
+  const failCtx = smokeCtx("smoke-leftover-fail", failing);
+  await dies(() => mem0.smoke(failCtx, stubHelpers().h));
+  check("smoke cleanup also removes leftovers when the smoke itself fails", failing.store.size === 0);
+  await failing.close();
+
+  const noisy = await startMem0({ retainStatus: 500, errorBody: "\u001b[31mred\u0007 line\nbreak\u009b" });
+  const msg = await dies(() => mem0.smoke(smokeCtx("smoke-ctrl", noisy), stubHelpers().h));
+  check("server error text has its control characters stripped before it is printed", /500/.test(msg) && !/[\u0000-\u0008\u000a-\u001f\u007f-\u009f]/.test(msg));
+  await noisy.close();
+
+  const odd = await startMem0({ idFor: () => "../../etc/passwd" });
+  const oddOut = stubHelpers();
+  await mem0.smoke(smokeCtx("smoke-oddid", odd), oddOut.h);
+  check("a server id that is not a plain identifier is never used in a request or printed", odd.log.every((r) => r.method !== "DELETE") && !text(oddOut.out).includes("passwd"));
+  await odd.close();
+
+  // The key/env file cannot be read: no key leaks, cleanup still runs.
+  const stub2 = await startMem0({ seed: [{ ...leftover, id: randomUUID() }], auth: false });
+  const dirAsFile = path.join(tmp, "env-is-a-dir");
+  fs.mkdirSync(dirAsFile, { recursive: true });
+  const ctx2 = smokeCtx("smoke-unreadable", stub2, { keyInFile: "" });
+  process.env.MEM0_ENV_FILE = dirAsFile;
+  const msg2 = await dies(() => mem0.smoke(ctx2, stubHelpers().h));
+  check("an unreadable env file fails with a clear message", /cannot read the mem0 env file/.test(msg2));
+  check("an unreadable env file does not skip cleanup", stub2.log.some((r) => r.method === "GET" && r.path === "/memories") && stub2.store.size === 0);
+  await stub2.close();
+}
+
 // beforeStack: warns (never fails) when the server is absent; no key is ever sent.
 {
   const stub = await startMem0();
@@ -594,6 +637,209 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   check("validation: a missing compose fragment is an error", noCompose.validationErrors.some((e) => /missing compose file/.test(e)));
 }
 
+
+// ---------------------------------------------------------------------------
+// B1: the key is read the way docker compose's env_file loader reads it.
+{
+  const forms = [
+    ["plain", "MEM0_API_KEY=abc\n", "abc"],
+    ["export prefix", "export MEM0_API_KEY=abc\n", "abc"],
+    ["spaces around key and value", "  MEM0_API_KEY = abc  \n", "abc"],
+    ["double quotes", 'MEM0_API_KEY="abc def"\n', "abc def"],
+    ["single quotes then a comment", "MEM0_API_KEY='abc' # rotated\n", "abc"],
+    ["quoted hash", 'MEM0_API_KEY="a # b"\n', "a # b"],
+    ["inline comment", "MEM0_API_KEY=abc # note\n", "abc"],
+    ["hash without a space stays in the value", "MEM0_API_KEY=abc#def\n", "abc#def"],
+    ["a leading hash is the value", "MEM0_API_KEY=#abc\n", "#abc"],
+    ["CRLF line ends", "FOO=1\r\nMEM0_API_KEY=abc\r\n", "abc"],
+    ["export, quotes and CRLF", "export MEM0_API_KEY='abc'\r\n", "abc"],
+    ["empty value", "MEM0_API_KEY=\n", ""],
+    ["empty double quotes", 'MEM0_API_KEY=""\n', ""],
+    ["empty single quotes", "MEM0_API_KEY=''\n", ""],
+    ["commented out", "# MEM0_API_KEY=abc\n", ""],
+    ["similar key names", "MEM0_API_KEY_OLD=abc\nX_MEM0_API_KEY=y\n", ""],
+    ["duplicate: the last wins", "MEM0_API_KEY=old\nMEM0_API_KEY=new\n", "new"],
+    ["duplicate: an empty last wins", "MEM0_API_KEY=old\nMEM0_API_KEY=\n", ""],
+    ["duplicate across export and CRLF", "MEM0_API_KEY=stale\r\nexport MEM0_API_KEY='fresh' # r\r\n", "fresh"],
+    ["unterminated quote", 'MEM0_API_KEY="abc\n', ""],
+  ];
+  const dir = path.join(tmp, "forms");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [name, content, want] of forms) {
+    const file = path.join(dir, "k.env");
+    fs.writeFileSync(file, content);
+    check(`readKey form: ${name}`, readKey(file) === want && parseEnvValue(content, "MEM0_API_KEY") === want);
+  }
+  check("readKey: an absent file is no key", readKey(path.join(dir, "absent.env")) === "");
+
+  // Cross-check against the real compose loader when docker compose is installed.
+  const { spawnSync } = await import("node:child_process");
+  const probe = spawnSync("docker", ["compose", "version"], { encoding: "utf8" });
+  if (probe.status === 0) {
+    fs.writeFileSync(path.join(dir, "compose.yaml"), "services:\n  a:\n    image: x\n    env_file:\n      - path: k.env\n        required: false\n");
+    let same = 0;
+    const diffs = [];
+    for (const [name, content, want] of forms) {
+      fs.writeFileSync(path.join(dir, "k.env"), content);
+      const r = spawnSync("docker", ["compose", "-f", "compose.yaml", "config", "--format", "json"], { cwd: dir, encoding: "utf8" });
+      let got;
+      try {
+        got = JSON.parse(r.stdout).services.a.environment?.MEM0_API_KEY ?? "";
+      } catch {
+        got = "(compose refuses the file)";
+      }
+      const expected = name === "unterminated quote" ? "(compose refuses the file)" : want;
+      if (got === expected) same++;
+      else diffs.push(name);
+    }
+    check(`readKey agrees with docker compose on all ${forms.length} forms`, diffs.length === 0);
+    if (diffs.length) console.log(`      differs: ${diffs.join(", ")}`);
+    void same;
+  } else console.log("skip  docker compose not installed: parser cross-check skipped");
+}
+
+// setupNotices (the real scripts/setup.mjs function) uses the same parse.
+{
+  const note = (name, content, { dirMode = 0o700, fileMode = 0o600, stackEnvText = "" } = {}) => {
+    const home = path.join(tmp, `notice-${name}`);
+    const repo = path.join(home, "stack");
+    const dir = path.join(home, ".config/personal-memory");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(repo, { recursive: true });
+    fs.chmodSync(dir, dirMode);
+    if (content !== null) fs.writeFileSync(path.join(dir, "mem0.env"), content, { mode: fileMode });
+    if (content !== null) fs.chmodSync(path.join(dir, "mem0.env"), fileMode);
+    if (stackEnvText) fs.writeFileSync(path.join(repo, ".env"), stackEnvText);
+    return mem0.setupNotices({ repo, home, env: {} }).join("\n");
+  };
+  const needs = (t) => t.includes("needs an API key");
+  check("setupNotices: a plain key means no note", !needs(note("plain", "MEM0_API_KEY=abc\n")));
+  check("setupNotices: `export MEM0_API_KEY=...` is a key", !needs(note("export", "export MEM0_API_KEY=abc\n")));
+  check("setupNotices: a quoted key with a comment and CRLF is a key", !needs(note("quoted", 'MEM0_API_KEY="abc" # c\r\n')));
+  check('setupNotices: MEM0_API_KEY="" is no key', needs(note("empty-dq", 'MEM0_API_KEY=""\n')));
+  check("setupNotices: MEM0_API_KEY= is no key", needs(note("empty", "MEM0_API_KEY=\n")));
+  check("setupNotices: a commented key is no key", needs(note("commented", "# MEM0_API_KEY=abc\n")));
+  check("setupNotices: a duplicate with an empty last value is no key", needs(note("dup-empty", "MEM0_API_KEY=abc\nMEM0_API_KEY=\n")));
+  check("setupNotices: a duplicate with a key last is a key", !needs(note("dup-key", "MEM0_API_KEY=\nMEM0_API_KEY=abc\n")));
+  check("setupNotices: an absent file is no key", needs(note("absent", null)));
+  check("setupNotices: a 644 key file is flagged", /readable by group or others \(mode 644\)/.test(note("loose", "MEM0_API_KEY=abc\n", { fileMode: 0o644 })));
+  check("setupNotices: a 755 directory is flagged", /accessible to group or others \(mode 755\)/.test(note("loosedir", "MEM0_API_KEY=abc\n", { dirMode: 0o755 })));
+  check("setupNotices: no notes at all for a clean setup", note("clean", "MEM0_API_KEY=abc\n") === "");
+  const viaStackEnv = path.join(tmp, "notice-custom");
+  fs.mkdirSync(path.join(viaStackEnv, "keys"), { recursive: true, mode: 0o700 });
+  fs.mkdirSync(path.join(viaStackEnv, "stack"), { recursive: true });
+  fs.writeFileSync(path.join(viaStackEnv, "keys/m.env"), "MEM0_API_KEY=abc\n", { mode: 0o600 });
+  fs.writeFileSync(path.join(viaStackEnv, "stack/.env"), `MEM0_ENV_FILE=${path.join(viaStackEnv, "keys/m.env")}\n`);
+  check("setupNotices: follows MEM0_ENV_FILE from the stack .env", mem0.setupNotices({ repo: path.join(viaStackEnv, "stack"), home: viaStackEnv, env: {} }).join("") === "");
+}
+
+// prepareStackEnv persists a custom env file path (a path, not a secret).
+{
+  const home = path.join(tmp, "prep-home");
+  const repo = path.join(tmp, "prep-stack");
+  fs.mkdirSync(repo, { recursive: true });
+  const base = { MEM0_API_URL: "http://127.0.0.1:19999", LITELLM_CONFIG: "/etc/hostname" };
+  const plain = mem0.prepareStackEnv({ repo, home, env: base });
+  check("prepareStackEnv: no MEM0_ENV_FILE entry or drop without a custom path", !plain.entries.some(([k]) => k === "MEM0_ENV_FILE") && !plain.drop.includes("MEM0_ENV_FILE"));
+  const custom = mem0.prepareStackEnv({ repo, home, env: { ...base, MEM0_ENV_FILE: "~/keys/m.env" } });
+  check("prepareStackEnv: a custom path is written, ~ expanded, and the old line dropped", custom.entries.some(([k, v]) => k === "MEM0_ENV_FILE" && v === path.join(home, "keys/m.env")) && custom.drop.includes("MEM0_ENV_FILE"));
+  for (const bad of ["relative/m.env", "/tmp/a$b.env", "/tmp/a\nINJECT=1", '/tmp/"q".env']) {
+    let msg = "";
+    try {
+      mem0.prepareStackEnv({ repo, home, env: { ...base, MEM0_ENV_FILE: bad } });
+    } catch (e) {
+      msg = e.message;
+    }
+    check(`prepareStackEnv: refuses MEM0_ENV_FILE=${JSON.stringify(bad)}`, /MEM0_ENV_FILE/.test(msg));
+  }
+}
+
+// writeKey: symlinks are followed, the temp file is exclusive and removed.
+{
+  const home = path.join(tmp, "links");
+  const dot = path.join(home, "dotfiles");
+  fs.mkdirSync(dot, { recursive: true });
+  fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
+  const target = path.join(dot, "mem0.env");
+  fs.writeFileSync(target, "FOO=bar\n", { mode: 0o644 });
+  fs.chmodSync(target, 0o644);
+  const link = path.join(home, ".config/personal-memory/mem0.env");
+  fs.symlinkSync(target, link);
+  writeKey(link, KEY);
+  check("writeKey through a file symlink: the link survives, the target holds the key at mode 600", fs.lstatSync(link).isSymbolicLink() && fs.readFileSync(target, "utf8") === `FOO=bar\nMEM0_API_KEY=${KEY}\n` && modeOf(target) === 0o600);
+  check("writeKey through a file symlink: no temp file left behind", fs.readdirSync(dot).every((n) => !n.includes(".tmp-")));
+
+  const dirTarget = path.join(home, "dotfiles/pm");
+  fs.mkdirSync(dirTarget, { recursive: true });
+  const dirLink = path.join(home, "cfg-link");
+  fs.symlinkSync(dirTarget, dirLink);
+  writeKey(path.join(dirLink, "mem0.env"), KEY);
+  check("writeKey through a directory symlink: the link survives and the file lands in the target", fs.lstatSync(dirLink).isSymbolicLink() && fs.readFileSync(path.join(dirTarget, "mem0.env"), "utf8") === `MEM0_API_KEY=${KEY}\n`);
+
+  const dangling = path.join(home, ".config/personal-memory/other.env");
+  fs.symlinkSync(path.join(dot, "created-later.env"), dangling);
+  writeKey(dangling, KEY);
+  check("writeKey through a dangling symlink creates the target (mode 600)", fs.lstatSync(dangling).isSymbolicLink() && modeOf(path.join(dot, "created-later.env")) === 0o600);
+
+  const dup = path.join(home, "dups.env");
+  fs.writeFileSync(dup, `MEM0_API_KEY=a\r\nexport MEM0_API_KEY="b"\r\nX=1\r\n`);
+  writeKey(dup, KEY);
+  check("writeKey: every old key line (export, CRLF, duplicates) is replaced by one", fs.readFileSync(dup, "utf8") === `X=1\nMEM0_API_KEY=${KEY}\n`);
+}
+
+// NIT 1: the key leaves process.env in the init hook and never lands on ctx.
+{
+  resetEnv({ PM_MEM0_API_KEY: KEY, MEM0_API_KEY: "other-key" });
+  const ctx = freshCtx("capture");
+  const { h } = stubHelpers();
+  await mem0.init(ctx, h);
+  check("init removes PM_MEM0_API_KEY and MEM0_API_KEY from process.env", process.env.PM_MEM0_API_KEY === undefined && process.env.MEM0_API_KEY === undefined);
+  check("init keeps the hand-off key privately (hand-off wins over MEM0_API_KEY)", capturedKey() === KEY);
+  check("the key is on no context field, serialised or not", !JSON.stringify(ctx).includes(KEY) && !Object.getOwnPropertyNames(ctx.mem0).some((k) => String(ctx.mem0[k]).includes(KEY)));
+  await mem0.configureModelRouting(ctx, h);
+  check("configure uses the captured key", fs.readFileSync(envFileOf(ctx), "utf8") === `MEM0_API_KEY=${KEY}\n`);
+  resetEnv({ MEM0_API_KEY: KEY });
+  captureKeyFromEnv();
+  check("a plain MEM0_API_KEY is captured and removed too", capturedKey() === KEY && process.env.MEM0_API_KEY === undefined);
+}
+
+// NIT 6: warn about a group/other accessible directory.
+{
+  resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999", MEM0_API_KEY: KEY });
+  const ctx = freshCtx("dirmode");
+  fs.mkdirSync(path.dirname(envFileOf(ctx)), { recursive: true });
+  fs.chmodSync(path.dirname(envFileOf(ctx)), 0o755);
+  const { h, out } = stubHelpers();
+  await mem0.configureModelRouting(ctx, h);
+  check("configure warns when the env file directory is group/other accessible", /warn .*accessible to group or others; run: chmod 700/.test(text(out)));
+  const again = stubHelpers();
+  await mem0.beforeStack({ ...ctx, dry: true }, again.h);
+  check("beforeStack warns about the directory too", /warn .*accessible to group or others; run: chmod 700/.test(text(again.out)));
+}
+
+// NIT 8: the summary's API-key note only when there is no key, and not on --down.
+{
+  resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
+  const noKey = freshCtx("sum-nokey");
+  const withKey = freshCtx("sum-key");
+  fs.mkdirSync(path.dirname(envFileOf(withKey)), { recursive: true });
+  fs.writeFileSync(envFileOf(withKey), `export MEM0_API_KEY='${KEY}'\r\n`, { mode: 0o600 });
+  const { h } = stubHelpers();
+  check("summary: the API key note shows when there is no key", mem0.summary(noKey, h).notes.some((n) => n.startsWith("API key:")));
+  check("summary: no API key note once a key exists (export, quotes, CRLF)", !mem0.summary(withKey, h).notes.some((n) => n.startsWith("API key:")) && mem0.summary(withKey, h).notes.length >= 2);
+  const emptyKey = freshCtx("sum-empty");
+  fs.mkdirSync(path.dirname(envFileOf(emptyKey)), { recursive: true });
+  fs.writeFileSync(envFileOf(emptyKey), 'MEM0_API_KEY=""\n', { mode: 0o600 });
+  check('summary: MEM0_API_KEY="" still shows the note', mem0.summary(emptyKey, h).notes.some((n) => n.startsWith("API key:")));
+  check("summary on --down has no notes", mem0.summary({ ...noKey, action: "down" }, h).notes.length === 0);
+}
+
+// NIT 7: the manifest says its HTTP smoke fields are informational.
+{
+  const m = JSON.parse(fs.readFileSync(path.join(root, "providers/mem0/manifest.json"), "utf8"));
+  check("manifest: wizard.note and notes say the HTTP fields are informational", /Informational/.test(m.wizard.note) && /informational/.test(m.notes) && m.wizard.deletePath);
+}
+
 // ---------------------------------------------------------------------------
 // (c) a real ./setup run (wizard/bin/setup.mjs) against a scratch copy of the tree.
 
@@ -615,6 +861,7 @@ function writeDockerStub(dir) {
     file,
     `#!/usr/bin/env bash
 echo "docker $*" >> "\${STUB_LOG}"
+env >> "\${STUB_LOG}.env"
 case "$*" in "compose -p"*) echo "$PWD" >> "\${STUB_LOG}.cwd" ;; esac
 case "$1" in
     info|ps) exit 0 ;;
@@ -698,6 +945,8 @@ function runSetup(stack, home, stubBin, log, args, env) {
   check("e2e dry run: the key is not in the output", !dry.output.includes(KEY));
   const dryDocker = fs.existsSync(dryLog) ? fs.readFileSync(dryLog, "utf8") : "";
   check("e2e dry run: docker saw no up, build or run", !/compose .* (up|build|run) /.test(dryDocker));
+  const dryEnvLog = fs.readFileSync(`${dryLog}.env`, "utf8");
+  check("e2e dry run: the docker child's environment is recorded, without the key", dryEnvLog.includes("PM_PROJECT=pm-mem0-test") && !dryEnvLog.includes(KEY));
 
   // Real run.
   const home = path.join(tmp, "e2e-home");
@@ -706,6 +955,8 @@ function runSetup(stack, home, stubBin, log, args, env) {
   const real = await runSetup(stack, home, stubBin, log, ["--yes"], env);
   if (real.code !== 0 || process.env.MEM0_TEST_VERBOSE) console.log(real.output);
   check("e2e real run: exit 0", real.code === 0);
+  const realEnvLog = fs.existsSync(`${log}.env`) ? fs.readFileSync(`${log}.env`, "utf8") : "";
+  check("e2e real run (--yes, MEM0_API_KEY): no docker call's environment held the key", realEnvLog.includes("PM_PROJECT=pm-mem0-test") && !realEnvLog.includes(KEY) && !/MEM0_API_KEY/.test(realEnvLog));
   const dockerLog = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
   check("e2e real run: compose up carries both files and --profile mem0", /compose -p pm-mem0-test -f compose\.yaml (-f compose\.override\.yaml )?-f providers\/mem0\/compose\.yaml --profile mem0 up -d/.test(dockerLog));
   const stackEnvText = fs.readFileSync(path.join(stack, ".env"), "utf8");
@@ -747,6 +998,79 @@ function runSetup(stack, home, stubBin, log, args, env) {
   const bare = await runSetup(stack, bareHome, stubBin, path.join(tmp, "e2e3.log"), ["--yes"], { MEM0_API_URL: stub.url });
   check("e2e without a key: the smoke fails with the MEM0_API_KEY hint (exit 1)", bare.code === 1 && /401/.test(bare.output) && bare.output.includes("MEM0_API_KEY") && !fs.existsSync(path.join(bareHome, ".config/personal-memory/mem0.env")));
   check("e2e without a key: the stub is still empty", stub.store.size === 0);
+
+  // Clack-style hand-off: PM_MEM0_API_KEY (and the skip flag) instead of MEM0_API_KEY.
+  const clackHome = path.join(tmp, "e2e-home-clack");
+  makeHome(clackHome);
+  const clackLog = path.join(tmp, "e2e-clack.log");
+  const clack = await runSetup(stack, clackHome, stubBin, clackLog, ["--yes"], { MEM0_API_URL: stub.url, PM_MEM0_API_KEY: KEY, WIZARD_SKIP_BACKEND_STEP: "1" });
+  if (clack.code !== 0) console.log(clack.output);
+  const clackEnvLog = fs.existsSync(`${clackLog}.env`) ? fs.readFileSync(`${clackLog}.env`, "utf8") : "";
+  check("e2e Clack hand-off: exit 0 and the key file written (mode 600)", clack.code === 0 && fs.readFileSync(path.join(clackHome, ".config/personal-memory/mem0.env"), "utf8") === `MEM0_API_KEY=${KEY}\n`);
+  check("e2e Clack hand-off: no docker call's environment held the key", clackEnvLog.includes("PM_PROJECT=pm-mem0-test") && !clackEnvLog.includes(KEY) && !/MEM0_API_KEY/.test(clackEnvLog));
+  check("e2e Clack hand-off: the key is not in the output", !clack.output.includes(KEY));
+
+  // --up (stack-only path): the URL comes from wizard.conf / the stack .env, the key from the env file.
+  const tracesBefore = stub.log.length;
+  const upLog = path.join(tmp, "e2e-up.log");
+  const up = await runSetup(stack, home, stubBin, upLog, ["--up", "--yes"], {});
+  if (up.code !== 0) console.log(up.output);
+  const upDocker = fs.existsSync(upLog) ? fs.readFileSync(upLog, "utf8") : "";
+  check("e2e --up: exit 0, compose up with the profile and both files", up.code === 0 && /compose -p pm-mem0-test -f compose\.yaml (-f compose\.override\.yaml )?-f providers\/mem0\/compose\.yaml --profile mem0 up -d/.test(upDocker));
+  check("e2e --up: no configure steps (no key write, no index step)", !up.output.includes("3. mem0 server URL and API key") && !up.output.includes("Sources to index"));
+  const upTraffic = stub.log.slice(tracesBefore);
+  check("e2e --up: the smoke ran with the key from the env file", upTraffic.some((r) => r.method === "POST" && r.path === "/memories" && r.key === KEY) && stub.store.size === 0);
+  check("e2e --up: validation passed, no API-key note (a key exists), key not printed", up.output.includes("memory setup validation passed") && !up.output.includes("API key:") && !up.output.includes(KEY));
+
+  // Hand-edited env file: export, quotes, comment, CRLF, duplicates (the last wins, as in compose).
+  const keyPath = path.join(home, ".config/personal-memory/mem0.env");
+  fs.writeFileSync(keyPath, `# edited by hand\r\nMEM0_API_KEY=stale-key\r\nexport MEM0_API_KEY='${KEY}' # rotated\r\nOTHER=1\r\n`, { mode: 0o600 });
+  const handFrom = stub.log.length;
+  const hand = await runSetup(stack, home, stubBin, path.join(tmp, "e2e-hand.log"), ["--up", "--yes"], {});
+  check("e2e hand-edited env file (export, quotes, comment, CRLF, duplicate): --up passes with the last key", hand.code === 0 && !hand.output.includes("needs an API key") && stub.log.slice(handFrom).filter((r) => r.path === "/memories" && r.method === "POST").length === 1 && stub.log.slice(handFrom).filter((r) => r.path === "/memories" && r.method === "POST").every((r) => r.key === KEY));
+  fs.writeFileSync(keyPath, `MEM0_API_KEY=${KEY}\nMEM0_API_KEY=""\n`, { mode: 0o600 });
+  const emptied = await runSetup(stack, home, stubBin, path.join(tmp, "e2e-empty.log"), ["--up", "--yes"], {});
+  check('e2e a later MEM0_API_KEY="" means no key: setup notes it and the smoke fails with the hint', emptied.code === 1 && emptied.output.includes("needs an API key") && /401/.test(emptied.output));
+  fs.writeFileSync(keyPath, `MEM0_API_KEY=${KEY}\n`, { mode: 0o600 });
+
+  // --down: no URL validation, no API-key note, no stub traffic.
+  const before = stub.log.length;
+  const downLog = path.join(tmp, "e2e-down.log");
+  const down = await runSetup(stack, home, stubBin, downLog, ["--down", "--yes"], { MEM0_API_URL: "this is not a url" });
+  const downDocker = fs.existsSync(downLog) ? fs.readFileSync(downLog, "utf8") : "";
+  check("e2e --down: exit 0 even with an unusable MEM0_API_URL, compose down with the profile", down.code === 0 && /compose -p pm-mem0-test -f compose\.yaml (-f compose\.override\.yaml )?-f providers\/mem0\/compose\.yaml --profile mem0 down/.test(downDocker));
+  check("e2e --down: no API-key note and no traffic to the server", !down.output.includes("API key:") && stub.log.length === before);
+
+  // A symlinked env file (dotfile manager): the link survives, the target holds the key.
+  const linkHome = path.join(tmp, "e2e-home-link");
+  makeHome(linkHome);
+  fs.mkdirSync(path.join(linkHome, "dotfiles"), { recursive: true });
+  fs.mkdirSync(path.join(linkHome, ".config/personal-memory"), { recursive: true, mode: 0o700 });
+  const linkTarget = path.join(linkHome, "dotfiles/mem0.env");
+  fs.writeFileSync(linkTarget, "KEEP=me\r\nMEM0_API_KEY=old\r\n", { mode: 0o644 });
+  fs.chmodSync(linkTarget, 0o644);
+  const linkPath = path.join(linkHome, ".config/personal-memory/mem0.env");
+  fs.symlinkSync(linkTarget, linkPath);
+  const linked = await runSetup(stack, linkHome, stubBin, path.join(tmp, "e2e-link.log"), ["--yes"], env);
+  if (linked.code !== 0) console.log(linked.output);
+  check("e2e symlinked env file: link kept, target has the new key and the other line, mode 600", linked.code === 0 && fs.lstatSync(linkPath).isSymbolicLink() && fs.readFileSync(linkTarget, "utf8") === `KEEP=me\nMEM0_API_KEY=${KEY}\n` && modeOf(linkTarget) === 0o600);
+  check("e2e symlinked env file: the key is not in the output", !linked.output.includes(KEY));
+  check("e2e everything cleaned up on the stub", stub.store.size === 0 && stub.violations.length === 0);
+
+  // A custom env file path is persisted in the stack .env (its own stack copy: the .env is shared state).
+  const stack2 = path.join(tmp, "e2e-stack2");
+  copyTree(stack2);
+  const customHome = path.join(tmp, "e2e-home-custom");
+  makeHome(customHome);
+  const customFile = path.join(customHome, "keys2/m.env");
+  const customRun = await runSetup(stack2, customHome, stubBin, path.join(tmp, "e2e-custom.log"), ["--yes"], { ...env, MEM0_ENV_FILE: "~/keys2/m.env" });
+  if (customRun.code !== 0) console.log(customRun.output);
+  const stack2Env = fs.readFileSync(path.join(stack2, ".env"), "utf8");
+  check("e2e custom MEM0_ENV_FILE: exit 0, key in the custom file (mode 600, dir 700), none in the default", customRun.code === 0 && fs.readFileSync(customFile, "utf8") === `MEM0_API_KEY=${KEY}\n` && modeOf(customFile) === 0o600 && modeOf(path.dirname(customFile)) === 0o700 && !fs.existsSync(path.join(customHome, ".config/personal-memory/mem0.env")));
+  check("e2e custom MEM0_ENV_FILE: the stack .env stores the expanded path (one line, no key)", stack2Env.split("\n").filter((l) => l.startsWith("MEM0_ENV_FILE=")).join() === `MEM0_ENV_FILE=${customFile}` && !stack2Env.includes(KEY));
+  check("e2e custom MEM0_ENV_FILE: config.toml records env_file", fs.readFileSync(path.join(customHome, ".config/personal-memory/config.toml"), "utf8").includes(`env_file = "${customFile}"`));
+  const customUp = await runSetup(stack2, customHome, stubBin, path.join(tmp, "e2e-custom-up.log"), ["--up", "--yes"], { MEM0_API_URL: stub.url });
+  check("e2e custom MEM0_ENV_FILE: --up without the variable still finds the key (from the stack .env)", customUp.code === 0 && !customUp.output.includes("needs an API key") && stub.store.size === 0);
   await stub.close();
 }
 

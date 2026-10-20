@@ -5,7 +5,8 @@
  */
 import path from "node:path";
 import { readKey } from "./env-file.mjs";
-import { describeError, redact, request } from "./http.mjs";
+import { clean, describeError, redact, request } from "./http.mjs";
+import { capturedKey } from "./secret.mjs";
 import { ensureState, resolveEnvFile } from "./state.mjs";
 import { displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 
@@ -29,10 +30,13 @@ const SEARCH_BODY = {
 
 class SmokeFailure extends Error {}
 
+/** Server ids are UUIDs; anything else is never put in a URL or printed. */
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
 /** @param {any} json @returns {string[]} */
 function memoryIds(json) {
   const list = Array.isArray(json) ? json : Array.isArray(json?.results) ? json.results : json?.id ? [json] : [];
-  return list.map((r) => r?.id).filter((id) => typeof id === "string" && id);
+  return list.map((r) => r?.id).filter((id) => typeof id === "string" && SAFE_ID.test(id));
 }
 
 /** @param {any} json @returns {string} */
@@ -42,15 +46,15 @@ function memoryText(json) {
 }
 
 /**
- * The key the indexer would send: the env file first (the indexer reads only that), then
- * the environment.
+ * The key the indexer would send: the env file first (the indexer reads only that), then the
+ * key captured from the environment, then process.env (a caller that skipped init).
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
 function smokeKey(ctx, h) {
   const fromFile = readKey(resolveEnvFile(ctx, h));
   if (fromFile) return { key: fromFile, fromFile: true };
-  return { key: (process.env.MEM0_API_KEY || "").trim(), fromFile: false };
+  return { key: capturedKey() || (process.env.MEM0_API_KEY || "").trim(), fromFile: false };
 }
 
 /**
@@ -76,13 +80,12 @@ export async function smoke(ctx, h) {
     return;
   }
 
-  const { key, fromFile } = smokeKey(ctx, h);
-  if (key && !fromFile) {
-    h.warn(
-      `the API key comes from the environment only; the indexer reads ${path.basename(resolveEnvFile(ctx, h))} ` +
-        "(put MEM0_API_KEY there)",
-    );
-  }
+  // Everything that can throw sits inside the try, so cleanup always runs and an error never
+  // carries the key (messages are fixed text plus a short, key-free reason).
+  let key = "";
+  /** @type {string[]} */
+  let ids = [];
+  let failure = "";
   /** @param {{ status: number, text: string }} res @param {string} what */
   const failed = (res, what) => {
     if (res.status === 401 || res.status === 403) {
@@ -91,16 +94,27 @@ export async function smoke(ctx, h) {
           "(mode 600) or run the server with AUTH_DISABLED, then rerun",
       );
     }
-    const body = redact(res.text, key).slice(0, 200).replace(/\s+/g, " ");
+    const body = clean(redact(res.text, key));
     return new SmokeFailure(`${what}: the mem0 server answered ${res.status}${body ? ` (${body})` : ""}`);
   };
 
   h.info(`smoke test: mem0 at ${base}`);
-  /** @type {string[]} */
-  let ids = [];
-  /** @type {string} */
-  let failure = "";
   try {
+    let fromFile = true;
+    try {
+      ({ key, fromFile } = smokeKey(ctx, h));
+    } catch (e) {
+      throw new SmokeFailure(
+        `cannot read the mem0 env file ${resolveEnvFile(ctx, h)} (${clean(/** @type {any} */ (e)?.code || "error", 40)})`,
+      );
+    }
+    if (key && !fromFile) {
+      h.warn(
+        `the API key comes from the environment only; the indexer reads ${path.basename(resolveEnvFile(ctx, h))} ` +
+          "(put MEM0_API_KEY there)",
+      );
+    }
+
     // 1. Reachability (open route, no key).
     const docs = await request(base, "GET", "/docs", { timeoutMs: 10000 });
     if (!docs.ok) throw failed(docs, "GET /docs");
@@ -123,34 +137,37 @@ export async function smoke(ctx, h) {
     }
     h.ok("POST /search found the smoke fact");
   } catch (e) {
-    failure = e instanceof SmokeFailure ? e.message : `mem0 request failed (${redact(describeError(e), key)})`;
+    failure = e instanceof SmokeFailure ? e.message : `mem0 request failed (${clean(redact(describeError(e), key), 80)})`;
   }
 
-  // 4. Cleanup, whatever happened above.
+  // 4. Cleanup, whatever happened above: delete this run's memories and any the wizard's fixed
+  // user_id/run_id left behind earlier (a failed cleanup, an interrupted run).
   try {
-    if (!ids.length) {
-      // The retain answer had no usable ids (or failed midway): look the smoke memories up.
+    const found = new Set(ids);
+    try {
       const listed = await request(
         base,
         "GET",
         `/memories?user_id=${SMOKE_USER}&run_id=${SMOKE_RUN}&top_k=1000`,
         { key, timeoutMs: 30000 },
-      ).catch(() => null);
-      if (listed?.ok) ids = memoryIds(listed.json);
+      );
+      if (listed.ok) for (const id of memoryIds(listed.json)) found.add(id);
+    } catch {
+      // The lookup is best effort; this run's own ids are still deleted below.
     }
     let removed = 0;
-    for (const id of ids) {
+    for (const id of found) {
       try {
         const res = await request(base, "DELETE", `/memories/${encodeURIComponent(id)}`, { key, timeoutMs: 30000 });
         if (res.ok || res.status === 404) removed++;
-        else h.warn(`could not delete smoke memory ${id}: the server answered ${res.status}`);
+        else h.warn(`could not delete smoke memory ${clean(id, 128)}: the server answered ${res.status}`);
       } catch (e) {
-        h.warn(`could not delete smoke memory ${id}: ${redact(describeError(e), key)}`);
+        h.warn(`could not delete smoke memory ${clean(id, 128)}: ${clean(redact(describeError(e), key), 80)}`);
       }
     }
-    if (ids.length && removed === ids.length) h.ok("deleted the smoke memories");
+    if (found.size && removed === found.size) h.ok("deleted the smoke memories");
   } catch (e) {
-    h.warn(`smoke cleanup failed: ${redact(describeError(e), key)}`);
+    h.warn(`smoke cleanup failed: ${clean(redact(describeError(e), key), 80)}`);
   }
 
   if (failure) h.die(failure);

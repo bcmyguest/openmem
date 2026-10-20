@@ -14,6 +14,20 @@ export function redact(text, secret) {
   return out;
 }
 
+/**
+ * Text from the server made safe to print: control characters (terminal escapes, newlines)
+ * become spaces and the length is capped.
+ * @param {unknown} text
+ * @param {number} [max]
+ */
+export function clean(text, max = 200) {
+  return String(text ?? "")
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
 /** Short, key-free description of a fetch failure. @param {unknown} e */
 export function describeError(e) {
   const err = /** @type {{ name?: string, message?: string, cause?: { code?: string } }} */ (e);

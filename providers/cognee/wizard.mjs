@@ -10,7 +10,7 @@
 import { applyConfig, configToml as buildConfigToml } from "./lib/config.mjs";
 import { clackSetup as askInClack } from "./lib/clack.mjs";
 import { beforeStack as prepareEnvDirs, stackEnv as cogneeStackEnv } from "./lib/env-setup.mjs";
-import { configureLlm } from "./lib/llm-env.mjs";
+import { captureSecrets, configureLlm } from "./lib/llm-env.mjs";
 import { resolvePorts as resolveCogneePorts } from "./lib/ports.mjs";
 import { runSmoke } from "./lib/smoke.mjs";
 import { ensureState } from "./lib/state.mjs";
@@ -23,24 +23,25 @@ export { prepareStackEnv, setupNotices } from "./lib/stack-env.mjs";
 /** @typedef {import('../../wizard/lib/provider-wizard/helpers.mjs').ProviderWizardHelpers} Helpers */
 
 /**
- * Quiet: fill Cognee's context fields and map the `[memory.cognee]` TOML table
- * (port, env_file) into the environment when the environment did not set them.
+ * Quiet: fill Cognee's context fields, map the `[memory.cognee]` TOML table (port,
+ * env_file, indexer_env_file) into the environment when the environment did not set it, and
+ * take the secret answers (PM_COGNEE_LLM_API_KEY and friends) out of `process.env`. This
+ * runs before the wizard's first docker call, so no child process inherits a key.
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
 export async function init(ctx, h) {
   applyConfig(ctx, h);
+  captureSecrets(ctx);
 }
 
 /**
- * Quiet: restore the saved port from wizard.conf for `--up`. Nothing secret is saved.
+ * Quiet: nothing to restore. The saved port is picked up in `resolvePorts`, which runs
+ * before this hook; nothing secret is saved anywhere.
  * @param {Record<string, any>} ctx
- * @param {Helpers} h
  */
-export async function hydrate(ctx, h) {
+export async function hydrate(ctx) {
   ensureState(ctx);
-  const saved = h.envValue(ctx.wizardConf, "COGNEE_PORT");
-  if (/^\d+$/.test(saved) && !process.env.COGNEE_PORT) process.env.COGNEE_PORT = saved;
 }
 
 /** The single host port (COGNEE_PORT, default 8766). */

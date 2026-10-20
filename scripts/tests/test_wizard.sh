@@ -273,7 +273,8 @@ run_fixture() {
 }
 
 # (f) a provider with no model backend and no hooks: nothing Hindsight-shaped is created, required or printed.
-# The planned mem0 manifest cannot run yet, so the test-only fixture provider "nohooks" stands in for it.
+# The test-only fixture provider "nohooks" stands in for a provider with no wizard hooks (the shipped
+# experimental mem0 and Cognee providers have hooks).
 test_provider_without_model_backend() {
     local home="${WORK}/home-nohooks" copy="${WORK}/copy-nohooks" out="${WORK}/nohooks-dry.out" log="${WORK}/nohooks.log"
     mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
@@ -335,6 +336,58 @@ test_provider_with_hooks() {
     check "hooked provider: down dry run carries the profile" bash -c "[ ${rc} -eq 0 ] && grep -q '\\[dry-run\\] docker compose -p pm-wizard-unit -f compose.yaml -f compose.override.yaml -f fixture-fragment.yaml --profile hooked down' '${WORK}/hooked-down.out'"
 }
 
+# (g2) the shipped mem0 and Cognee providers (experimental) dry-run through ./setup --yes: exit 0, nothing written,
+# and the plan prints the compose command with their profile and fragment. Dummy URL, no live server.
+test_shipped_experimental_providers() {
+    local id home copy out log rc before
+    for id in mem0 cognee; do
+        home="${WORK}/home-ship-${id}" copy="${WORK}/copy-ship-${id}" out="${WORK}/ship-${id}.out" log="${WORK}/ship-${id}.log"
+        mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+        before="$(cd "${home}" && find . | sort)"
+        rc=0
+        env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+            STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit MEMORY_PROVIDER="${id}" MEM0_API_URL=http://127.0.0.1:1 \
+            "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes --dry-run > "${out}" 2>&1 || rc=$?
+        check "shipped ${id}: dry run exits 0" [ "${rc}" -eq 0 ]
+        check "shipped ${id}: dry run plans compose up with the profile and fragment" \
+            grep -q "\[dry-run\] docker compose -p pm-wizard-unit -f compose.yaml -f providers/${id}/compose.yaml --profile ${id} up -d --no-build" "${out}"
+        check "shipped ${id}: summary Stop line carries the profile and fragment" \
+            grep -q "Stop:  docker compose -p pm-wizard-unit -f compose.yaml -f providers/${id}/compose.yaml --profile ${id} down" "${out}"
+        check "shipped ${id}: no mutating docker calls" bash -c "! grep -q -E 'docker compose .* (up|build|run|down) ' '${log}' 2>/dev/null"
+        check "shipped ${id}: scratch HOME unchanged" [ "$(cd "${home}" && find . | sort)" = "${before}" ]
+        check "shipped ${id}: stack .env not created" [ ! -e "${copy}/.env" ]
+    done
+}
+
+# (g3) the preflight needs Docker Compose 2.24 (provider fragments use env_file required: false): a real run
+# fails with a clear message on an older plugin, a dry run only warns, and 2.24 itself passes.
+test_compose_version_guard() {
+    local home="${WORK}/home-cver" copy="${WORK}/copy-cver" rc=0 ver dir
+    mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+    for ver in 2.23.3 2.24.0; do
+        dir="${WORK}/stubs-${ver}"
+        make_stubs "${dir}"
+        sed -i "s/Docker Compose version v2.29.0/${ver}/" "${dir}/docker"
+    done
+    rc=0
+    env -i PATH="${WORK}/stubs-2.23.3:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" STUB_LOG="${WORK}/cver1.log" \
+        PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes > "${WORK}/cver1.out" 2>&1 || rc=$?
+    check "compose 2.23: real run fails" [ "${rc}" -ne 0 ]
+    check "compose 2.23: message names 2.24 and the found version" grep -q 'Compose 2.24 or newer is required.*found 2.23' "${WORK}/cver1.out"
+    check "compose 2.23: nothing started" bash -c "! grep -q -E 'docker compose .* (up|build|run) ' '${WORK}/cver1.log' 2>/dev/null"
+    rc=0
+    env -i PATH="${WORK}/stubs-2.23.3:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" STUB_LOG="${WORK}/cver2.log" \
+        PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes --dry-run > "${WORK}/cver2.out" 2>&1 || rc=$?
+    check "compose 2.23: dry run only warns and exits 0" bash -c "[ ${rc} -eq 0 ] && grep -q 'Compose 2.24 or newer is required.*dry run: continuing' '${WORK}/cver2.out'"
+    rc=0
+    env -i PATH="${WORK}/stubs-2.24.0:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" STUB_LOG="${WORK}/cver3.log" \
+        PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes --dry-run > "${WORK}/cver3.out" 2>&1 || rc=$?
+    check "compose 2.24 (short form): dry run exits 0 without a warning" bash -c "[ ${rc} -eq 0 ] && ! grep -q 'Compose 2.24 or newer' '${WORK}/cver3.out' && grep -q 'compose v2 work without sudo' '${WORK}/cver3.out'"
+}
+
 # (h) PM_PACKAGE_ROOT: code (wizard, providers, scripts) comes from the package root, every generated file
 # (.env, compose.override.yaml, .build-hash) and every docker call lives in the stack root.
 test_package_root_split() {
@@ -365,6 +418,8 @@ test_build_cache
 test_stack_down_dry_run
 test_provider_without_model_backend
 test_provider_with_hooks
+test_shipped_experimental_providers
+test_compose_version_guard
 test_package_root_split
 
 if [ -n "${TEST_NODE}" ]; then
