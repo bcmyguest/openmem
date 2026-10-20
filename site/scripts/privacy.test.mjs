@@ -61,7 +61,8 @@ test('deny-list literals match case-insensitively and are redacted', () => {
   const f = scanText('Contact Zed Quux today', { deny: ['zed quux'] });
   assert.equal(f.length, 1);
   assert.equal(f[0].rule, 'deny-list');
-  assert.doesNotMatch(formatFinding(f[0]), /Zed Quux/i.test('') ? '' : /^$/);
+  assert.match(formatFinding(f[0]), /<redacted>/);
+  assert.doesNotMatch(formatFinding(f[0]), /zed quux/i);
 });
 
 test('reports line numbers', () => {

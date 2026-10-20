@@ -9,7 +9,7 @@ interface Props {
 const { code, label, copy = true } = Astro.props;
 ---
 <div class="group relative">
-  <pre class="overflow-x-auto rounded-lg border border-line bg-code p-4 pr-20 text-sm leading-relaxed" tabindex="0" aria-label={label}><code>{code}</code></pre>
+  <pre class="overflow-x-auto rounded-lg border border-line bg-code p-4 pr-20 text-sm leading-relaxed" tabindex="0" role="group" aria-label={label}><code>{code}</code></pre>
   {copy && (
     <button
       type="button"

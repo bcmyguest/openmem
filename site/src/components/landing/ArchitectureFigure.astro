@@ -15,26 +15,26 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
 <figure class="arch not-prose" aria-labelledby="arch-caption">
   <div class="arch-surface overflow-hidden rounded-xl border border-line">
     <div class="arch-flow">
-      <section class="arch-col" aria-labelledby="arch-h-src">
-        <h3 id="arch-h-src" class="arch-label">Sources</h3>
+      <div class="arch-col" role="group" aria-labelledby="arch-h-src">
+        <p id="arch-h-src" class="arch-label">Sources</p>
         <ul class="arch-list">
           {sources.map((s) => <li class="arch-node">{s}</li>)}
         </ul>
-      </section>
+      </div>
 
       <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
 
-      <section class="arch-col" aria-labelledby="arch-h-idx">
-        <h3 id="arch-h-idx" class="arch-label">Shared indexer</h3>
+      <div class="arch-col" role="group" aria-labelledby="arch-h-idx">
+        <p id="arch-h-idx" class="arch-label">Shared indexer</p>
         <ul class="arch-list">
           {indexer.map((s) => <li class="arch-node">{s}</li>)}
         </ul>
-      </section>
+      </div>
 
       <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
 
-      <section class="arch-col" aria-labelledby="arch-h-prov">
-        <h3 id="arch-h-prov" class="arch-label">Memory provider</h3>
+      <div class="arch-col" role="group" aria-labelledby="arch-h-prov">
+        <p id="arch-h-prov" class="arch-label">Memory provider</p>
         <ul class="arch-list">
           {providers.map((p) => (
             <li class={`arch-node arch-provider is-${p.status}`}>
@@ -43,16 +43,16 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
             </li>
           ))}
         </ul>
-      </section>
+      </div>
 
       <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M8 8H32" /><path class="tip-l" d="M10 3L2 8l8 5z" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
 
-      <section class="arch-col" aria-labelledby="arch-h-agents">
-        <h3 id="arch-h-agents" class="arch-label">Coding agents</h3>
+      <div class="arch-col" role="group" aria-labelledby="arch-h-agents">
+        <p id="arch-h-agents" class="arch-label">Coding agents</p>
         <ul class="arch-list">
           {agents.map((s) => <li class="arch-node">{s}</li>)}
         </ul>
-      </section>
+      </div>
     </div>
 
     <div class="arch-wizard">
