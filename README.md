@@ -15,7 +15,12 @@ Docker Compose setup for the local Hindsight coding-agent memory. It runs three 
 
 ## Quick start: `./setup`
 
-`./setup` (the wizard, `scripts/wizard.sh`) takes a fresh clone to a running stack. It asks for:
+`./setup` (the **setup wizard**, `scripts/wizard.sh`) takes a fresh clone to a running stack.
+Per-machine defaults (lemond URL, backend, reflect model) live in **`config/machine.env`**
+(copy from `config/machine.env.example`; gitignored). Ansible only clones this repo and
+calls `scripts/run-setup.sh`, which runs `./setup` when a TTY is available.
+
+The wizard asks for:
 
 1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
 2. Model backend: lemond (default) when it answers on `127.0.0.1:13305`. Models come from lemonade (unsloth GGUFs); the wizard runs `lemonade pull` for any model the LiteLLM config names that lemond has not downloaded. Ollama is optional, and a custom OpenAI-compatible URL is also available.
@@ -32,6 +37,7 @@ Flags:
 - `--no-smoke`: skip the smoke retain and recall. Use it for scripted re-runs.
 - `--rebuild`: rebuild the indexer image even when its sources are unchanged.
 - `PM_BACKEND=lemond|ollama|custom`: set the default backend choice (the wizard still asks unless `--yes`).
+- `config/machine.env`: per-machine defaults for the wizard (`machine.env.example` in the repo).
 
 The wizard builds the indexer image only when its inputs changed: its Dockerfile, `compose.yaml`, and every file its `COPY` lines read. The hash of those inputs lives in the git-ignored `.build-hash`. A rerun with no source change skips the build and starts the stack with `up -d --no-build`, so the containers are not recreated. Compose's own build cache does not decide this, because a cached build still yields a new image ID.
 

@@ -17,6 +17,18 @@ set -euo pipefail
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 REPO="$(cd "$(dirname "${SCRIPT}")/.." && pwd)"
 
+# Optional per-machine defaults (gitignored config/machine.env; see machine.env.example).
+load_machine_env() {
+    local f="${REPO}/config/machine.env"
+    if [ -f "${f}" ]; then
+        # shellcheck disable=SC1090
+        . "${f}"
+        ok "machine profile ${f}"
+    elif [ -f "${REPO}/config/machine.env.example" ]; then
+        info "tip: cp config/machine.env.example config/machine.env for per-machine ./setup defaults"
+    fi
+}
+
 PROJECT="${PM_PROJECT:-personal-memory}"
 HS_DIR="${HOME}/.config/hindsight"
 ENV_FILE="${HS_DIR}/hindsight.env"
@@ -238,7 +250,7 @@ ollama_warn_bind() {
 choose_lemond() {
     local default_model
     API_BASE="http://host.docker.internal:13305/v1"
-    default_model="$(stored_or lemond MEMORY_MODEL "${LEMOND_DEFAULT_MODEL}")"
+    default_model="$(stored_or lemond MEMORY_MODEL "${PM_DEFAULT_MODEL:-${LEMOND_DEFAULT_MODEL}}")"
     if [ -z "${LEMOND_JSON}" ]; then
         warn "lemond is not answering on ${LEMOND_BASE}; the model list is unavailable"
     elif ! grep -qx "${LEMOND_DEFAULT_MODEL}" <<<"${LEMOND_NAMES}"; then
@@ -279,7 +291,7 @@ pull_lemond_models() {
 choose_ollama() {
     local default_model
     API_BASE="http://host.docker.internal:11434"
-    default_model="$(stored_or ollama MEMORY_MODEL "${OLLAMA_DEFAULT_MODEL}")"
+    default_model="$(stored_or ollama MEMORY_MODEL "${PM_DEFAULT_MODEL:-${OLLAMA_DEFAULT_MODEL}}")"
     if [ -z "${OLLAMA_JSON}" ]; then
         warn "Ollama is not answering on ${OLLAMA_BASE}"
     elif ! ollama_bind_ok; then
@@ -322,10 +334,12 @@ pull_ollama_models() {
 choose_custom() {
     local default_base default_model
     default_base="$(stored_or custom MEMORY_API_BASE "${CUSTOM_DEFAULT_BASE}")"
-    default_model="$(stored_or custom MEMORY_MODEL "${LEMOND_DEFAULT_MODEL}")"
+    default_model="$(stored_or custom MEMORY_MODEL "${CUSTOM_DEFAULT_MODEL:-${LEMOND_DEFAULT_MODEL}}")"
     info "The litellm container calls this URL. Host services use host.docker.internal."
+    info "Examples: lemond http://host.docker.internal:13305/v1 ; Meridian http://host.docker.internal:3456/v1"
     ask API_BASE "OpenAI-compatible base URL" "${default_base}"
     ask MODEL "Model id the server serves" "${default_model}"
+    ask_reflect_model
 }
 
 # render_route ALIAS LITELLM_MODEL: one model_list entry with thinking off.
@@ -901,7 +915,8 @@ summary() {
     if [ -f "${INDEX_FILE}" ]; then info "  ${INDEX_FILE} (sources)"; else info "  config/index.yml (shipped sources)"; fi
     [ -f "${NOTEBOOK_FILE}" ] && info "  ${NOTEBOOK_FILE} (NotebookLM)"
     info "  ${WIZARD_CONF} (this wizard's backend choice)"
-    info "Change later: rerun ./setup. For a route edit, run: docker compose -p ${PROJECT} up -d litellm"
+    info "Reflect needs a capable model (memory-reflect alias). On a weak or remote LLM, edit ${LITELLM_OVERRIDE} and point memory-reflect at Meridian, an OpenAI-compatible host, or a stronger local model — then: docker compose -p ${PROJECT} up -d litellm"
+    info "Change later: rerun ./setup. For a route-only edit, run: docker compose -p ${PROJECT} up -d litellm"
     info "Logs:  docker compose -p ${PROJECT} logs -f indexer    (or: hindsight, litellm)"
     info "Stop:  docker compose -p ${PROJECT} down              (keeps the memory database)"
     info "Reset: docker compose -p ${PROJECT} down -v           (deletes the memory database)"
@@ -922,6 +937,7 @@ snapshot() {
 main() {
     local before after changed
     parse_args "$@"
+    load_machine_env
     before="$(snapshot)"
     if dry; then info "dry run: no files are written and no containers start"; fi
     check_preflight
