@@ -8,6 +8,7 @@ import { composeArgs, composeSpawnOptions } from "./compose.mjs";
 
 function buildDockerfile(svc) {
   if (svc === "indexer") return "indexer/Dockerfile";
+  if (svc === "notebooklm") return "sync/Dockerfile";
   die(`the wizard does not build service ${svc}`);
 }
 

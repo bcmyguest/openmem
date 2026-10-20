@@ -4,6 +4,11 @@ import path from "node:path";
 export const LEMOND_DEFAULT_MODEL = "Gemma-4-E2B-it-GGUF";
 export const OLLAMA_DEFAULT_MODEL = "gemma4:e2b";
 
+/** LiteLLM api_base when Ollama runs on the host (default). */
+export const OLLAMA_HOST_API_BASE = "http://host.docker.internal:11434";
+/** LiteLLM api_base when Ollama is the compose `ollama` service. */
+export const OLLAMA_COMPOSE_API_BASE = "http://ollama:11434";
+
 export const BACKENDS = ["lemond", "ollama", "custom"];
 
 /**
@@ -31,6 +36,8 @@ export function ensureState(ctx) {
     lemondNames: [],
     ollamaJson: null,
     ollamaNames: [],
+    /** True when Ollama runs as the compose profile `ollama` (no host install). */
+    ollamaInCompose: false,
     portApi: "",
     portCp: "",
     hindsightUrl: "",

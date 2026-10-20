@@ -23,7 +23,8 @@ Hindsight listens on `http://127.0.0.1:8888` and the coding-agent plugin uses
 - Node.js 18+ (all `./setup` paths; interactive runs use the Clack UI in `wizard/`).
 - A model server behind the LiteLLM proxy:
   - lemond on this machine, `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`). It listens on all interfaces.
-  - Or Ollama. Bind it to the Docker bridge gateway, not `0.0.0.0`: set `OLLAMA_HOST=172.17.0.1:11434` in its service environment (find the gateway with `docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`). `host.docker.internal` resolves to that address, so the litellm container reaches Ollama there, while the LAN cannot. Start Ollama after `docker.service` so the bridge exists. `OLLAMA_HOST=0.0.0.0:11434` also works but exposes Ollama to the LAN, which the unauthenticated API should not be.
+  - Or Ollama. Prefer a host install bound to the Docker bridge gateway, not `0.0.0.0`: set `OLLAMA_HOST=172.17.0.1:11434` in its service environment (find the gateway with `docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`). `host.docker.internal` resolves to that address, so the litellm container reaches Ollama there, while the LAN cannot. Start Ollama after `docker.service` so the bridge exists. `OLLAMA_HOST=0.0.0.0:11434` also works but exposes Ollama to the LAN, which the unauthenticated API should not be.
+  - If Ollama is not installed on the host, `./setup` offers **compose profile `ollama`**: the stack runs `ollama/ollama`, publishes `127.0.0.1:11434`, and points LiteLLM at `http://ollama:11434`. The wizard pulls the chosen model after the stack is healthy.
 
 ## Quick start: `./setup`
 
@@ -100,7 +101,7 @@ docker compose up -d                        # needs COMPOSE_PROFILES=hindsight i
 curl -fsS http://127.0.0.1:8888/health   # or your HINDSIGHT_PORT
 ```
 
-**Compose profiles:** `litellm` and `hindsight` use profile `hindsight`. Plain `docker compose up` without a profile starts only the indexer unless `.env` sets `COMPOSE_PROFILES=hindsight` (the setup wizard does). `./setup` passes `--profile hindsight` on compose commands. A `--profile` flag **replaces** `COMPOSE_PROFILES`, so name every profile you need on one command (for example `--profile hindsight --profile notebooklm`).
+**Compose profiles:** `litellm` and `hindsight` use profile `hindsight`. Optional profiles: `ollama` (in-compose Ollama), `notebooklm` (NotebookLM sync). Plain `docker compose up` without a profile starts only the indexer unless `.env` sets `COMPOSE_PROFILES` (the setup wizard writes `hindsight` plus any enabled optionals). `./setup` passes every needed `--profile` on compose commands. A `--profile` flag **replaces** `COMPOSE_PROFILES`, so name every profile you need on one command (for example `--profile hindsight --profile ollama --profile notebooklm`).
 
 **Indexer sinks:** `bin/hindsight-project-index` talks to the memory API through `indexer/sinks/` (`--sink hindsight` default, or `MEMORY_SINK`). Use `MEMORY_API_URL` for non-Hindsight sinks; Hindsight keeps `HINDSIGHT_URL`.
 
@@ -267,7 +268,7 @@ Opt-in. Syncs notebooks, sources, notes, and (optionally) chats from Google Note
 
 Risks:
 
-- The default `client` backend uses the unofficial `notebooklm-py` library (pinned to 0.8.5). Google can change or block it at any time, and the sync then fails until the library is updated.
+- The default `client` backend uses the unofficial `notebooklm-py` library (pinned to 0.8.5 with the `markdown` extra). Google can change or block it at any time, and the sync then fails until the library is updated.
 - The stored login is a Google session cookie set. Anyone who reads `~/.config/notebooklm` can act on that Google account. The directory is bind-mounted read-write into the sync container only, and masked from the indexer.
 - Source text and notes are copied into the Hindsight banks on this machine, where Hindsight's model server processes them.
 

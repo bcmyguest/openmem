@@ -161,6 +161,12 @@ check(
     "compose -p pm-t -f compose.yaml -f compose.override.yaml -f providers/fake/compose.yaml -f extra.yaml --profile fake down",
 );
 check("composeCommandText prints the docker command", composeCommandText(withProfile, "down", "-v") === "docker compose -p pm-t --profile fake down -v");
+const withExtra = { ...withProfile, extraComposeProfiles: ["ollama", "notebooklm", "fake"] };
+check(
+  "composeArgs adds ctx.extraComposeProfiles after the provider profile",
+  composeArgs(withExtra, "up", "-d").join(" ") ===
+    "compose -p pm-t --profile fake --profile ollama --profile notebooklm up -d",
+);
 fs.rmSync(stack, { recursive: true, force: true });
 
 // Provider directory override (tests, fixtures) and the manifest-driven API base.

@@ -72,12 +72,30 @@ async function initProvider(ctx) {
   await runProviderPhase(ctx, PROVIDER_PHASES.init, providerHelpers());
 }
 
+/**
+ * Optional compose profiles beyond the provider's main profile.
+ * Providers may already have set `ctx.extraComposeProfiles` (hydrate / beforeStack).
+ * NotebookLM is meta-owned; a CLI `--profile` replaces COMPOSE_PROFILES, so every
+ * needed profile must be listed on the compose command.
+ */
+function syncExtraProfiles(ctx) {
+  const extra = [...(ctx.extraComposeProfiles || [])];
+  if (fs.existsSync(ctx.notebookFile)) {
+    const text = fs.readFileSync(ctx.notebookFile, "utf8");
+    if (/^enabled:\s*true\b/m.test(text) && !extra.includes("notebooklm")) {
+      extra.push("notebooklm");
+    }
+  }
+  ctx.extraComposeProfiles = extra;
+}
+
 async function hydrateFromWizardConf(ctx) {
   if (!fs.existsSync(ctx.wizardConf)) return false;
   const provider = confGet(ctx, "MEMORY_PROVIDER") || DEFAULT_PROVIDER_ID;
   ctx.providerId = provider;
   ctx.memoryProvider = resolveProvider(provider);
   await runProviderPhase(ctx, PROVIDER_PHASES.hydrate, providerHelpers());
+  syncExtraProfiles(ctx);
   return true;
 }
 
@@ -294,7 +312,8 @@ function enableNotebooklm(ctx) {
       "# Per-machine overrides (changed keys only); see config/notebooklm.yml.\nenabled: true\n",
     );
   }
-  ok(`enabled in ${ctx.notebookFile}; start with: docker compose -p ${ctx.project} --profile notebooklm up -d notebooklm`);
+  ok(`enabled in ${ctx.notebookFile}; stack start will include --profile notebooklm`);
+  syncExtraProfiles(ctx);
 }
 
 async function setupNotebooklm(ctx) {
@@ -306,11 +325,27 @@ async function setupNotebooklm(ctx) {
   console.log(`  Login steps (run on the host, once; README "NotebookLM"):
     mkdir -p ~/.config/notebooklm
     uv tool install '${ctx.notebooklmPkg}'
+    uv tool run --from '${ctx.notebooklmPkg}' python -m playwright install chromium
     NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm login
     NOTEBOOKLM_HOME=~/.config/notebooklm notebooklm auth check --test --json`);
   if (ctx.dry) {
     info("[dry-run] after login: run auth check, then enable notebooklm.yml only if it passes");
     return;
+  }
+  if (!commandExists("notebooklm") && commandExists("uv")) {
+    if (await confirm(ctx, `Install ${ctx.notebooklmPkg} with uv now (includes Playwright Chromium)?`, "y")) {
+      await act(ctx, `uv tool install ${ctx.notebooklmPkg}`, "uv", [
+        "tool",
+        "install",
+        ctx.notebooklmPkg,
+      ]);
+      await act(
+        ctx,
+        "playwright install chromium for notebooklm-py",
+        "uv",
+        ["tool", "run", "--from", ctx.notebooklmPkg, "python", "-m", "playwright", "install", "chromium"],
+      );
+    }
   }
   if (!(await confirm(ctx, "Login is done; run the auth check now?", "n"))) {
     info("later: rerun ./setup after the login steps");
@@ -423,14 +458,19 @@ async function stackDown(ctx) {
 
 async function startStack(ctx) {
   step("7. Start the stack");
+  syncExtraProfiles(ctx);
   await runSetupScript(ctx);
   await buildService(ctx, "indexer", "personal-memory-indexer:local");
+  if ((ctx.extraComposeProfiles || []).includes("notebooklm")) {
+    await buildService(ctx, "notebooklm", "personal-memory-notebooklm:local");
+  }
   const up = composeArgs(ctx, "up", "-d", "--no-build");
   await act(ctx, `docker ${up.join(" ")}`, "docker", up, composeSpawnOptions(ctx));
   await waitHealth(ctx);
+  // After health, before smoke (provider may pull models or warm caches).
+  await runProviderPhase(ctx, PROVIDER_PHASES.afterStackHealthy, providerHelpers());
   if (ctx.smoke) await smokeTest(ctx);
   else info("smoke test skipped (--no-smoke)");
-  await runProviderPhase(ctx, PROVIDER_PHASES.afterStackHealthy, providerHelpers());
 }
 
 async function setupCodingAgents(ctx) {

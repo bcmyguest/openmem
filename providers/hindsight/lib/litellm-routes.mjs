@@ -1,8 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { configToml } from "./config.mjs";
+import { OLLAMA_HOST_API_BASE } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
+
+/** Shipped litellm.<backend>.yaml api_base for the host-side model server. */
+function shippedApiBase(backend) {
+  if (backend === "ollama") return OLLAMA_HOST_API_BASE;
+  if (backend === "lemond") return "http://host.docker.internal:13305/v1";
+  return "";
+}
 
 /**
  * @param {Record<string, any>} ctx
@@ -140,7 +148,9 @@ export async function applyRoute(ctx, h) {
   let shipped = "";
   if (ctx.backend === "lemond") shipped = ctx.lemondDefaultModel;
   if (ctx.backend === "ollama") shipped = ctx.ollamaDefaultModel;
-  if (ctx.backend !== "custom" && ctx.model === shipped && !ctx.reflectModel) {
+  const defaultBase = shippedApiBase(ctx.backend);
+  const apiMatchesShipped = !ctx.apiBase || ctx.apiBase === defaultBase;
+  if (ctx.backend !== "custom" && ctx.model === shipped && !ctx.reflectModel && apiMatchesShipped) {
     await removeOverrideIfAsked(ctx, h);
   } else {
     await writeOverride(ctx, h);
@@ -170,6 +180,7 @@ export function saveConf(ctx, h) {
       MEMORY_MODEL: ctx.model,
       MEMORY_API_BASE: ctx.apiBase,
       MEMORY_REFLECT_MODEL: ctx.reflectModel,
+      MEMORY_OLLAMA_IN_COMPOSE: ctx.ollamaInCompose ? "1" : "0",
     },
     { pmSections: configToml(ctx) },
   );

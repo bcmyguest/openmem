@@ -5,7 +5,13 @@
  */
 import { applyRoute, litellmConfig, saveConf } from "./litellm-routes.mjs";
 import { ollamaModelNames, openAiModelIds } from "./probe.mjs";
-import { backendDefault, ensureState, storedOr } from "./state.mjs";
+import {
+  backendDefault,
+  ensureState,
+  OLLAMA_COMPOSE_API_BASE,
+  OLLAMA_HOST_API_BASE,
+  storedOr,
+} from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
 
@@ -115,7 +121,6 @@ async function chooseLemond(ctx, h) {
 
 /** @param {Record<string, any>} ctx @param {Helpers} h */
 async function chooseOllama(ctx, h) {
-  ctx.apiBase = "http://host.docker.internal:11434";
   const machine = h.loadMachineEnv(ctx.repoRoot);
   const defaultModel = storedOr(
     ctx,
@@ -124,7 +129,22 @@ async function chooseOllama(ctx, h) {
     "MEMORY_MODEL",
     process.env.PM_DEFAULT_MODEL || machine.PM_DEFAULT_MODEL || ctx.ollamaDefaultModel,
   );
-  if (!ctx.ollamaJson) h.warn(`Ollama is not answering on ${ctx.ollamaBase}`);
+  if (ctx.ollamaJson) {
+    ctx.ollamaInCompose = false;
+    ctx.apiBase = OLLAMA_HOST_API_BASE;
+  } else {
+    h.warn(`Ollama is not answering on ${ctx.ollamaBase}`);
+    const useDocker = await h.confirm(
+      ctx,
+      "Ollama is not on this host. Run it in Docker (compose profile ollama)?",
+      "y",
+    );
+    ctx.ollamaInCompose = useDocker;
+    ctx.apiBase = useDocker ? OLLAMA_COMPOSE_API_BASE : OLLAMA_HOST_API_BASE;
+    if (useDocker) {
+      h.info("LiteLLM will call http://ollama:11434; the wizard pulls the model after the stack starts.");
+    }
+  }
   ctx.model = await h.ask(ctx, "Ollama model", defaultModel);
   await askReflectModel(ctx, h);
 }
@@ -159,6 +179,10 @@ export async function chooseModelBackend(ctx, h) {
     ctx.model = process.env.PM_DEFAULT_MODEL;
     ctx.apiBase = process.env.MEMORY_API_BASE || "";
     ctx.reflectModel = process.env.PM_REFLECT_MODEL || "";
+    ctx.ollamaInCompose = process.env.MEMORY_OLLAMA_IN_COMPOSE === "1";
+    if (ctx.backend === "ollama" && !ctx.apiBase) {
+      ctx.apiBase = ctx.ollamaInCompose ? OLLAMA_COMPOSE_API_BASE : OLLAMA_HOST_API_BASE;
+    }
     h.ok(`backend ${ctx.backend}, model ${ctx.model} (setup UI)`);
     await applyRoute(ctx, h);
     saveConf(ctx, h);

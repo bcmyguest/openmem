@@ -12,6 +12,7 @@ import { setupCodingAgent as linkCodingAgent } from "./lib/coding-agent.mjs";
 import { clackSetup as askInClack } from "./lib/clack.mjs";
 import { setupEnv as setupHindsightEnv, stackEnv as hindsightStackEnv } from "./lib/env-setup.mjs";
 import { chooseModelBackend } from "./lib/model-backend.mjs";
+import { ensureComposeOllamaModels } from "./lib/ollama-compose.mjs";
 import { resolvePorts as resolveHindsightPorts } from "./lib/ports.mjs";
 import { backendDefault, confGet, ensureState } from "./lib/state.mjs";
 import { summary as hindsightSummary } from "./lib/summary.mjs";
@@ -78,6 +79,34 @@ export async function hydrate(ctx, h) {
   ctx.model = confGet(ctx, h, "MEMORY_MODEL") || ctx.lemondDefaultModel;
   ctx.apiBase = confGet(ctx, h, "MEMORY_API_BASE") || "";
   ctx.reflectModel = confGet(ctx, h, "MEMORY_REFLECT_MODEL") || "";
+  ctx.ollamaInCompose = confGet(ctx, h, "MEMORY_OLLAMA_IN_COMPOSE") === "1";
+  applyComposeProfiles(ctx);
+}
+
+/**
+ * Ensure compose profile `ollama` is on the up command when MEMORY_OLLAMA_IN_COMPOSE=1.
+ * @param {Record<string, any>} ctx
+ * @param {Helpers} _h
+ */
+export async function beforeStack(ctx, _h) {
+  ensureState(ctx);
+  applyComposeProfiles(ctx);
+}
+
+/**
+ * Pull models into compose Ollama after the stack is up (host has no ollama CLI).
+ * @param {Record<string, any>} ctx
+ * @param {Helpers} h
+ */
+export async function afterStackHealthy(ctx, h) {
+  await ensureComposeOllamaModels(ctx, h);
+}
+
+/** @param {Record<string, any>} ctx */
+function applyComposeProfiles(ctx) {
+  const extra = [...(ctx.extraComposeProfiles || [])];
+  if (ctx.ollamaInCompose && !extra.includes("ollama")) extra.push("ollama");
+  ctx.extraComposeProfiles = extra;
 }
 
 /**

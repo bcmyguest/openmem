@@ -103,6 +103,23 @@ services:
       - indexer-state:/state
     restart: "no"
 
+  # Opt-in: docker compose --profile ollama up -d ollama. Used when the host has no Ollama; LiteLLM reaches it at
+  # http://ollama:11434 on the compose network. Port 11434 is published on loopback so the wizard can probe and pull.
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
   # Opt-in: docker compose --profile notebooklm up -d notebooklm. Syncs NotebookLM notebooks into Hindsight banks.
   # Login is on the host (README "NotebookLM"); the storage under ~/.config/notebooklm is bind-mounted read-write.
   notebooklm:
@@ -140,3 +157,4 @@ volumes:
   hindsight-data:
   indexer-state:
   notebooklm-state:
+  ollama-data:
