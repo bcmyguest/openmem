@@ -1,125 +1,100 @@
 ---
 title: "Getting started"
-description: "Prerequisites and install via npx (or a git checkout), plus MCP install and provider switch."
+description: "Install personal-memory, run the setup wizard once, then use day-2 CLI tasks."
 ---
 
-personal-memory sets up memory for coding agents on one machine. A wizard configures a memory provider, starts a Docker Compose stack, indexes your repositories and Obsidian vaults, and checks that the provider answers.
+personal-memory wires coding agents to a **local memory provider** (Docker Compose + indexer). You run a wizard once; later you use `up`, `down`, and `doctor`.
 
-This page covers what works today. **Hindsight** is supported; **mem0** and **Cognee** are experimental (selectable in the wizard, not yet validated on every machine). For how each provider is wired, see [Provider status](../provider-status/).
+**Provider support today:** see [Provider status](../provider-status/). Hindsight is supported; mem0 and Cognee are experimental.
 
-## Prerequisites
+## Requirements
 
-- Docker with Compose v2, and your user allowed to run `docker`.
-- Node.js 18 or newer. The interactive wizard uses the Clack UI.
-- A model server for the provider you pick. For Hindsight, that is lemond, Ollama, or an OpenAI-compatible endpoint, which the wizard puts behind a LiteLLM proxy.
+| Requirement | Notes |
+| --- | --- |
+| Docker + Compose v2 | Your user must run `docker` without sudo |
+| Node.js ≥ 20.12 | Wizard UI and CLI (`package.json` engines) |
+| Model access (Hindsight) | lemond, Ollama, or any OpenAI-compatible server behind LiteLLM — configured in the wizard |
+| curl, git | Checked in wizard preflight |
 
-No cloud account is involved unless you point a model route at one.
+No cloud account unless you point a model route at one.
 
-## Install with npx
+## Install and first run
 
-Preferred once the package is on the npm registry (see [Install with npx](../npx-install/)):
+| Path | Commands |
+| --- | --- |
+| **npm (recommended)** | `npx personal-memory` |
+| **Git checkout** | `git clone https://github.com/bcmyguest/personal-memory.git && cd personal-memory && npm install && npx . setup` |
+
+Useful first-run variants:
 
 ```sh
-npx personal-memory                 # interactive setup
-npx personal-memory setup --dry-run # plan only
-npx personal-memory up
-npx personal-memory doctor
+npx personal-memory setup --dry-run    # plan only
+npx personal-memory configure --yes    # non-interactive defaults + start
+npx personal-memory doctor               # validate without smoke
 ```
 
-Until the first publish, use a checkout and the same CLI shape via `npx .`:
+![Setup wizard dry-run](/personal-memory/setup-demo.gif)
 
-```sh
-git clone https://github.com/bcmyguest/personal-memory.git
-cd personal-memory
-npm install
-npx . setup          # same as: npm run setup / ./setup
-npx . setup --dry-run
-```
+After a successful configure, the Hindsight API is on `http://127.0.0.1:8888` by default (ports stored in stack `.env`). mem0 and Cognee use the ports their manifests define.
 
-![Setup wizard dry-run: preflight, provider choice, model backend, and stack plan](/personal-memory/setup-demo.gif)
+**Checkout vs npx:** a git clone uses the repo directory as the stack root. `npx personal-memory` copies compose files to `~/.local/share/personal-memory/stack` (overridable with `PM_STACK_ROOT`). See [Install with npx](../npx-install/).
 
-## What the wizard asks
+## What the wizard does
 
-1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
-2. Stack action (configure, start, or stop) and memory provider (Hindsight, mem0, or Cognee).
-3. Provider-specific steps: Hindsight asks for the model backend (lemond, Ollama, or a custom OpenAI-compatible server) and the route for each model alias; mem0 asks for your mem0 REST server URL and API key file; Cognee asks for a loopback port and `LLM_API_KEY` for graph build.
-4. Secrets and env files under `~/.config/hindsight/` with mode 600.
-5. Source roots to index and the Obsidian vaults it finds.
-6. Whether to enable the opt-in NotebookLM sync (default no). When yes, it can also enable coding-agent access (`notebooklmAccess`) and register the NotebookLM MCP in `~/.cursor/mcp.json`.
-7. Start the stack, wait for health, and run a smoke retain and recall in a temporary bank.
-8. Whether to link the coding-agent config and install the plugin (default no). Provider MCP entries can be merged here or later with `npx personal-memory install-mcp`.
+Short version: pick a provider → provider-specific settings → write secrets and index config → start Docker → smoke test → optional coding-agent install.
 
-Rerun setup at any time (`npx personal-memory` / `npx . setup`). It shows current values as defaults and keeps what you do not change. The last line is `wizard: changed=N`, the number of config files and containers the run altered; a rerun on an unchanged setup prints `changed=0`.
+Step-by-step tables, flags, and file paths: [Setup wizard](../setup-wizard/). Stack layout for npx: [Install with npx](../npx-install/#stack-root).
 
-Machine settings such as `optInPaths` and `notebooklmAccess` live in a **real** `~/.hindsight/coding-agent.json` (seeded from the shipped template). Do not symlink that path at the repo file, or pack checks and machine config will fight.
+## Day-2 CLI
 
-## Flags
+| Command | Purpose |
+| --- | --- |
+| `npx personal-memory up` | Start stack from saved config |
+| `npx personal-memory down` | Stop stack (keeps DB volume) |
+| `npx personal-memory doctor` | Config checks (no smoke) |
+| `npx personal-memory install-mcp --yes` | Merge memory MCP entries into `~/.cursor/mcp.json` |
+| `npx personal-memory switch <id> --yes` | Change provider (no memory migration) |
+| `npx personal-memory providers` | List shipped providers |
+
+In a checkout, prefix with `npx .` instead of `npx personal-memory`.
+
+### install-mcp flags
 
 | Flag | Effect |
 | --- | --- |
-| `--yes` | Accept every default without prompts. |
-| `--dry-run` | Print the actions and run only read-only checks. |
-| `--no-smoke` | Skip the smoke retain and recall. |
-| `--rebuild` | Rebuild the indexer image even when its sources are unchanged. |
-| `--up`, `--down` | Start or stop the stack without the configure steps. |
+| `--yes` | Write without prompting |
+| `--provider-only` | Provider MCP only |
+| `--notebooklm-only` | NotebookLM MCP only |
+| `--dry-run` | Print planned merge |
 
-## Day-2 commands (`npx personal-memory …`)
+Restart Cursor Agent after MCP or provider changes.
 
-Describe the setup in `~/.config/personal-memory/config.toml` if you want, then:
+### switch flags
 
-```sh
-npx personal-memory up
-npx personal-memory down
-npx personal-memory doctor
-npx personal-memory install-mcp --yes   # merge memory MCP into ~/.cursor/mcp.json
-npx personal-memory switch mem0 --yes   # change MEMORY_PROVIDER (no data migration)
-```
-
-In a checkout before publish, the same subcommands work as `npx . up`, `npx . install-mcp --yes`, and so on. Checkout-only shortcuts `./pm …` and `npm run …` still exist.
-
-See [Configuration file](../personal-memory-config/) for files, precedence, sections, and task flags (`--dry-run`, `--no-stack`, `--no-mcp`).
-
-### Memory MCP (`install-mcp`)
-
-```sh
-npx personal-memory install-mcp --yes
-# NotebookLM only:  npx personal-memory install-mcp --yes --notebooklm-only
-# Provider MCP only: npx personal-memory install-mcp --yes --provider-only
-```
-
-Provider comes from `MEMORY_PROVIDER`, else `wizard.conf`, else `hindsight`. Restart Cursor Agent after install.
-
-### Switch memory provider
-
-```sh
-npx personal-memory switch cognee --yes
-```
-
-Updates `wizard.conf` and `[memory].provider` in `config.toml` when present, restarts the stack unless `--no-stack`, and runs `install-mcp --provider-only` unless `--no-mcp`. Does **not** migrate memories. NotebookLM sync/MCP is left alone. After a switch: restart Cursor Agent, then `npx personal-memory doctor`.
-
-## NotebookLM banks for agents
-
-Synced notebooks land in `notebooklm::*` banks. With `notebooklmAccess.enabled: true`, the `notebooklm` MCP exposes:
-
-| Tool | Purpose |
+| Flag | Effect |
 | --- | --- |
-| `notebooklm_list_banks` | Allowlisted banks |
-| `notebooklm_search` | Fast full-text search by default (`mode=list`); optional `mode=recall` for slow LLM synthesis |
+| `--no-stack` | Skip compose restart |
+| `--no-mcp` | Skip provider MCP refresh |
+| `--dry-run` | Plan only |
 
-Prefer short keyword queries. LLM recall can take tens of seconds on CPU and may hit MCP timeouts.
+## Optional: NotebookLM for agents
+
+When sync is enabled, agents can query `notebooklm::*` banks via MCP (`notebooklm_list_banks`, `notebooklm_search`). Prefer keyword search; LLM recall can be slow on CPU.
+
+See [NotebookLM](../notebooklm/).
 
 ## Stop and reset
 
 ```sh
 npx personal-memory down
-# or from the stack / checkout compose project:
-docker compose down      # stop; keeps the memory database
-docker compose down -v   # stop and delete the memory database
+docker compose down -v   # from stack root: delete memory database volume
 ```
 
-## Next
+## Next reads
 
-- [Install with npx](../npx-install/): stack root, env vars, and the full command table.
-- [Provider status](../provider-status/): what each provider is and how it self-hosts.
-- [Pluggable memory providers](../memory-providers/): what the wizard owns and what a provider owns.
-- [Configuration file](../personal-memory-config/): `config.toml` and tasks.
+| Topic | Page |
+| --- | --- |
+| npx stack root, upgrades, troubleshooting | [Install with npx](../npx-install/) |
+| Wizard phases and flags | [Setup wizard](../setup-wizard/) |
+| `config.toml` | [Configuration file](../personal-memory-config/) |
+| Provider architecture | [Pluggable memory providers](../memory-providers/) |
