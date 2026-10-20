@@ -1,0 +1,23 @@
+{
+  "id": "nohooks",
+  "label": "No-hooks fixture",
+  "status": "experimental",
+  "compose": {
+    "services": [],
+    "healthService": "memory",
+    "healthPath": "/health",
+    "hostPortEnv": "NOHOOKS_PORT",
+    "defaultHostPort": 18765
+  },
+  "indexer": { "apiUrlEnv": "NOHOOKS_URL", "sinkDriver": "nohooks-rest" },
+  "codingAgent": { "pluginPackage": null, "configTemplate": null },
+  "wizard": {
+    "smokeBank": "wizard-smoke",
+    "retainPath": "/fixture/{bank}/memories",
+    "retainBody": "{\"content\":\"the project codename is heron\"}",
+    "recallPath": "/fixture/{bank}/memories/recall",
+    "recallBody": "{\"query\":\"codename\"}",
+    "recallMustMatch": "heron",
+    "deletePath": "/fixture/{bank}"
+  }
+}

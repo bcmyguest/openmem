@@ -403,7 +403,9 @@ async function smokeTest(ctx) {
   const needle = p.wizard.recallMustMatch || "heron";
   if (!new RegExp(needle, "i").test(recall)) {
     const hint = p.wizard.recallHint
-      ? p.wizard.recallHint.replaceAll("{project}", ctx.project)
+      ? p.wizard.recallHint
+          .replaceAll("{compose}", composeCommandText(ctx))
+          .replaceAll("{project}", ctx.project)
       : `(${logs})`;
     die(`recall did not return the smoke fact; ${hint}`);
   }
