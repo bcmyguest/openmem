@@ -1,5 +1,7 @@
 # Local Hindsight memory
 
+**Docs site:** [bcmyguest.github.io/personal-memory](https://bcmyguest.github.io/personal-memory/)
+
 Docker Compose setup for local coding-agent memory. The default **memory provider** is
 Hindsight; **mem0** and **Cognee** are experimental (see
 [docs/memory-providers.md](docs/memory-providers.md), `providers/mem0/OPERATOR.md`, and
@@ -377,7 +379,7 @@ MCP tools (stdio server `cli/notebooklm-mcp.mjs`):
 | Tool | Purpose |
 | --- | --- |
 | `notebooklm_list_banks` | Allowlisted `notebooklm::*` banks (`bank_id`, `fact_count`) |
-| `notebooklm_search` | Recall on one allowlisted bank (`bank_id` + `query`) |
+| `notebooklm_search` | Fast full-text list on one allowlisted bank (`bank_id` + `query`; optional `mode=recall` for slow LLM synthesis) |
 
 When `enabled` is true, the wizard or `install-mcp` merges a `notebooklm` entry into `~/.cursor/mcp.json` (does not overwrite `hindsight` or `codegraph`). To run the server by hand:
 

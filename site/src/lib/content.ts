@@ -58,7 +58,11 @@ export const features = [
   },
   {
     title: 'Declarative config',
-    body: 'A mise-like ~/.config/personal-memory/config.toml holds provider, ports, and model routing. ./pm up, ./pm down, and ./pm doctor run the same wizard steps without prompts.',
+    body: 'A mise-like ~/.config/personal-memory/config.toml holds provider, ports, and model routing. ./pm up, ./pm down, ./pm doctor, ./pm install-mcp, and ./pm switch run without a full interactive setup.',
+  },
+  {
+    title: 'Switch providers later',
+    body: './pm switch <provider> --yes updates wizard.conf (and config.toml when present), restarts the stack, and re-points provider MCP. It does not migrate memories between backends.',
   },
   {
     title: 'Local models by default',
@@ -69,8 +73,8 @@ export const features = [
     body: 'Each provider declares its status, compose services, health check, and native docs in a manifest. This site reads those files at build time, so a provider only shows as supported when its manifest says so.',
   },
   {
-    title: 'Optional NotebookLM sync',
-    body: 'An opt-in compose profile syncs Google NotebookLM notebooks into banks. It uses an unofficial client and a stored Google session, so it is off by default.',
+    title: 'Optional NotebookLM sync + MCP',
+    body: 'An opt-in compose profile syncs Google NotebookLM into notebooklm::* banks. Agents can list/search those banks via an opt-in stdio MCP (fast full-text by default). Off until you enable sync and notebooklmAccess.',
     tag: 'Opt-in',
   },
 ];
@@ -90,8 +94,9 @@ export const works = [
   'mem0 (URL-only) and Cognee (pinned Docker image) compose profiles with provider wizard hooks and indexer sinks',
   'Indexer for git repositories and Obsidian vaults, with tree-sitter outlines and secret-path masking',
   'Smoke retain and recall, and an idempotent rerun that reports changed=N',
-  'Declarative config.toml and the ./pm up, down, and doctor tasks',
-  'Opt-in NotebookLM sync as a compose profile',
+  'Declarative config.toml and ./pm tasks: up, down, doctor, install-mcp, switch',
+  'Opt-in NotebookLM sync plus notebooklm MCP (list/search) for coding agents',
+  'Provider MCP installers for mem0 and Cognee via ./pm install-mcp',
 ];
 
 export const next = [

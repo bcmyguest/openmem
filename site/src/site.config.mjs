@@ -24,10 +24,10 @@ export const site = {
     published: false,
     package: 'personal-memory',
   },
-  /** Command that works from a checkout today. */
+  /** Commands that work from a checkout today. */
   sourceInstall: {
     clone: 'https://github.com/bcmyguest/personal-memory.git',
     directory: 'personal-memory',
-    command: './setup',
+    command: 'npm install && npm run setup',
   },
 };

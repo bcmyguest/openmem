@@ -30,7 +30,10 @@ export const RULES = [
   {
     id: 'secret-assignment',
     label: 'env-style secret assignment (KEY=value)',
-    re: /\b[A-Z0-9_]*(?:API_KEY|MASTER_KEY|SECRET_KEY|ACCESS_KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD)[ \t]*=[ \t]*(["']?)([^\s"'`]*)/g,
+    // Value is either a `<placeholder>` or a token that stops before HTML/control
+    // chars. Starlight wraps code in <span>; allowing raw `<` into a bare token
+    // made `KEY=replace-me</span>…` look like a real secret.
+    re: /\b[A-Z0-9_]*(?:API_KEY|MASTER_KEY|SECRET_KEY|ACCESS_KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD)[ \t]*=[ \t]*(["']?)((?:<[^>\n]*>)|(?:[^\s"'`<>\x00-\x1f\x7f]*))/g,
     secret: true,
     // Explicit placeholders (`=...`, `=<token>`, `=$VAR`, `=replace-me`) are documentation.
     // A bare `KEY=` with nothing after it is flagged: write a placeholder instead.
