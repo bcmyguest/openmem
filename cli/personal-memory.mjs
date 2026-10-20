@@ -21,13 +21,16 @@ const BIN = "personal-memory";
 
 const HELP = `${BIN} ${pkg.version}: set up and run a self-hosted AI memory stack (docker compose).
 
-Usage:
+Usage (prefer npx once published: npx ${BIN} <command>):
   ${BIN}                       interactive setup (same as: ${BIN} setup)
   ${BIN} setup [flags]         interactive setup; flags go to the wizard (--yes, --dry-run, ...)
   ${BIN} configure [flags]     non-interactive setup and start (wizard --yes)
   ${BIN} up [flags]            start the stack with the saved configuration
   ${BIN} down [flags]          stop the stack
   ${BIN} doctor [flags]        validate the configuration without the smoke test
+  ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
+  ${BIN} switch <provider> [flags]
+                               change MEMORY_PROVIDER (stack + MCP; no data migration)
   ${BIN} providers [--json]    list memory providers and their status
   ${BIN} init [--force] [--dry-run] [--json]
                                create or upgrade the stack root without running the wizard
@@ -42,7 +45,7 @@ Stack root (where .env, compose files and generated config live):
 Upgrades overwrite only shipped files you did not modify; modified ones are reported as conflicts.
 Docs: docs/npx-install.md`;
 
-const WIZARD_TASKS = new Set(["configure", "up", "down", "doctor"]);
+const WIZARD_TASKS = new Set(["configure", "up", "down", "doctor", "install-mcp", "switch"]);
 
 /** @param {string} msg */
 function die(msg, code = 1) {

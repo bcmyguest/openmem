@@ -16,7 +16,7 @@ export const PAGES = [
     kind: 'hand',
     group: 'Start',
     title: 'Getting started',
-    description: 'Prerequisites and the from-source install that works today, plus the planned npx path.',
+    description: 'Prerequisites and install via npx (or a git checkout), plus MCP install and provider switch.',
   },
   {
     slug: 'npx-install',

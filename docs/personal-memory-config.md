@@ -8,8 +8,8 @@ declarative config is intentionally similar to **[mise](https://mise.jdx.dev/)**
 | `~/.config/mise/config.toml` + `.mise.toml` | `~/.config/personal-memory/config.toml` + `personal-memory.toml` |
 | `[tools]` plugins | `[memory] provider = "…"` + `providers/*/manifest.json` |
 | `[env]` | Host ports / compose project under `[stack]` |
-| `[tasks]` | `./pm up`, `./pm down`, `./pm doctor`, `./pm install-mcp`, `./pm switch` |
-| `mise install` applies config | `./setup --yes` applies config |
+| `[tasks]` | `npx personal-memory up` / `down` / `doctor` / `install-mcp` / `switch` |
+| `mise install` applies config | `npx personal-memory configure --yes` applies config |
 
 We **do not** replace mise (or mem0/Hindsight native config). You can use both: mise installs
 Node/Docker; this file describes **how agent memory runs on this machine**.
@@ -137,8 +137,9 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the summary.
   Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
   overrides the env file (see `providers/cognee/compose.yaml`).
-- **`[tasks.*]`** — descriptions for `./pm` (see `wizard/bin/pm.mjs`). Built-in tasks:
-  - `configure` / `up` / `down` / `doctor` — map to `./setup` with the matching flags
+- **`[tasks.*]`** — descriptions for `npx personal-memory` / `./pm` (see `wizard/bin/pm.mjs` and
+  `cli/personal-memory.mjs`). Built-in tasks:
+  - `configure` / `up` / `down` / `doctor` — map to the setup wizard with the matching flags
   - `install-mcp` — runs `cli/install-memory-mcp.mjs` (merge memory MCP entries into
     `~/.cursor/mcp.json`)
   - `switch <provider>` — runs `cli/switch-memory-provider.mjs`: sets `MEMORY_PROVIDER` in
@@ -152,7 +153,8 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 ```bash
 cp config/personal-memory.toml.example ~/.config/personal-memory/config.toml
 # edit provider, ports, model backend
-./setup --yes
+npx personal-memory configure --yes
+# checkout before publish: npx . configure --yes
 ```
 
 After a successful configure, the wizard **writes back** `~/.config/personal-memory/config.toml` so
@@ -161,7 +163,7 @@ the file matches what is running (mise-style source of truth).
 ## Doctor
 
 ```bash
-./pm doctor
+npx personal-memory doctor
 ```
 
 Runs the same checks as setup step “Validate memory setup” without mutating the stack.

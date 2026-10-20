@@ -75,9 +75,9 @@ via the launcher `cli/mem0-mcp.mjs` (loads the key from the env file, then
 `npx -y @yeyuan98/mem0-mcp`).
 
 ```sh
-MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes
-# or: personal-memory-install-mcp --yes
-# or accept the coding-agent MCP confirm in ./setup
+MEMORY_PROVIDER=mem0 npx personal-memory install-mcp --yes
+# checkout: MEMORY_PROVIDER=mem0 npx . install-mcp --yes
+# or accept the coding-agent MCP confirm in setup
 ```
 
 Shape written (URL and env-file **path** only — never the key value):
@@ -109,9 +109,9 @@ Restart Cursor Agent after install.
 ### Switch to / from mem0
 
 ```sh
-./pm switch mem0 --yes
-# later: ./pm switch hindsight --yes
-# or: npm run switch-provider -- mem0 --yes
+npx personal-memory switch mem0 --yes
+# later: npx personal-memory switch hindsight --yes
+# checkout: npx . switch mem0 --yes
 ```
 
 Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack

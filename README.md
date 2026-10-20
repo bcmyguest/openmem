@@ -41,24 +41,26 @@ start / stop — default is configure), **memory provider** (default from `wizar
 [.agents/skills/](.agents/skills/).
 
 ```sh
+# Preferred after npm publish:
+npx personal-memory
+
+# From a checkout today (same CLI shape):
 git clone git@github.com:bcmyguest/personal-memory.git
 cd personal-memory
 cp config/machine.env.example config/machine.env   # optional per-machine defaults
 npm install
-npm run setup          # same wizard as ./setup and: npx personal-memory setup
-# or: ./setup
-# or: npx personal-memory setup   # after publish / npm link
+npx . setup            # same wizard as: npm run setup / ./setup
 ```
 
 First interactive run installs `wizard/` npm deps automatically. `--yes` / `--dry-run` skip Clack
-and need no `wizard/node_modules`. The published package bin is `personal-memory` (subcommand
-`setup`); a checkout also has `./setup` and `npm run setup`.
+and need no `wizard/node_modules`. The package bin is `personal-memory` (`npx personal-memory setup`,
+`up`, `down`, `doctor`, `install-mcp`, `switch`, …).
 
 **Mise-like config:** copy **`config/personal-memory.toml.example`** to
 **`~/.config/personal-memory/config.toml`** — declarative provider, stack, model routing, and tasks.
-See [docs/personal-memory-config.md](docs/personal-memory-config.md). Run **`./pm up`**, **`./pm down`**,
-**`./pm doctor`** like mise tasks. Legacy **`config/machine.env`** still works. Ansible clones this repo and
-calls `scripts/run-setup.sh`.
+See [docs/personal-memory-config.md](docs/personal-memory-config.md). Day-2:
+**`npx personal-memory up`**, **`down`**, **`doctor`**. Legacy **`config/machine.env`** still works.
+Ansible clones this repo and calls `scripts/run-setup.sh`.
 
 The wizard asks for:
 
@@ -228,15 +230,14 @@ Or accept the coding-agent step in `personal-memory setup` / `./setup`.
 To register **only** memory-related MCP entries (NotebookLM, mem0, Cognee) without re-running full setup:
 
 ```sh
-npm run install-mcp -- --yes
-# or: personal-memory-install-mcp --yes
-# or: ./pm install-mcp --yes
+npx personal-memory install-mcp --yes
+# checkout: npx . install-mcp --yes
 
 # mem0 self-hosted REST → @yeyuan98/mem0-mcp via cli/mem0-mcp.mjs
-MEMORY_PROVIDER=mem0 npm run install-mcp -- --yes --provider-only
+MEMORY_PROVIDER=mem0 npx personal-memory install-mcp --yes --provider-only
 
 # Cognee read-only health/search → cli/cognee-mcp.mjs
-MEMORY_PROVIDER=cognee npm run install-mcp -- --yes --provider-only
+MEMORY_PROVIDER=cognee npx personal-memory install-mcp --yes --provider-only
 ```
 
 Provider comes from `MEMORY_PROVIDER`, else `~/.config/hindsight/wizard.conf`, else `hindsight`. NotebookLM MCP is installed when `~/.config/hindsight/notebooklm.yml` has `enabled: true`, or with `--notebooklm`. Flags: `--dry-run`, `--notebooklm-only`, `--provider-only`. Existing `hindsight` / `codegraph` / `notebooklm` / sibling provider entries are merged, not clobbered. For mem0, `mcp.json` gets `MEM0_API_URL` / `MEM0_BASE_URL` and the path to `mem0.env` — never the API key (see [providers/mem0/OPERATOR.md](providers/mem0/OPERATOR.md)). For Cognee, `mcp.json` gets `COGNEE_API_URL` only — never `COGNEE_API_KEY` (see [providers/cognee/OPERATOR.md](providers/cognee/OPERATOR.md); tools `cognee_health` / `cognee_search`). Manual JSON edits remain a fallback.
@@ -248,12 +249,11 @@ Restart the Cursor Agent (or other coding agent) after install so it loads the n
 To change `MEMORY_PROVIDER` (updates `~/.config/hindsight/wizard.conf`, optionally restarts the stack and refreshes provider MCP) without a full interactive setup:
 
 ```sh
-npm run switch-provider -- mem0 --yes
-# or: personal-memory-switch-provider cognee --yes
-# or: ./pm switch hindsight --yes
+npx personal-memory switch mem0 --yes
+# checkout: npx . switch cognee --yes
 ```
 
-Flags: `--dry-run`, `--no-stack` (skip compose down/up), `--no-mcp` (skip `install-mcp --provider-only`). Switching does **not** migrate memories between backends. After a switch: restart Cursor Agent, then `./pm doctor`.
+Flags: `--dry-run`, `--no-stack` (skip compose down/up), `--no-mcp` (skip `install-mcp --provider-only`). Switching does **not** migrate memories between backends. After a switch: restart Cursor Agent, then `npx personal-memory doctor`.
 
 ## Indexing
 
@@ -360,7 +360,7 @@ Synced notebooks land in Hindsight banks named `notebooklm::<slug>`. The coding-
 **Primary paths** (pick one):
 
 1. **Wizard** — when you enable NotebookLM sync in setup (step 6), the wizard asks whether to allow coding agents to query those banks via MCP (`notebooklm_list_banks` / `notebooklm_search`). Default is yes after sync is enabled. On yes it writes `notebooklmAccess.enabled: true` into a **real** `~/.hindsight/coding-agent.json` (if that path was a symlink to the repo template, it is copied to a regular file first so machine settings never land in `config/coding-agent.json`) and merges a `notebooklm` entry into `~/.cursor/mcp.json`.
-2. **`npm run install-mcp` / `personal-memory-install-mcp`** — same enable + MCP merge when NotebookLM is already on (`notebooklm.yml` `enabled: true`) or with `--notebooklm` / `--notebooklm-only`. See [Memory MCP servers](#memory-mcp-servers-cursormcpjson) above.
+2. **`npx personal-memory install-mcp`** — same enable + MCP merge when NotebookLM is already on (`notebooklm.yml` `enabled: true`) or with `--notebooklm` / `--notebooklm-only`. See [Memory MCP servers](#memory-mcp-servers-cursormcpjson) above.
 
 Restart Cursor Agent after either path. Manual JSON remains a fallback if you skipped the prompt or need to change allowlists later:
 

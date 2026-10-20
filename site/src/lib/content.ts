@@ -38,7 +38,7 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 export const features = [
   {
     title: 'One wizard, per-provider steps',
-    body: 'A Node wizard (./setup) asks for a stack action and a memory provider, then runs the shared steps: preflight, ports, index sources, start, health, and a smoke test. Providers add their own steps through hook modules.',
+    body: 'A Node wizard (npx personal-memory) asks for a stack action and a memory provider, then runs the shared steps: preflight, ports, index sources, start, health, and a smoke test. Providers add their own steps through hook modules.',
   },
   {
     title: 'A Compose stack, loopback only',
@@ -58,11 +58,11 @@ export const features = [
   },
   {
     title: 'Declarative config',
-    body: 'A mise-like ~/.config/personal-memory/config.toml holds provider, ports, and model routing. ./pm up, ./pm down, ./pm doctor, ./pm install-mcp, and ./pm switch run without a full interactive setup.',
+    body: 'A mise-like ~/.config/personal-memory/config.toml holds provider, ports, and model routing. Day-2 commands are npx personal-memory up, down, doctor, install-mcp, and switch.',
   },
   {
     title: 'Switch providers later',
-    body: './pm switch <provider> --yes updates wizard.conf (and config.toml when present), restarts the stack, and re-points provider MCP. It does not migrate memories between backends.',
+    body: 'npx personal-memory switch <provider> --yes updates wizard.conf (and config.toml when present), restarts the stack, and re-points provider MCP. It does not migrate memories between backends.',
   },
   {
     title: 'Local models by default',
@@ -94,9 +94,9 @@ export const works = [
   'mem0 (URL-only) and Cognee (pinned Docker image) compose profiles with provider wizard hooks and indexer sinks',
   'Indexer for git repositories and Obsidian vaults, with tree-sitter outlines and secret-path masking',
   'Smoke retain and recall, and an idempotent rerun that reports changed=N',
-  'Declarative config.toml and ./pm tasks: up, down, doctor, install-mcp, switch',
+  'Declarative config.toml and npx personal-memory tasks: up, down, doctor, install-mcp, switch',
   'Opt-in NotebookLM sync plus notebooklm MCP (list/search) for coding agents',
-  'Provider MCP installers for mem0 and Cognee via ./pm install-mcp',
+  'Provider MCP installers for mem0 and Cognee via npx personal-memory install-mcp',
 ];
 
 export const next = [
