@@ -21,7 +21,7 @@ body = """
 {% endfor %}
 {% if github.contributors -%}
 {%- set_global thanks_sep = "" -%}
-Thanks{% for contributor in github.contributors | sort(attribute="username") -%}
+Thanks{% for contributor in github.contributors | filter(attribute="username") | sort(attribute="username") -%}
 {%- if contributor.username != "bcmyguest" -%}
 {{- thanks_sep }} @{{ contributor.username -}}
 {%- set_global thanks_sep = "," -%}

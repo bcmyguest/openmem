@@ -152,14 +152,10 @@ Before the first publish (these are human steps; nothing in this repo does them)
    hand (`npm publish --access public`). The name `personal-memory` was verified free on
    2026-10-19 (so was `@bcmyguest/personal-memory`); re-check with `npm view personal-memory`.
 5. **Trusted publishing.** On npmjs.com, package Settings -> Trusted Publisher -> GitHub
-   Actions: owner `bcmyguest`, repository `personal-memory`, workflow `release.yml`,
-   environment `npm`. (Fallback: an `NPM_TOKEN` secret, see the comment in
-   `release.yml`.)
-6. **GitHub environment.** Settings -> Environments -> create `npm`, add required
-   reviewers so each publish needs approval.
-7. **Release.** Run the *Prepare release* workflow, or bump `package.json`, tag `vX.Y.Z`
-   and push the tag. `release.yml` runs CI, then publishes with `--provenance`, then
-   creates the GitHub Release.
+   Actions: owner `bcmyguest`, repository `personal-memory`, workflow `release.yml`.
+6. **Release.** Run the *Prepare release* workflow on `main` (or bump `package.json`, tag
+   `vX.Y.Z`, and push the tag). `release.yml` runs CI, then publishes with `--provenance`
+   when the version is not already on npm, then creates the GitHub Release.
 
 Local rehearsal without publishing:
 

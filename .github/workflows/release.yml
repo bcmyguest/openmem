@@ -10,13 +10,7 @@ name: Release
 # One-time setup: npm lets a trusted publisher be added only to an existing package, so
 # publish 0.1.0 once by hand (`npm publish --access public`), then on npmjs.com:
 # personal-memory -> Settings -> Trusted Publisher -> GitHub Actions: owner bcmyguest,
-# repository personal-memory, workflow release.yml, environment npm.
-#
-# Token fallback instead of trusted publishing: create a granular automation token limited
-# to this package, store it as the NPM_TOKEN secret of the `npm` environment, and add
-#   env:
-#     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-# to the publish step. Provenance still needs id-token: write and a public repo.
+# repository personal-memory, workflow release.yml.
 on:
   push:
     tags: ["v*"]
@@ -62,9 +56,6 @@ jobs:
     name: Publish to npm (trusted publishing)
     needs: [gate, ci]
     runs-on: ubuntu-latest
-    # Protected environment: add required reviewers in Settings -> Environments -> npm
-    # so a publish waits for a human approval.
-    environment: npm
     permissions:
       contents: read
       id-token: write # OIDC token for npm trusted publishing and provenance
