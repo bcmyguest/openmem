@@ -1,0 +1,20 @@
+---
+// shadcn-style button: variant and size maps over semantic tokens.
+interface Props {
+  href?: string;
+  variant?: 'default' | 'outline';
+  size?: 'default' | 'lg';
+  class?: string;
+  [key: string]: unknown;
+}
+const { href, variant = 'default', size = 'default', class: className = '', ...rest } = Astro.props;
+const base =
+  'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-50';
+const variants = {
+  default: 'bg-decision text-on-decision hover:bg-decision-hover',
+  outline: 'border border-line bg-panel text-ink hover:bg-hover',
+};
+const sizes = { default: 'h-9 px-4 text-sm', lg: 'h-11 px-6 text-base' };
+const cls = [base, variants[variant], sizes[size], className].join(' ');
+---
+{href ? <a href={href} class={cls} {...rest}><slot /></a> : <button type="button" class={cls} {...rest}><slot /></button>}

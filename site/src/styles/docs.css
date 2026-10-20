@@ -1,0 +1,17 @@
+/* Starlight overrides: typeface and palette (tokens.css). */
+:root {
+  --sl-font: 'DM Sans', system-ui, sans-serif;
+  --sl-content-width: 46rem;
+}
+
+/* Wide tables (provider status, config precedence) scroll instead of squeezing. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* The generated-from-source footer. */
+.sl-markdown-content hr + p:last-child {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+}

@@ -1,0 +1,213 @@
+---
+import Landing from '../layouts/Landing.astro';
+import ArchitectureFigure from '../components/landing/ArchitectureFigure.astro';
+import Button from '../components/ui/Button.astro';
+import Card from '../components/ui/Card.astro';
+import Badge from '../components/ui/Badge.astro';
+import CodeBlock from '../components/ui/CodeBlock.astro';
+import { features, next, providers, security, site, STATUS_LABEL, steps, works } from '../lib/content';
+import { withBase } from '../lib/url';
+
+const supportedNames = providers.filter((p) => p.status === 'supported').map((p) => p.label).join(', ');
+const title = `${site.name}: ${site.tagline}`;
+const description =
+  'A setup wizard, Docker Compose stack, and project and vault indexer that wire coding agents to a pluggable local memory provider. Provider status is read from the manifests.';
+
+const sourceCommands = `git clone ${site.sourceInstall.clone}
+cd ${site.sourceInstall.directory}
+${site.sourceInstall.command}`;
+const npxCommand = `npx ${site.npm.package}`;
+---
+<Landing title={title} description={description}>
+  <header class="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur">
+    <nav class="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6" aria-label="Main">
+      <a href={withBase('/')} class="flex items-center gap-2 font-bold">
+        <img src={withBase('favicon.svg')} alt="" width="24" height="24" />
+        <span class="whitespace-nowrap">{site.name}</span>
+      </a>
+      <div class="ml-auto flex items-center gap-1 text-sm">
+        <a href={withBase('docs/getting-started/')} class="rounded-md px-3 py-2 hover:bg-hover">Docs</a>
+        <a href="#providers" class="hidden rounded-md px-3 py-2 hover:bg-hover sm:inline">Providers</a>
+        <a href="#install" class="hidden rounded-md px-3 py-2 hover:bg-hover sm:inline">Install</a>
+        <a href={site.repoUrl} class="rounded-md px-3 py-2 hover:bg-hover">Source</a>
+        <button type="button" id="theme-toggle" class="rounded-md p-2 hover:bg-hover" aria-label="Toggle dark mode">
+          <svg class="h-5 w-5 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
+          <svg class="hidden h-5 w-5 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
+      <div class="max-w-3xl">
+        <Badge variant="outline">Local-first · Docker Compose · work in progress</Badge>
+        <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
+        <p class="mt-5 text-lg leading-relaxed text-muted">
+          personal-memory is a setup wizard built around pluggable memory providers, a Docker Compose stack, and an indexer for your projects and notes. It wires coding agents to a provider that runs on your machine. {supportedNames ? `Supported today: ${supportedNames}.` : 'No provider is supported yet.'} Every other provider is listed with the status its manifest declares.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <Button href="#install" size="lg">Install</Button>
+          <Button href={withBase('docs/getting-started/')} variant="outline" size="lg">Read the docs</Button>
+        </div>
+      </div>
+      <div class="mt-10">
+        <ArchitectureFigure />
+      </div>
+    </section>
+
+    <section class="border-y border-line bg-panel py-16" aria-labelledby="features-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="features-h" class="text-3xl font-bold tracking-tight">What it does</h2>
+        <p class="mt-3 max-w-2xl text-muted">It orchestrates the machine-local plumbing. Each provider keeps its own native settings, CLI, and docs.</p>
+        <ul class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f) => (
+            <Card as="li" class="bg-panel-raised">
+              <h3 class="flex flex-wrap items-center gap-2 font-semibold">
+                {f.title}
+                {f.tag && <Badge variant="inferred">{f.tag}</Badge>}
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
+            </Card>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <section class="py-16" aria-labelledby="how-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="how-h" class="text-3xl font-bold tracking-tight">How a run goes</h2>
+        <ol class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {steps.map((s) => (
+            <li class="rounded-xl border border-line bg-panel p-5">
+              <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-source" aria-hidden="true">{s.n}</span>
+              <h3 class="mt-3 font-semibold">{s.title}</h3>
+              <p class="mt-1 text-sm leading-relaxed text-muted">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+        <p class="mt-6 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/provider-wizard-hooks/')}>The full phase order and the hook contract</a></p>
+      </div>
+    </section>
+
+    <section id="providers" class="border-y border-line bg-panel py-16" aria-labelledby="providers-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="providers-h" class="text-3xl font-bold tracking-tight">Providers</h2>
+        <p class="mt-3 max-w-2xl text-muted">
+          Generated from <code>providers/*/manifest.json</code> when this site is built. A provider is only marked supported when its manifest says so.
+        </p>
+        <div class="mt-8 overflow-x-auto rounded-xl border border-line" role="region" aria-labelledby="providers-h" tabindex="0">
+          <table class="w-full min-w-[40rem] border-collapse text-left text-sm">
+            <caption class="sr-only">Memory providers with status, self-host story, and native documentation</caption>
+            <thead class="bg-panel-raised">
+              <tr>
+                <th scope="col" class="px-4 py-3 font-semibold">Provider</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Id</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Status</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Self-host</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Native docs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((p) => (
+                <tr class="border-t border-line align-top">
+                  <th scope="row" class="px-4 py-3 font-semibold">{p.label}</th>
+                  <td class="px-4 py-3"><code>{p.id}</code></td>
+                  <td class="px-4 py-3"><Badge variant={p.status}>{STATUS_LABEL[p.status]}</Badge></td>
+                  <td class="px-4 py-3 text-muted">
+                    {p.selfHost}
+                    {p.notes && <span class="mt-1 block text-xs">{p.notes}</span>}
+                  </td>
+                  <td class="px-4 py-3">
+                    {p.nativeDocs ? <a class="font-semibold text-source underline underline-offset-4" href={p.nativeDocs}>{new URL(p.nativeDocs).host}</a> : <span class="text-muted">none listed</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/provider-status/')}>Per-provider details</a></p>
+      </div>
+    </section>
+
+    <section id="next" class="py-16" aria-labelledby="next-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="next-h" class="text-3xl font-bold tracking-tight">Works today. Up next.</h2>
+        <p class="mt-3 max-w-2xl text-muted">What the current build does, and the next steps. No dates.</p>
+        <div class="mt-10 grid gap-4 md:grid-cols-2">
+          <Card class="bg-panel-raised">
+            <h3 class="font-semibold">Works today</h3>
+            <ul class="mt-3 space-y-2 text-sm">
+              {works.map((w) => <li class="flex gap-2"><span class="text-ok" aria-hidden="true">✓</span><span>{w}</span></li>)}
+            </ul>
+          </Card>
+          <Card class="bg-panel-raised">
+            <h3 class="font-semibold">Up next</h3>
+            <ul class="mt-3 space-y-2 text-sm">
+              {next.map((n) => <li class="flex gap-2"><span class="text-warning" aria-hidden="true">→</span><span>{n}</span></li>)}
+            </ul>
+          </Card>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="border-y border-line bg-panel py-16" aria-labelledby="install-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="install-h" class="text-3xl font-bold tracking-tight">Install</h2>
+        <p class="mt-3 max-w-2xl text-muted">
+          You need Docker with Compose v2, Node.js 18 or newer, and a model server for the provider you pick (for Hindsight: lemond, Ollama, or an OpenAI-compatible endpoint).
+        </p>
+        <div class="mt-8 grid gap-4 lg:grid-cols-2">
+          <Card class="min-w-0 bg-panel-raised">
+            <h3 class="flex flex-wrap items-center gap-2 font-semibold">
+              From source
+              <Badge variant="supported">Works today</Badge>
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-muted">Clone the repository and run the wizard. Add <code>--dry-run</code> first to see what it would do without writing anything.</p>
+            <div class="mt-4"><CodeBlock code={sourceCommands} label="Clone and run the wizard" /></div>
+          </Card>
+          <Card class="min-w-0 bg-panel-raised">
+            <h3 class="flex flex-wrap items-center gap-2 font-semibold">
+              With npx
+              {site.npm.published ? <Badge variant="supported">Published</Badge> : <Badge variant="inferred">Available after the first npm release</Badge>}
+            </h3>
+            {site.npm.published ? (
+              <p class="mt-2 text-sm leading-relaxed text-muted">Runs the same wizard without a checkout.</p>
+            ) : (
+              <p class="mt-2 text-sm leading-relaxed text-muted">The package is not published yet, so this command does not work today. Use the from-source path.</p>
+            )}
+            <div class="mt-4"><CodeBlock code={npxCommand} label="Run the wizard with npx" copy={site.npm.published} /></div>
+          </Card>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <Button href={withBase('docs/getting-started/')}>Getting started</Button>
+          <Button href={withBase('docs/memory-providers/')} variant="outline">How providers plug in</Button>
+        </div>
+      </div>
+    </section>
+
+    <section id="security" class="py-16" aria-labelledby="security-h">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6">
+        <h2 id="security-h" class="text-3xl font-bold tracking-tight">Security notes</h2>
+        <ul class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {security.map((s) => (
+            <Card as="li">
+              <h3 class="font-semibold">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{s.body}</p>
+            </Card>
+          ))}
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-line py-10 text-sm text-muted">
+    <div class="mx-auto flex max-w-6xl flex-wrap gap-x-6 gap-y-2 px-4 sm:px-6">
+      <span>{site.name}</span>
+      <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('docs/getting-started/')}>Docs</a>
+      <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('docs/provider-status/')}>Provider status</a>
+      <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('llms.txt')}>llms.txt</a>
+      <a class="underline-offset-4 hover:text-ink hover:underline" href={site.repoUrl}>Source</a>
+    </div>
+  </footer>
+</Landing>

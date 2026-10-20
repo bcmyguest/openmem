@@ -1,29 +1,58 @@
 # Local Hindsight memory
 
-Docker Compose setup for the local Hindsight coding-agent memory. It runs three services:
+Docker Compose setup for the local Hindsight coding-agent memory (the default **memory
+provider**; see [docs/memory-providers.md](docs/memory-providers.md) for adding mem0 and others).
+It runs three services:
 
 - `litellm`: an OpenAI-compatible proxy (`ghcr.io/berriai/litellm:v1.105.1`) on the internal Docker network only. Hindsight sends every LLM call to it.
 - `hindsight`: the Hindsight API on `127.0.0.1:8888` (`HINDSIGHT_PORT`), control plane on `127.0.0.1:9999` (`HINDSIGHT_CP_PORT`). Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
 - `indexer`: indexes project repositories and Obsidian vaults into Hindsight and keeps them current.
 
+## Does cloning just work?
+
+Not without a few one-time steps: **SSH access** to this private repo, **Docker** (compose v2,
+your user in the `docker` group), **Node 18+** for the interactive `./setup` UI, and a **model
+backend** you configure in the wizard (lemond, Ollama, or an OpenAI-compatible server). There is
+no cloud account in the loop unless you point custom routes at one. After `./setup` succeeds,
+Hindsight listens on `http://127.0.0.1:8888` and the coding-agent plugin uses
+`~/.hindsight/coding-agent.json` (linked from this repo).
+
 ## Prerequisites
 
 - Docker with Compose v2.
+- Node.js 18+ (all `./setup` paths; interactive runs use the Clack UI in `wizard/`).
 - A model server behind the LiteLLM proxy:
   - lemond on this machine, `127.0.0.1:13305/v1` (containers reach it via `host.docker.internal`). It listens on all interfaces.
   - Or Ollama. Bind it to the Docker bridge gateway, not `0.0.0.0`: set `OLLAMA_HOST=172.17.0.1:11434` in its service environment (find the gateway with `docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`). `host.docker.internal` resolves to that address, so the litellm container reaches Ollama there, while the LAN cannot. Start Ollama after `docker.service` so the bridge exists. `OLLAMA_HOST=0.0.0.0:11434` also works but exposes Ollama to the LAN, which the unauthenticated API should not be.
 
 ## Quick start: `./setup`
 
-`./setup` (the **setup wizard**, `scripts/wizard.sh`) takes a fresh clone to a running stack.
-Per-machine defaults (lemond URL, backend, reflect model) live in **`config/machine.env`**
-(copy from `config/machine.env.example`; gitignored). Ansible only clones this repo and
-calls `scripts/run-setup.sh`, which runs `./setup` when a TTY is available.
+`./setup` is a **Node** wizard (`wizard/bin/setup.mjs`): Clack asks **stack action** (configure /
+start / stop — default is configure), **memory provider** (default from `wizard.conf` or
+`hindsight`), then model backend and routes. Works on Linux and macOS. Non-interactive:
+`./setup --yes`, `./setup --up --yes`, `./setup --down --yes`. Agent skills for providers live in
+[.agents/skills/](.agents/skills/).
+
+```sh
+git clone git@github.com:bcmyguest/personal-memory.git
+cd personal-memory
+cp config/machine.env.example config/machine.env   # optional per-machine defaults
+./setup
+```
+
+First interactive run installs `wizard/` npm deps automatically. `--yes` / `--dry-run` skip Clack
+and need no `wizard/node_modules`.
+
+**Mise-like config:** copy **`config/personal-memory.toml.example`** to
+**`~/.config/personal-memory/config.toml`** — declarative provider, stack, model routing, and tasks.
+See [docs/personal-memory-config.md](docs/personal-memory-config.md). Run **`./pm up`**, **`./pm down`**,
+**`./pm doctor`** like mise tasks. Legacy **`config/machine.env`** still works. Ansible clones this repo and
+calls `scripts/run-setup.sh`.
 
 The wizard asks for:
 
 1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
-2. Model backend: lemond (default) when it answers on `127.0.0.1:13305`. Models come from lemonade (unsloth GGUFs); the wizard runs `lemonade pull` for any model the LiteLLM config names that lemond has not downloaded. Ollama is optional, and a custom OpenAI-compatible URL is also available.
+2. Model backend (UI: pick **first**, then only that endpoint is queried): lemond, Ollama, or custom OpenAI-compatible (Meridian, hosted API). Reflect model can differ from retain/consolidate.
 3. Secrets and env files under `~/.config/hindsight/` (mode 600), then `scripts/setup.sh`.
 4. Source roots to index (default `~`, depth 3) and the Obsidian vaults it finds.
 5. Optional NotebookLM sync (default no).
@@ -63,11 +92,15 @@ The manual steps below do the same work by hand.
 mkdir -p ~/.config/hindsight
 cp config/hindsight.env.example ~/.config/hindsight/hindsight.env
 chmod 600 ~/.config/hindsight/hindsight.env
-bash scripts/setup.sh                       # required before the first compose command
-bash scripts/setup.sh --migrate-env         # new hindsight.env: sets the LiteLLM key and aliases
-docker compose up -d                        # starts litellm, then hindsight and indexer
+node scripts/setup.mjs                       # required before the first compose command (bash wrapper ok)
+node scripts/setup.mjs --migrate-env         # new hindsight.env: sets the LiteLLM key and aliases
+docker compose up -d                        # needs COMPOSE_PROFILES=hindsight in .env (setup writes it)
 curl -fsS http://127.0.0.1:8888/health   # or your HINDSIGHT_PORT
 ```
+
+**Compose profiles:** `litellm` and `hindsight` use profile `hindsight`. Plain `docker compose up` without a profile starts only the indexer unless `.env` sets `COMPOSE_PROFILES=hindsight` (the setup wizard does). `./setup` passes `--profile hindsight` on compose commands. A `--profile` flag **replaces** `COMPOSE_PROFILES`, so name every profile you need on one command (for example `--profile hindsight --profile notebooklm`).
+
+**Indexer sinks:** `bin/hindsight-project-index` talks to the memory API through `indexer/sinks/` (`--sink hindsight` default, or `MEMORY_SINK`). Use `MEMORY_API_URL` for non-Hindsight sinks; Hindsight keeps `HINDSIGHT_URL`.
 
 `scripts/setup.sh` writes `HOST_UID`, `HOST_GID`, and `LITELLM_CONFIG` to `.env` (git-ignored, other lines kept), creates `~/.config/hindsight/litellm.env` if missing, then runs `scripts/gen-masks.sh`. Compose reads them for the indexer's user (`user: "${HOST_UID}:${HOST_GID}"`), so the indexer runs as your UID. Compose refuses to parse the project without `.env`, so run `setup.sh` before any `docker compose` command, including `docker compose logs` and `down`. Rerun it if your UID changes. The image needs no passwd entry for that UID; `HOME` comes from compose, and git trusts all repositories through the system gitconfig. The `hindsight` service needs no change: it uses the named volume `hindsight-data`.
 

@@ -1,6 +1,8 @@
 # Safety net only: the real env file lives outside the repo and must never be committed.
 config/hindsight.env
 config/machine.env
+node_modules/
+wizard/node_modules/
 __pycache__/
 .codegraph/
 compose.override.yaml

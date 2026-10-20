@@ -1,0 +1,15 @@
+---
+interface Props {
+  variant?: 'supported' | 'experimental' | 'planned' | 'inferred' | 'outline';
+  class?: string;
+}
+const { variant = 'outline', class: className = '' } = Astro.props;
+const variants = {
+  supported: 'bg-ok-soft text-ok',
+  experimental: 'bg-inferred-soft text-warning',
+  planned: 'border border-dashed border-muted text-muted',
+  inferred: 'bg-inferred-soft text-warning',
+  outline: 'border border-line text-muted',
+};
+---
+<span class={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${variants[variant]} ${className}`}><slot /></span>
