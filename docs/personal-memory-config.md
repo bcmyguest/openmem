@@ -58,7 +58,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   `.env`, then `wizard.conf`, then the default `http://127.0.0.1:18888`. The indexer container
   gets the same URL with `127.0.0.1`/`localhost` rewritten to `host.docker.internal`
   (`MEM0_INDEXER_URL` in the stack `.env`). The API key is written by `./setup` (from
-  `MEM0_API_KEY` under `--yes`, or a prompt) as the single line `MEM0_API_KEY=<key>` in the env file
+  `MEM0_API_KEY` under `--yes`, or a prompt) as the single line `MEM0_API_KEY=your-key-here` in the env file
   (`MEM0_ENV_FILE`, then `env_file`, then `~/.config/personal-memory/mem0.env`; mode 600 in a mode
   700 directory). You can also create that file by hand; a server run with `AUTH_DISABLED` needs
   none. The key never goes into the stack `.env`, `wizard.conf` or `config.toml`. A non-default

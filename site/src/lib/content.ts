@@ -31,6 +31,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 };
 
 const supported = providers.filter((p) => p.status === 'supported');
+const experimental = providers.filter((p) => p.status === 'experimental');
 const notSupported = providers.filter((p) => p.status !== 'supported');
 const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 
@@ -84,8 +85,9 @@ export const steps = [
 
 export const works = [
   'Interactive and non-interactive wizard: configure, start, stop, --yes, --dry-run',
-  `Provider manifests drive this site: ${supported.length ? `supported today: ${names(supported)}` : 'no provider is supported yet'}`,
+  `Provider manifests drive this site: ${supported.length ? `supported today: ${names(supported)}` : 'no provider is supported yet'}${experimental.length ? `; experimental: ${names(experimental)}` : ''}`,
   'Hindsight stack through Docker Compose, with a LiteLLM proxy in front of lemond, Ollama, or a custom endpoint',
+  'mem0 (URL-only) and Cognee (pinned Docker image) compose profiles with provider wizard hooks and indexer sinks',
   'Indexer for git repositories and Obsidian vaults, with tree-sitter outlines and secret-path masking',
   'Smoke retain and recall, and an idempotent rerun that reports changed=N',
   'Declarative config.toml and the ./pm up, down, and doctor tasks',
@@ -94,8 +96,7 @@ export const works = [
 
 export const next = [
   ...notSupported.map((p) => `${p.label}: manifest status is ${p.status}`),
-  'An indexer sink interface, so every provider shares one indexer',
-  'Compose profiles per provider, so starting one provider does not start another',
+  'Live end-to-end runs against real mem0 and Cognee servers (required before supported)',
   site.npm.published ? 'Further npm releases' : `The first npm release, which makes npx ${site.npm.package} work`,
 ];
 
