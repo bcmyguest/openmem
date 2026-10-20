@@ -1,6 +1,6 @@
 {
   "name": "personal-memory",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Setup wizard and Docker Compose stack for pluggable coding-agent memory (Hindsight, mem0, Cognee) with repo and Obsidian indexing.",
   "type": "module",
   "license": "Apache-2.0",
