@@ -2,7 +2,7 @@
   "id": "cognee",
   "label": "Cognee",
   "status": "experimental",
-  "notes": "Self-hosted graph/RAG memory run as a pinned cognee/cognee image (single container, SQLite + LanceDB + Ladybug) on a loopback port in single-user mode (no authentication). Ingestion is asynchronous: the indexer adds documents, then requests cognify once per changed dataset, so a document is searchable only after the graph is built, which needs a working LLM key. Experimental until a first live run against the real image.",
+  "notes": "Self-hosted graph/RAG memory run as a pinned cognee/cognee image (single container, SQLite + LanceDB + Ladybug) on a loopback port in single-user mode (no authentication). Ingestion is asynchronous: the indexer adds documents, then requests cognify once per changed dataset, so a document is searchable only after the graph is built (OpenAI-compatible LLM_API_KEY, or LLM_PROVIDER=ollama with matching ollama embeddings). No coding-agent plugin — agents use the REST API on the loopback port (/docs). Experimental until a first live run against the real image.",
   "settings": {
     "nativeDocs": "https://docs.cognee.ai/",
     "nativeConfigPaths": [
@@ -34,7 +34,8 @@
   },
   "codingAgent": {
     "pluginPackage": null,
-    "configTemplate": null
+    "configTemplate": null,
+    "notes": "No plugin package. setupCodingAgent prints how to call Cognee REST (health, add, cognify, search) on the loopback COGNEE_PORT."
   },
   "wizardHooks": {
     "module": "wizard.mjs",

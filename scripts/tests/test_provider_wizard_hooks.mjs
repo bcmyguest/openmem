@@ -73,8 +73,10 @@ for (const phase of ["prepareStackEnv", "migrateEnv", "setupNotices"]) {
 
 const mem0 = await loadWizard("mem0");
 check("mem0 exports configureModelRouting", typeof mem0.configureModelRouting === "function");
+check("mem0 exports setupCodingAgent", typeof mem0.setupCodingAgent === "function");
 const mem0Manifest = loadManifest("mem0");
-check("mem0 declares login delegate", listDelegateCommands(mem0Manifest).includes("login"));
+check("mem0 has no login delegate (operators run mem0 login themselves if needed)", !listDelegateCommands(mem0Manifest).includes("login"));
+check("mem0 codingAgent.pluginPackage stays null", mem0Manifest.codingAgent?.pluginPackage === null);
 
 check("registry defines provider phases", Object.keys(PROVIDER_PHASES).length >= 5);
 for (const phase of ["resolvePorts", "setupEnv", "summary", "smoke", "apiBase", "extendValidation"]) {

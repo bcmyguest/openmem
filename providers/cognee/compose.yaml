@@ -15,8 +15,9 @@
 #     indexer reads a SEPARATE env file, so the indexer receives only COGNEE_API_KEY in its environment, never
 #     LLM_API_KEY. The directory holding cognee.env (~/.config/personal-memory) is masked from the indexer's $HOME
 #     mount by compose.override.yaml once the wizard has created it; until then the read-only $HOME mount can see it.
-#   - Authentication: ENABLE_BACKEND_ACCESS_CONTROL is fixed to "false" below and wins over the env file. Auth can
-#     only be switched on with REQUIRE_AUTHENTICATION=true in cognee.env; the indexer then needs COGNEE_API_KEY in
+#   - Authentication: ENABLE_BACKEND_ACCESS_CONTROL is pinned to "false" below and overrides the env file, so
+#     REQUIRE_AUTHENTICATION=true in cognee.env alone cannot turn auth on. To enable auth you must change that
+#     compose pin and set REQUIRE_AUTHENTICATION=true; the indexer then needs COGNEE_API_KEY in
 #     cognee-indexer.env (the sink sends it as X-Api-Key).
 #   - Both env files are optional (required: false, Compose 2.24+) so `config` and `up` work before they exist.
 

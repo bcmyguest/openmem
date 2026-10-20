@@ -14,6 +14,7 @@
  * printed.
  */
 import { readEnvFile } from "./env-file.mjs";
+import { capturedCogneeApiKey } from "./llm-env.mjs";
 import { SMOKE_DATASET, ensureState } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -36,28 +37,43 @@ const DEFAULTS = {
 class SmokeError extends Error {}
 
 /**
- * The API key for X-Api-Key: the environment first, then the indexer env file.
+ * Replace every occurrence of `secret` in text (mem0-style). Empty secret is a no-op.
+ * @param {string} text
+ * @param {string} secret
+ */
+function redact(text, secret) {
+  let out = String(text ?? "");
+  if (secret) out = out.split(secret).join("***");
+  return out;
+}
+
+/**
+ * The API key for X-Api-Key: indexer env file first (durable), then the value captured from
+ * process.env in `init` (already scrubbed so children never inherit it). Never reads
+ * process.env at call time.
  * @param {Record<string, any>} ctx
  * @returns {string}
  */
 export function apiKeyFor(ctx) {
-  const fromEnv = process.env.COGNEE_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
-  return readEnvFile(ctx.cognee.indexerEnvFile).values.get("COGNEE_API_KEY") || "";
+  const fromFile = readEnvFile(ctx.cognee.indexerEnvFile).values.get("COGNEE_API_KEY") || "";
+  if (fromFile) return fromFile;
+  return capturedCogneeApiKey(ctx);
 }
 
 /**
  * A short, secret-free reason from an error response: the `detail` string when there is one
- * (control characters removed, at most 80 characters).
+ * (secrets redacted, control characters removed, at most 80 characters).
  * @param {Response} res
+ * @param {string} [secret]
  */
-async function reason(res) {
+async function reason(res, secret = "") {
   let detail = "";
   try {
     const body = JSON.parse(await res.text());
     if (typeof body?.detail === "string") {
-      // Short and printable: a server message can carry control characters or a long dump.
-      detail = `: ${body.detail.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 80)}`;
+      // Short and printable: a server message can carry control characters, a long dump, or the key.
+      const cleaned = redact(body.detail, secret).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 80);
+      detail = `: ${cleaned}`;
     }
   } catch {
     // not JSON: the status line is enough
@@ -112,6 +128,8 @@ export async function runSmoke(ctx, h, opts = {}) {
   const key = apiKeyFor(ctx);
   /** @type {Record<string, string>} */
   const auth = key ? { "X-Api-Key": key } : {};
+  /** @param {Response} res */
+  const why = (res) => reason(res, key);
 
   /**
    * @param {string} method
@@ -183,7 +201,7 @@ export async function runSmoke(ctx, h, opts = {}) {
     }
     if (!datasetId) {
       if (!created || created.status >= 500 || created.ok) datasetId = await findDatasetId();
-      throw new SmokeError(createError || (created?.ok ? "create dataset returned no id" : `create dataset failed (${await reason(/** @type {Response} */ (created))})`));
+      throw new SmokeError(createError || (created?.ok ? "create dataset returned no id" : `create dataset failed (${await why(/** @type {Response} */ (created))})`));
     }
 
     // 3. add (multipart)
@@ -192,11 +210,11 @@ export async function runSmoke(ctx, h, opts = {}) {
     form.append("data", new Blob([SMOKE_TEXT], { type: "text/markdown" }), SMOKE_FILE);
     form.append("external_metadata", JSON.stringify([{ doc_id: SMOKE_DOC_ID }]));
     const added = await call("POST", "/api/v1/add", { form, timeoutMs: o.addTimeoutMs });
-    if (!added.ok) throw new SmokeError(`add failed (${await reason(added)})`);
+    if (!added.ok) throw new SmokeError(`add failed (${await why(added)})`);
 
     // 4. listing
     const listed = await call("GET", `/api/v1/datasets/${encodeURIComponent(datasetId)}/data`);
-    if (!listed.ok) throw new SmokeError(`list data failed (${await reason(listed)})`);
+    if (!listed.ok) throw new SmokeError(`list data failed (${await why(listed)})`);
     const payload = await listed.json().catch(() => null);
     const items = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
     if (items.length < 1) throw new SmokeError("the dataset listing is empty after add");
@@ -212,7 +230,7 @@ export async function runSmoke(ctx, h, opts = {}) {
       try {
         const del = await call("DELETE", `/api/v1/datasets/${encodeURIComponent(datasetId)}`);
         if (del.ok) h.ok(`deleted smoke dataset ${SMOKE_DATASET}`);
-        else h.warn(`could not delete smoke dataset ${SMOKE_DATASET} (${await reason(del)}); delete it by hand: DELETE ${base}/api/v1/datasets/${datasetId}`);
+        else h.warn(`could not delete smoke dataset ${SMOKE_DATASET} (${await why(del)}); delete it by hand: DELETE ${base}/api/v1/datasets/${datasetId}`);
       } catch (e) {
         h.warn(`could not delete smoke dataset ${SMOKE_DATASET} (${/** @type {Error} */ (e).name}); delete it by hand: DELETE ${base}/api/v1/datasets/${datasetId}`);
       }

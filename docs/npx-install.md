@@ -13,14 +13,15 @@ bash dependency in the CLI (macOS ships bash 3.2).
 
 ```sh
 npx personal-memory                 # interactive setup, nothing installed globally
+npx personal-memory setup           # same as the bare command
 npx personal-memory configure --yes # non-interactive setup and start
-npm i -g personal-memory            # then: personal-memory <command>
+npm i -g personal-memory            # then: personal-memory setup | up | down | ...
 git clone https://github.com/bcmyguest/personal-memory && cd personal-memory
-npm install && ./setup              # checkout: runs in place, no stack copy
+npm install && npm run setup        # checkout: same wizard; also ./setup
 ```
 
-No global `pm` command is installed: it collides with Android's `pm`. `./pm` exists only
-inside a checkout.
+No global `pm` command is installed: it collides with Android's `pm`. `./pm` and `npm run pm`
+exist only inside a checkout.
 
 ### Commands
 

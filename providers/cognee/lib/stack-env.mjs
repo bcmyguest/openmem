@@ -101,6 +101,30 @@ function hasValue(text, key) {
   return false;
 }
 
+/** @param {string} text @param {string} key */
+function valueOf(text, key) {
+  for (const raw of text.split("\n")) {
+    const line = raw.trim().replace(/^export\s+/, "");
+    if (!line.startsWith(`${key}=`)) continue;
+    return line.slice(key.length + 1).trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+  }
+  return "";
+}
+
+/**
+ * Cognify-ready: a real key, or Ollama with matching embeddings (LLM_API_KEY=ollama counts).
+ * @param {string} text
+ */
+function cognifyReadyFromText(text) {
+  if (!hasValue(text, "LLM_API_KEY")) return false;
+  const llm = (valueOf(text, "LLM_PROVIDER") || "openai").toLowerCase();
+  const emb = (valueOf(text, "EMBEDDING_PROVIDER") || "openai").toLowerCase();
+  if (llm === "ollama") {
+    return emb === "ollama" && (hasValue(text, "EMBEDDING_ENDPOINT") || hasValue(text, "EMBEDDING_MODEL"));
+  }
+  return true;
+}
+
 /**
  * Printed after the .env is written. Names the env file, never its contents.
  * @param {{ repo?: string, home: string, env: NodeJS.ProcessEnv }} opts
@@ -115,10 +139,18 @@ export function setupNotices({ repo, home, env }) {
   } catch {
     // missing or unreadable: same notice as an empty file
   }
-  if (!hasValue(text, "LLM_API_KEY")) {
+  if (!cognifyReadyFromText(text)) {
+    const llm = valueOf(text, "LLM_PROVIDER").toLowerCase();
+    const emb = valueOf(text, "EMBEDDING_PROVIDER").toLowerCase();
+    if (llm && emb && llm !== emb) {
+      notices.push(
+        `NOTE: LLM_PROVIDER=${llm} but EMBEDDING_PROVIDER=${emb} in ${file}: Cognee needs matching providers.`,
+      );
+    }
     notices.push(
-      `NOTE: Cognee needs an LLM key to cognify: put LLM_API_KEY=... in ${file} (mode 600). ` +
-        "Documents are stored but not searchable until it works.",
+      `NOTE: Cognee needs a cognify-ready LLM config: put LLM_API_KEY=... in ${file} (mode 600), ` +
+        "or set LLM_PROVIDER=ollama with matching ollama embeddings. " +
+        "Documents are stored but not searchable until cognify works.",
     );
   }
   try {

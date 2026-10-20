@@ -8,6 +8,7 @@
  * This module must not import wizard/lib/run-wizard.mjs; it receives `helpers`.
  */
 import { applyConfig, configToml as buildConfigToml } from "./lib/config.mjs";
+import { setupCodingAgent as printCodingAgentPaths } from "./lib/coding-agent.mjs";
 import { clackSetup as askInClack, configureUrlAndKey } from "./lib/configure.mjs";
 import { captureKeyFromEnv } from "./lib/secret.mjs";
 import { smoke as mem0Smoke } from "./lib/smoke.mjs";
@@ -79,10 +80,13 @@ export async function configureModelRouting(ctx, h) {
 export function stackEnv(ctx, h) {
   return {
     description:
-      "scripts/setup.sh: write .env (MEM0_API_URL, MEM0_INDEXER_URL, no secrets), compose.override.yaml",
+      "scripts/setup.mjs: write .env (MEM0_API_URL, MEM0_INDEXER_URL, no secrets), compose.override.yaml",
     env: { MEM0_API_URL: resolveApiUrl(ctx, h) },
   };
 }
+
+/** Announced: print SDK / MCP / REST install paths (pluginPackage stays null). */
+export const setupCodingAgent = printCodingAgentPaths;
 
 /** Announced: warn (never fail) when the server is unreachable; check the env file mode. */
 export const beforeStack = checkBeforeStack;

@@ -193,14 +193,28 @@ function yamlList(key, csv) {
   return `${key}:\n${items.map((i) => `  - "${i}"`).join("\n")}\n`;
 }
 
-function renderIndex(root, depth, reposCsv, excludesCsv) {
+/**
+ * @param {{ roots: { path: string, depth: number }[], reposCsv: string, vaultPathsCsv: string, excludesCsv: string }} opts
+ */
+function renderIndex(opts) {
+  const rootsYaml = opts.roots
+    .map((r) => `  - path: "${r.path}"\n    depth: ${r.depth}`)
+    .join("\n");
+  const vaultItems = opts.vaultPathsCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const vaultPathsYaml = vaultItems.length
+    ? `  paths:\n${vaultItems.map((i) => `    - "${i}"`).join("\n")}\n`
+    : "  paths: []\n";
   return (
     "# Written by ./setup. Replaces config/index.yml on this machine.\n" +
     "# Keys omitted here take built-in values; see README \"Source config: index.yml\".\n" +
-    `roots:\n  - path: "${root}"\n    depth: ${depth}\n` +
-    yamlList("repos", reposCsv) +
-    "vaults:\n  auto: true\n  paths: []\n" +
-    yamlList("exclude", excludesCsv)
+    `roots:\n${rootsYaml}\n` +
+    yamlList("repos", opts.reposCsv) +
+    "vaults:\n  auto: true\n" +
+    vaultPathsYaml +
+    yamlList("exclude", opts.excludesCsv)
   );
 }
 
@@ -238,26 +252,59 @@ async function configureIndex(ctx) {
       return;
     }
   }
-  const root = await ask(ctx, "Root folder to scan for git repositories", "~");
-  const depth = await ask(ctx, "Depth below the root", "3");
+  info("Scan roots cover git repos and Obsidian vaults (.obsidian/). Notes outside those roots need an explicit vault path.");
+  const rootsCsv = await ask(
+    ctx,
+    "Root folder(s) to scan, comma-separated",
+    "~",
+  );
+  const depth = await ask(ctx, "Depth below each root", "3");
   const reposCsv = await ask(ctx, "Extra repository paths, comma-separated (empty for none)", "");
+  const vaultPathsCsv = await ask(
+    ctx,
+    "Extra Obsidian vault paths, comma-separated (empty for auto-discover only)",
+    "",
+  );
   const excludesCsv = await ask(
     ctx,
     "Exclude glob patterns on absolute paths, comma-separated (empty for none)",
     "",
   );
+  const rootPaths = rootsCsv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!rootPaths.length) die("at least one scan root is required");
+  const depthN = Number(depth);
+  if (!Number.isFinite(depthN) || depthN < 1) die("depth must be a positive integer");
   if (ctx.dry) {
-    info(`[dry-run] look for Obsidian vaults under ${root}, validate the config, then write ${ctx.indexFile}`);
+    info(
+      `[dry-run] look for Obsidian vaults under ${rootPaths.join(", ")}, validate the config, then write ${ctx.indexFile}`,
+    );
     return;
   }
-  const expanded = expandHome(root, ctx.home);
-  const vaults = findVaults(expanded, Number(depth));
-  if (vaults.length) {
-    info("Obsidian vaults found (auto-discovered):");
-    for (const v of vaults) info(`    ${v}`);
-  } else info(`no Obsidian vaults found under ${root} within depth ${depth}`);
+  /** @type {string[]} */
+  const discovered = [];
+  for (const root of rootPaths) {
+    const expanded = expandHome(root, ctx.home);
+    for (const v of findVaults(expanded, depthN)) {
+      if (!discovered.includes(v)) discovered.push(v);
+    }
+  }
+  if (discovered.length) {
+    info("Obsidian vaults found (auto-discovered under scan roots):");
+    for (const v of discovered) info(`    ${v}`);
+  } else {
+    info(`no Obsidian vaults found under ${rootPaths.join(", ")} within depth ${depthN}`);
+    info("tip: put the vault under a scan root, or list it under Extra Obsidian vault paths (for example ~/work-notes/work)");
+  }
 
-  const content = renderIndex(root, depth, reposCsv, excludesCsv);
+  const content = renderIndex({
+    roots: rootPaths.map((path) => ({ path, depth: depthN })),
+    reposCsv,
+    vaultPathsCsv,
+    excludesCsv,
+  });
   const tmp = path.join(os.tmpdir(), `wizard-index-${process.pid}.yml`);
   fs.writeFileSync(tmp, content);
   await buildService(ctx, "indexer", "personal-memory-indexer:local");
@@ -382,8 +429,13 @@ async function waitHealth(ctx) {
     }
     await new Promise((r) => setTimeout(r, 4000));
   }
+  if (p.compose.healthService) {
+    die(
+      `${p.label} is not healthy after about 6 minutes: docker compose -p ${ctx.project} logs ${p.compose.healthService}`,
+    );
+  }
   die(
-    `${p.label} is not healthy after about 6 minutes: docker compose -p ${ctx.project} logs ${p.compose.healthService || "memory"}`,
+    `${p.label} is not healthy after about 6 minutes at ${base}${healthPath}: check the external API is running and reachable`,
   );
 }
 

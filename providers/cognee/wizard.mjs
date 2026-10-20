@@ -9,6 +9,7 @@
  */
 import { applyConfig, configToml as buildConfigToml } from "./lib/config.mjs";
 import { clackSetup as askInClack } from "./lib/clack.mjs";
+import { setupCodingAgent as printRestAgentHelp } from "./lib/coding-agent.mjs";
 import { beforeStack as prepareEnvDirs, stackEnv as cogneeStackEnv } from "./lib/env-setup.mjs";
 import { captureSecrets, configureLlm } from "./lib/llm-env.mjs";
 import { resolvePorts as resolveCogneePorts } from "./lib/ports.mjs";
@@ -112,12 +113,22 @@ export function summary(ctx) {
 }
 
 /**
- * Clack-only: ask for the LLM key with a hidden prompt; the answer reaches the wizard as
- * PM_COGNEE_LLM_API_KEY in its own process environment.
+ * Clack-only: choose OpenAI key vs Ollama; for OpenAI, ask with a hidden prompt. Answers
+ * reach the wizard as PM_COGNEE_* in its own process environment.
  * @param {Record<string, any>} ctx
  * @param {typeof import("@clack/prompts")} ui
  * @param {Helpers} h
  */
 export async function clackSetup(ctx, ui, h) {
   return askInClack(ctx, ui, h);
+}
+
+/**
+ * After the generic coding-agent step (skipped: no pluginPackage): print how agents talk
+ * to Cognee over REST on the loopback port.
+ * @param {Record<string, any>} ctx
+ * @param {Helpers} h
+ */
+export async function setupCodingAgent(ctx, h) {
+  await printRestAgentHelp(ctx, h);
 }

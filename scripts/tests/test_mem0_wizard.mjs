@@ -205,7 +205,6 @@ async function dies(fn) {
   check("--yes without a key: no env file created", !fs.existsSync(envFileOf(ctx)));
   check("--yes without a key: info says auth-enabled servers need one", /auth enabled.*needs one/.test(text(out)) && text(out).includes("AUTH_DISABLED"));
   check("--yes without a key: not an error, conf still saved", saved.length === 1);
-  check("manifest login delegate offered as an info line", text(out).includes("mem0 login"));
 }
 
 // An existing key is kept when none is supplied.
@@ -292,13 +291,15 @@ async function dies(fn) {
   await mem0.init(ctx, h);
   const env = mem0.stackEnv(ctx, h);
   check("stackEnv hands the host URL to scripts/setup.mjs and nothing else", Object.keys(env.env).join() === "MEM0_API_URL" && env.env.MEM0_API_URL === "http://127.0.0.1:19999" && !JSON.stringify(env).includes(KEY));
+  check("stackEnv description names setup.mjs (not setup.sh)", /scripts\/setup\.mjs/.test(env.description) && !/setup\.sh/.test(env.description));
   const toml = mem0.configToml(ctx, h);
   check("configToml: [memory.mem0].api_url only, no secret", toml.memory.mem0.api_url === "http://127.0.0.1:19999" && Object.keys(toml).join() === "memory" && !JSON.stringify(toml).includes(KEY));
   const sum = mem0.summary(ctx, h);
   const sumText = JSON.stringify(sum);
   check("summary: running lines say external server and show the container URL", sum.running[0].includes("external server (not managed by this stack)") && sum.running[1].includes("mem0 -> http://host.docker.internal:19999"));
   check("summary: config files list the env file and the stack .env", sum.configFiles[0].includes("mem0.env") && sum.configFiles[1].endsWith("(MEM0_API_URL, MEM0_INDEXER_URL; no secrets)"));
-  check("summary: notes cover API keys, dashboard, AUTH_DISABLED, loopback and docs", /dashboard \(http:\/\/127\.0\.0\.1:3000\)/.test(sumText) && sumText.includes("POST /api-keys") && sumText.includes("AUTH_DISABLED") && sumText.includes("host.docker.internal") && sumText.includes("https://docs.mem0.ai/open-source/features/rest-api"));
+  check("summary: notes cover API keys, AUTH_DISABLED, loopback, OPERATOR.md and docs", /dashboard \(port varies/.test(sumText) && sumText.includes("POST /api-keys") && sumText.includes("AUTH_DISABLED") && sumText.includes("host.docker.internal") && sumText.includes("providers/mem0/OPERATOR.md") && sumText.includes("https://docs.mem0.ai/open-source/features/rest-api"));
+  check("summary: no hard-coded :3000 dashboard guess", !/:3000/.test(sumText));
   check("summary: log services are the indexer only, no key", sum.logServices.join() === "indexer" && !sumText.includes(KEY));
 
   delete process.env.MEM0_API_KEY;
@@ -344,7 +345,7 @@ async function dies(fn) {
 // ---------------------------------------------------------------------------
 // A node:http stand-in for the mem0 REST server.
 
-async function startMem0({ key = KEY, auth = true, searchMode = "match", retainStatus = 200, deleteStatus = 200, echoKeyOnError = false, errorBody = "", seed = [], idFor = () => randomUUID() } = {}) {
+async function startMem0({ key = KEY, auth = true, searchMode = "match", retainStatus = 200, deleteStatus = 200, echoKeyOnError = false, errorBody = "", seed = [], retainResults = null, idFor = () => randomUUID() } = {}) {
   const store = new Map();
   for (const m of seed) store.set(m.id, m);
   const log = [];
@@ -373,6 +374,7 @@ async function startMem0({ key = KEY, auth = true, searchMode = "match", retainS
         if (retainStatus !== 200) return send(retainStatus, { detail: errorBody || (echoKeyOnError ? `server error for ${sent}` : "server error") });
         if (body?.infer !== false) violations.push("retain without infer:false");
         if (!body?.user_id) violations.push("retain without user_id");
+        if (retainResults !== null) return send(200, { results: retainResults });
         const id = idFor();
         const memory = body?.messages?.[0]?.content ?? "";
         store.set(id, { id, memory, user_id: body?.user_id, agent_id: body?.agent_id, run_id: body?.run_id });
@@ -488,6 +490,27 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   await stub.close();
 }
 
+// Empty retain results: fail (same rule as the sink); do not let leftover search hits false-pass.
+{
+  const stub = await startMem0({ retainResults: [] });
+  const ctx = smokeCtx("smoke-empty-retain", stub);
+  const msg = await dies(() => mem0.smoke(ctx, stubHelpers().h));
+  check("smoke empty retain: dies on zero memory ids", /no memory ids/.test(msg) && /empty results/.test(msg));
+  check("smoke empty retain: never reached search", !stub.log.some((r) => r.path === "/search"));
+  await stub.close();
+}
+
+// AUTH_DISABLED: no key in the env file, stub accepts unauthenticated calls.
+{
+  const stub = await startMem0({ auth: false });
+  const ctx = smokeCtx("smoke-auth-disabled", stub, { keyInFile: "" });
+  const { h, out } = stubHelpers();
+  await mem0.smoke(ctx, h);
+  check("smoke AUTH_DISABLED: succeeds with no key", stub.store.size === 0 && stub.log.some((r) => r.method === "POST" && r.path === "/memories" && r.key === ""));
+  check("smoke AUTH_DISABLED: no key in the output", !text(out).includes(KEY));
+  await stub.close();
+}
+
 // Cleanup failure: the smoke result stands, the failure is a warning, no key in it.
 {
   const stub = await startMem0({ deleteStatus: 500 });
@@ -541,8 +564,12 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
 
   const odd = await startMem0({ idFor: () => "../../etc/passwd" });
   const oddOut = stubHelpers();
-  await mem0.smoke(smokeCtx("smoke-oddid", odd), oddOut.h);
-  check("a server id that is not a plain identifier is never used in a request or printed", odd.log.every((r) => r.method !== "DELETE") && !text(oddOut.out).includes("passwd"));
+  const oddMsg = await dies(() => mem0.smoke(smokeCtx("smoke-oddid", odd), oddOut.h));
+  check("a server id that is not a plain identifier fails smoke (zero safe ids)", /no memory ids/.test(oddMsg));
+  check(
+    "a server id that is not a plain identifier is never used in a request or printed",
+    odd.log.every((r) => r.method !== "DELETE") && !text(oddOut.out).includes("passwd") && !oddMsg.includes("passwd"),
+  );
   await odd.close();
 
   // The key/env file cannot be read: no key leaks, cleanup still runs.
@@ -635,6 +662,63 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
     fs.rmSync(path.join(ctx.repoRoot, "providers"), { recursive: true });
   });
   check("validation: a missing compose fragment is an error", noCompose.validationErrors.some((e) => /missing compose file/.test(e)));
+
+  const badIndexer = await run("val-indexer", (ctx) => {
+    fs.writeFileSync(
+      path.join(ctx.repoRoot, ".env"),
+      "HOST_UID=1\nMEM0_API_URL=http://127.0.0.1:19999\nMEM0_INDEXER_URL=http://127.0.0.1:19999\n",
+    );
+  });
+  check(
+    "validation: MEM0_INDEXER_URL must match the rewrite of MEM0_API_URL",
+    badIndexer.validationErrors.some((e) => /MEM0_INDEXER_URL must match/.test(e) && /host\.docker\.internal:19999/.test(e)),
+  );
+
+  resetEnv({ MEM0_API_URL: "https://api.mem0.ai" });
+  const hosted = await run("val-hosted", (ctx) => {
+    fs.writeFileSync(
+      path.join(ctx.repoRoot, ".env"),
+      "HOST_UID=1\nMEM0_API_URL=https://api.mem0.ai\nMEM0_INDEXER_URL=https://api.mem0.ai\n",
+    );
+  });
+  check("validation: api.mem0.ai is soft-rejected", hosted.validationErrors.some((e) => /api\.mem0\.ai/.test(e) && /self-hosted/.test(e)));
+  resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
+
+  resetEnv({ MEM0_API_URL: "http://mem0.example:8000" });
+  {
+    const ctx = freshCtx("val-http-key-warn", { memoryProvider: { ...manifest, compose: { ...manifest.compose, files } } });
+    fs.mkdirSync(path.join(ctx.repoRoot, "providers/mem0"), { recursive: true });
+    fs.writeFileSync(path.join(ctx.repoRoot, "providers/mem0/compose.yaml"), "services: {}\n");
+    fs.writeFileSync(
+      path.join(ctx.repoRoot, ".env"),
+      "HOST_UID=1\nMEM0_API_URL=http://mem0.example:8000\nMEM0_INDEXER_URL=http://mem0.example:8000\n",
+    );
+    fs.mkdirSync(path.dirname(envFileOf(ctx)), { recursive: true });
+    fs.writeFileSync(envFileOf(ctx), `MEM0_API_KEY=${KEY}\n`, { mode: 0o600 });
+    const { h, out } = stubHelpers();
+    ctx.validationErrors = [];
+    ctx.validationChecks = [];
+    await mem0.extendValidation(ctx, h);
+    check(
+      "validation: non-loopback http + key warns about cleartext",
+      /warn .*cleartext/.test(text(out)) && ctx.validationErrors.length === 0,
+    );
+    check("validation: that warn does not echo the key", !text(out).includes(KEY));
+  }
+  resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
+}
+
+// setupCodingAgent: non-silent; pluginPackage stays null.
+{
+  resetEnv({ MEM0_API_URL: "http://127.0.0.1:19999" });
+  const ctx = freshCtx("coding-agent");
+  const { h, out } = stubHelpers();
+  await mem0.setupCodingAgent(ctx, h);
+  const t = text(out);
+  check("setupCodingAgent is exported", typeof mem0.setupCodingAgent === "function");
+  check("setupCodingAgent prints SDK / MCP / REST steps", /SDK/.test(t) && /MCP/.test(t) && /REST/.test(t) && t.includes("/memories") && t.includes("/search"));
+  check("setupCodingAgent keeps pluginPackage null", manifest.codingAgent?.pluginPackage === null);
+  check("setupCodingAgent points at OPERATOR.md", t.includes("providers/mem0/OPERATOR.md"));
 }
 
 

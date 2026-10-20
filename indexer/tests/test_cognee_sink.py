@@ -289,6 +289,44 @@ def test_listing_tolerates_snake_case_and_missing_metadata():
         assert sorted(dataset["data"]) == ["b", "c"]
 
 
+@pytest.mark.parametrize(
+    "meta_shape,meta_key",
+    [
+        ("dict", "externalMetadata"),
+        ("list", "externalMetadata"),
+        ("json_dict", "externalMetadata"),
+        ("json_list", "externalMetadata"),
+        ("list", "external_metadata"),
+        ("json_list", "external_metadata"),
+    ],
+)
+def test_upsert_and_delete_find_documents_across_listing_metadata_shapes(meta_shape, meta_key):
+    """Parity with smoke.mjs docIds: dict, list of objects, or JSON string of either (either key)."""
+    route = cognee_route()
+    name = cognee_sink.dataset_name(BANK)
+    with serving(route) as stub:
+        sink = make(stub.url)
+        planted = route.state.plant(name, "shaped-doc", "planted body", meta_shape=meta_shape, meta_key=meta_key)
+        assert sink._matching(route.state.by_name(name)["id"], "shaped-doc") == [planted]
+        sink.retain(BANK, "shaped-doc", "replaced body")
+        docs = route.state.documents(name)
+        assert len(docs) == 1
+        assert plain(docs[0]) == "replaced body"
+        assert docs[0]["externalMetadata"]["doc_id"] == "shaped-doc"
+        sink.delete(BANK, "shaped-doc")
+        assert route.state.documents(name) == []
+
+
+def test_metadata_doc_ids_parses_dict_list_and_json_string():
+    assert cognee_sink.metadata_doc_ids({"externalMetadata": {"doc_id": "a"}}) == ["a"]
+    assert cognee_sink.metadata_doc_ids({"external_metadata": [{"doc_id": "b"}, {"doc_id": "c"}]}) == ["b", "c"]
+    assert cognee_sink.metadata_doc_ids({"externalMetadata": json.dumps({"doc_id": "d"})}) == ["d"]
+    assert cognee_sink.metadata_doc_ids({"externalMetadata": json.dumps([{"doc_id": "e"}])}) == ["e"]
+    assert cognee_sink.metadata_doc_ids({"externalMetadata": "not-json"}) == []
+    assert cognee_sink.metadata_doc_ids({"externalMetadata": None}) == []
+    assert cognee_sink.metadata_doc_ids({}) == []
+
+
 def test_listing_pages_past_1000_items():
     route = cognee_route()
     name = cognee_sink.dataset_name(BANK)

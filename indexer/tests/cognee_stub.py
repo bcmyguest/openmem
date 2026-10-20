@@ -7,7 +7,8 @@ emulated endpoints and the quirks the sink has to live with:
 - `GET /api/v1/datasets`, `POST /api/v1/datasets {"name"}` (create-or-return, so idempotent). Datasets carry a
   UUID `id` and `name`; the data endpoints take the id, never the name.
 - `GET /api/v1/datasets/{id}/data?limit=&offset=` -> items with `id`, `name`, `externalMetadata`, `label`; limit
-  above 1000 is a 422, an unknown dataset is a 404.
+  above 1000 is a 422, an unknown dataset is a 404. Listing metadata is whatever was stored: a dict, a list of
+  objects, or a JSON string of either (`plant` / `seed(..., meta_shape=)`); the sink must accept all three.
 - `DELETE /api/v1/datasets/{id}/data/{data_id}` -> 200 also for an id the dataset does not track; 404 when the
   dataset is unknown.
 - `POST /api/v1/add` (multipart: `datasetName`, optional `external_metadata` / `labels` JSON arrays, one `data`
@@ -52,7 +53,43 @@ class CogneeState:
         dataset = self.by_name(name)
         return list(dataset["data"].values()) if dataset else []
 
-    def seed(self, name: str, count: int, prefix: str = "seed") -> None:
+    @staticmethod
+    def shaped_meta(doc_id: str, shape: str = "dict"):
+        """Listing-shaped external metadata: `dict`, `list`, `json_dict`, or `json_list`."""
+        obj = {"doc_id": doc_id}
+        if shape == "dict":
+            return obj
+        if shape == "list":
+            return [obj]
+        if shape == "json_dict":
+            return json.dumps(obj)
+        if shape == "json_list":
+            return json.dumps([obj])
+        raise ValueError(f"unknown meta_shape {shape!r}")
+
+    def plant(
+        self,
+        name: str,
+        doc_id: str,
+        content: str = "",
+        *,
+        meta_shape: str = "dict",
+        meta_key: str = "externalMetadata",
+        data_id: str | None = None,
+    ) -> str:
+        """Insert one data row with listing metadata in the given shape (for upsert/delete parity tests)."""
+        dataset = self.ensure(name)
+        data_id = data_id or str(uuid.uuid4())
+        dataset["data"][data_id] = {
+            "id": data_id,
+            "name": f"{doc_id}.md",
+            "content": content or f"planted {doc_id}",
+            meta_key: self.shaped_meta(doc_id, meta_shape),
+            "label": None,
+        }
+        return data_id
+
+    def seed(self, name: str, count: int, prefix: str = "seed", *, meta_shape: str = "dict") -> None:
         """Add `count` documents straight into the dataset (for paging tests)."""
         dataset = self.ensure(name)
         for index in range(count):
@@ -61,7 +98,7 @@ class CogneeState:
                 "id": data_id,
                 "name": f"{prefix}-{index}.md",
                 "content": f"seeded {index}",
-                "externalMetadata": {"doc_id": f"{prefix}-{index}"},
+                "externalMetadata": self.shaped_meta(f"{prefix}-{index}", meta_shape),
                 "label": None,
             }
 

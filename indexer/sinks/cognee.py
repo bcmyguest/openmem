@@ -47,12 +47,14 @@ retries because it saves a document's digest only after `retain` returns. A clie
 add completed on the server; the retry then deletes that copy and adds again, which is harmless. A cognify
 requested while the previous pipeline run for the dataset is still running may be skipped or queued by Cognee
 (unverified); the indexer's pending marker only guarantees that a cognify call is issued after the last change, so
-check `GET /api/v1/datasets/status` when a document does not become searchable.
+check `GET /api/v1/datasets/status?dataset=<uuid>` when a document does not become searchable
+(the live 1.6.5 API takes dataset UUIDs, not names).
 
-Not verified offline against a real server: the key casing of the stored metadata in the data listing
-(`externalMetadata` per the OpenAPI schema, `external_metadata` per its prose; both are accepted), what `name`
-the server stores for an uploaded file (the sink never reads it), that a `.md` upload with `text/markdown` is
-accepted by the loaders, and the exact cognify behaviour for a dataset that is already processing.
+Listing metadata: `externalMetadata` / `external_metadata` may be a dict, a list of objects, or a JSON string of
+either (same shapes as `providers/cognee/lib/smoke.mjs` `docIds`); `_matching` accepts all of them. Not verified
+offline against a real server: which of those shapes a given Cognee build actually returns, what `name` the server
+stores for an uploaded file (the sink never reads it), that a `.md` upload with `text/markdown` is accepted by the
+loaders, and the exact cognify behaviour for a dataset that is already processing.
 """
 
 import hashlib
@@ -94,6 +96,20 @@ def upload_name(doc_id: str, content: str) -> str:
 def upload_text(doc_id: str, content: str) -> str:
     """`content` plus a per-document footer, so identical texts of two documents never share a content hash."""
     return f"{content}\n\n<!-- personal-memory:doc:{hashlib.sha256(doc_id.encode()).hexdigest()[:16]} -->\n"
+
+
+def metadata_doc_ids(item: Mapping) -> list[str]:
+    """Every `doc_id` string in an item's external metadata (parity with smoke.mjs `docIds`)."""
+    meta = item.get("externalMetadata")
+    if meta is None:
+        meta = item.get("external_metadata")
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except json.JSONDecodeError:
+            return []
+    entries = meta if isinstance(meta, list) else [meta] if meta else []
+    return [str(entry["doc_id"]) for entry in entries if isinstance(entry, dict) and isinstance(entry.get("doc_id"), str)]
 
 
 def multipart(fields: Mapping[str, str], filename: str, content: bytes) -> tuple[bytes, str]:
@@ -204,13 +220,10 @@ class CogneeSink:
             offset += len(page)
 
     def _matching(self, dataset_id: str, doc_id: str) -> list[str]:
-        """Ids of the dataset's items whose external metadata `doc_id` equals `doc_id`."""
+        """Ids of the dataset's items whose external metadata carries `doc_id` (dict, list, or JSON string)."""
         ids = []
         for item in self._list_data(dataset_id):
-            meta = item.get("externalMetadata")
-            if not isinstance(meta, dict):
-                meta = item.get("external_metadata")
-            if isinstance(meta, dict) and meta.get("doc_id") == doc_id and item.get("id"):
+            if doc_id in metadata_doc_ids(item) and item.get("id"):
                 ids.append(str(item["id"]))
         return ids
 

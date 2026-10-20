@@ -83,11 +83,6 @@ export async function configureUrlAndKey(ctx, h) {
     h.warn(`${path.dirname(envFile)} is accessible to group or others; run: chmod 700 ${path.dirname(envFile)}`);
   }
 
-  const login = ctx.memoryProvider?.wizardHooks?.delegates?.login;
-  if (login?.run?.length) {
-    h.info(`optional, run it yourself: ${login.run.join(" ")} (native mem0 CLI login)`);
-  }
-
   // Non-secret state: wizard.conf (+ config.toml) record the URL only.
   if (ctx.dry) h.info(`[dry-run] record MEM0_API_URL in ${ctx.wizardConf} and [memory.mem0] in config.toml`);
   else h.saveWizardConf(ctx, { MEM0_API_URL: url }, { pmSections: configToml(ctx, url) });

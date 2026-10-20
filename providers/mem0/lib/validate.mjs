@@ -6,11 +6,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describeError, request } from "./http.mjs";
-import { dirTooOpen, fileMode, tooOpen } from "./env-file.mjs";
+import { dirTooOpen, fileMode, readKey, tooOpen } from "./env-file.mjs";
+import { indexerUrl } from "./stack-env.mjs";
 import { defaultEnvFile, ensureState, envFileProblem, resolveEnvFile } from "./state.mjs";
 import { displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]"]);
+const HOSTED_MEM0 = /(^|\.)api\.mem0\.ai$/i;
 
 /**
  * Warn when the server does not answer GET /docs; never fails (it may start later) and
@@ -67,9 +71,22 @@ export function validateMem0(ctx, h) {
   const errors = (ctx.validationErrors ||= []);
   const checks = (ctx.validationChecks ||= []);
 
-  const issue = urlProblem(resolveApiUrl(ctx, h));
+  const apiUrl = resolveApiUrl(ctx, h);
+  const issue = urlProblem(apiUrl);
   if (issue) errors.push(`mem0 API URL: ${issue}`);
-  else checks.push("mem0 API URL parses");
+  else {
+    checks.push("mem0 API URL parses");
+    try {
+      const host = new URL(apiUrl).hostname;
+      if (HOSTED_MEM0.test(host)) {
+        errors.push(
+          "mem0 API URL points at api.mem0.ai (hosted platform); this sink is for the self-hosted REST server only — see providers/mem0/OPERATOR.md",
+        );
+      } else checks.push("mem0 API URL is not the hosted api.mem0.ai platform");
+    } catch {
+      // urlProblem already covered unparseable URLs.
+    }
+  }
 
   const envFile = resolveEnvFile(ctx, h);
   const fileIssue = envFileProblem(envFile);
@@ -82,8 +99,22 @@ export function validateMem0(ctx, h) {
 
   const stackEnv = path.join(ctx.repoRoot, ".env");
   if (fs.existsSync(stackEnv)) {
+    const hostApi = h.envValue(stackEnv, "MEM0_API_URL");
+    const indexer = h.envValue(stackEnv, "MEM0_INDEXER_URL");
     for (const key of ["MEM0_INDEXER_URL", "MEM0_API_URL"]) {
       if (!h.envValue(stackEnv, key)) errors.push(`repo .env missing ${key}`);
+    }
+    if (hostApi && indexer) {
+      try {
+        const expected = indexerUrl(hostApi);
+        if (indexer !== expected) {
+          errors.push(
+            `repo .env MEM0_INDEXER_URL must match the rewrite of MEM0_API_URL (want ${expected}; rerun ./setup)`,
+          );
+        } else checks.push("repo .env MEM0_INDEXER_URL matches MEM0_API_URL rewrite");
+      } catch (e) {
+        errors.push(`repo .env MEM0_API_URL: ${/** @type {Error} */ (e).message}`);
+      }
     }
     if (/^\s*(?:export\s+)?MEM0_API_KEY\s*=/m.test(fs.readFileSync(stackEnv, "utf8"))) {
       errors.push("repo .env must not hold MEM0_API_KEY (the stack .env is world-readable; use the mem0 env file)");
@@ -97,6 +128,26 @@ export function validateMem0(ctx, h) {
     if (h.envValue(stackEnv, "MEM0_ENV_FILE") !== envFile) {
       errors.push("repo .env MEM0_ENV_FILE does not match the mem0 env file in use (rerun ./setup)");
     } else checks.push("repo .env MEM0_ENV_FILE matches");
+  }
+
+  // Cleartext key over non-loopback http (warn only; same guidance as the sink).
+  if (!issue && !fileIssue) {
+    try {
+      const parsed = new URL(apiUrl);
+      let hasKey = false;
+      try {
+        hasKey = readKey(envFile) !== "";
+      } catch {
+        hasKey = false;
+      }
+      if (parsed.protocol === "http:" && !LOOPBACK_HOSTS.has(parsed.hostname) && hasKey) {
+        h.warn(
+          "MEM0_API_URL is plain http to a non-loopback host with an API key set; the key travels in cleartext — prefer https (see providers/mem0/OPERATOR.md)",
+        );
+      }
+    } catch {
+      // ignore
+    }
   }
 
   for (const file of ctx.memoryProvider?.compose?.files || []) {
