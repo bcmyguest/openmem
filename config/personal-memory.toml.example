@@ -55,6 +55,8 @@ description = "docker compose down for this project"
 [tasks.doctor]
 description = "Validate memory setup on this machine"
 
-# Future: provider-native options live in their own tables, not under [model]
+# Provider-native options live in their own tables, not under [model].
+# mem0 is URL-only: point at a self-hosted REST server (not https://api.mem0.ai).
 # [memory.mem0]
-# api_url = "https://api.mem0.ai"
+# api_url = "http://127.0.0.1:18888"
+# env_file = "~/.config/personal-memory/mem0.env"

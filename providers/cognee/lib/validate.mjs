@@ -1,12 +1,14 @@
 /**
  * Cognee checks that run after the meta wizard's provider-neutral validation: the operator
- * env files (mode, LLM key), the stack .env (port present, no secret text), and the compose
- * fragment. A missing LLM key is a warning-class check (documents are stored but not
- * searchable); an env file that is unreadable or open to group/other is an error.
+ * env files (mode, LLM key / Ollama cognify readiness), the stack .env (port present, no
+ * secret assignment lines), and the compose fragment. A missing LLM key is a warning-class
+ * check (documents are stored but not searchable); an env file that is unreadable or open
+ * to group/other is an error.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { readEnvFile, tooOpen } from "./env-file.mjs";
+import { isCognifyReady, providerMismatchWarning } from "./llm-env.mjs";
 import { ensureState } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -14,9 +16,8 @@ import { ensureState } from "./state.mjs";
 // Spelled in two pieces: indexer/tests/test_cognee_compose.py asserts that no file under
 // providers/cognee contains the word, so this module must not either.
 const UNFINISHED = new RegExp(["place", "holder"].join(""), "i");
-// The key names never appear in the stack .env. The path entries COGNEE_ENV_FILE and
-// COGNEE_INDEXER_ENV_FILE are allowed there and do not match this pattern.
-const SECRET_NAMES = /(?:LLM|COGNEE|EMBEDDING)_API_KEY/;
+// Assignment lines only (not HINDSIGHT_API_LLM_API_KEY or a mention in a comment).
+const SECRET_ASSIGNMENT = /^(?:export\s+)?(?:LLM|COGNEE|EMBEDDING)_API_KEY=/m;
 
 /**
  * Appends to ctx.validationErrors and ctx.validationChecks.
@@ -28,7 +29,7 @@ export function validateCognee(ctx, h) {
   const errors = (ctx.validationErrors ||= []);
   const checks = (ctx.validationChecks ||= []);
 
-  // cognee.env: mode and the LLM key.
+  // cognee.env: mode and cognify readiness.
   const file = ctx.cognee.envFile;
   const env = readEnvFile(file);
   if (!env.exists) {
@@ -38,8 +39,20 @@ export function validateCognee(ctx, h) {
   } else {
     if (tooOpen(file)) errors.push(`${file} must not be world/group readable (want mode 600)`);
     else checks.push("cognee.env mode is private");
-    if (env.values.get("LLM_API_KEY")) checks.push("cognee.env has LLM_API_KEY");
-    else checks.push("LLM_API_KEY missing: documents are stored but not searchable");
+    const mismatch = providerMismatchWarning(env.values);
+    if (mismatch) checks.push(mismatch);
+    if (isCognifyReady(env.values)) {
+      const provider = (env.values.get("LLM_PROVIDER") || "openai").toLowerCase();
+      checks.push(
+        provider === "ollama"
+          ? "cognee.env is cognify-ready (ollama + embeddings)"
+          : "cognee.env has LLM_API_KEY",
+      );
+    } else if (env.values.get("LLM_API_KEY")) {
+      checks.push("LLM_API_KEY set but cognify not ready (check LLM/EMBEDDING providers)");
+    } else {
+      checks.push("LLM_API_KEY missing: documents are stored but not searchable");
+    }
   }
 
   // cognee-indexer.env: optional, COGNEE_API_KEY only.
@@ -57,11 +70,11 @@ export function validateCognee(ctx, h) {
     }
   }
 
-  // Stack .env: the port, and no secret names at all.
+  // Stack .env: the port, and no secret assignment lines.
   const stackEnv = path.join(ctx.repoRoot, ".env");
   if (fs.existsSync(stackEnv)) {
     if (!h.envValue(stackEnv, "COGNEE_PORT")) errors.push("repo .env missing COGNEE_PORT");
-    if (SECRET_NAMES.test(fs.readFileSync(stackEnv, "utf8"))) {
+    if (SECRET_ASSIGNMENT.test(fs.readFileSync(stackEnv, "utf8"))) {
       errors.push("repo .env must not contain LLM_API_KEY or COGNEE_API_KEY (secrets belong in the Cognee env files)");
     }
     checks.push("repo .env has COGNEE_PORT and no Cognee secrets");

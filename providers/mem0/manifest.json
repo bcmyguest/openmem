@@ -2,9 +2,9 @@
   "id": "mem0",
   "label": "mem0",
   "status": "experimental",
-  "notes": "URL-only v1: the operator runs a mem0 REST server (docs.mem0.ai open-source REST server) and this stack points the shared indexer at it; no mem0 container yet (a docker mode is a follow-up). The API key lives in ~/.config/personal-memory/mem0.env (mode 600), never the stack .env. Not verified against a live server. The wizard.* HTTP fields below are informational: the wizard's smoke hook replaces the generic HTTP smoke (it needs an X-API-Key header), and deletePath is admin-only upstream, so the hook deletes by memory id instead.",
+  "notes": "URL-only v1: the operator runs a mem0 REST server and this stack points the shared indexer at it; no mem0 container yet (docker mode is a follow-up). Operator runbook: providers/mem0/OPERATOR.md. Not api.mem0.ai. The API key lives in ~/.config/personal-memory/mem0.env (mode 600), never the stack .env. Not verified against a live server. The wizard.* HTTP fields below are informational: the wizard's smoke hook replaces the generic HTTP smoke (it needs an X-API-Key header), and deletePath is admin-only upstream, so the hook deletes by memory id instead.",
   "settings": {
-    "nativeDocs": "https://docs.mem0.ai/open-source/features/rest-api",
+    "nativeDocs": "providers/mem0/OPERATOR.md (stack) and https://docs.mem0.ai/open-source/features/rest-api (upstream)",
     "nativeConfigPaths": ["~/.config/personal-memory/mem0.env"],
     "wizardOwns": ["indexer URL and the host-gateway rewrite", "API key file for the indexer (mode 600)", "index.yml sources (shared indexer)"]
   },
@@ -28,12 +28,7 @@
   },
   "wizardHooks": {
     "module": "wizard.mjs",
-    "delegates": {
-      "login": {
-        "description": "mem0 CLI login (native; install separately)",
-        "run": ["mem0", "login"]
-      }
-    }
+    "delegates": {}
   },
   "wizard": {
     "note": "Informational: the mem0 smoke hook (providers/mem0/lib/smoke.mjs) replaces these HTTP fields because the generic smoke cannot send X-API-Key; deletePath is admin-only upstream and the hook deletes by memory id.",

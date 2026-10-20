@@ -55,7 +55,7 @@ const mode = (/** @type {string} */ p) => (fs.statSync(p).mode & 0o777).toString
 async function withEnv(/** @type {Record<string, string>} */ vars, /** @type {() => Promise<void>} */ fn) {
   const saved = { ...process.env };
   for (const k of Object.keys(process.env)) {
-    if (/^(PM_COGNEE_|COGNEE_)/.test(k) || k === "LLM_API_KEY" || k === "WIZARD_SKIP_BACKEND_STEP") {
+    if (/^(PM_COGNEE_|COGNEE_)/.test(k) || k === "LLM_API_KEY" || k === "EMBEDDING_API_KEY" || k === "WIZARD_SKIP_BACKEND_STEP") {
       delete process.env[k];
     }
   }
@@ -121,7 +121,7 @@ const envFileOf = (/** @type {string} */ home) => path.join(home, ".config/perso
 console.log("--- (a) hooks");
 
 check("exports the scripts/setup.mjs hooks", typeof wiz.prepareStackEnv === "function" && typeof wiz.setupNotices === "function");
-for (const phase of ["init", "hydrate", "resolvePorts", "configureModelRouting", "stackEnv", "beforeStack", "smoke", "extendValidation", "configToml", "summary", "clackSetup"]) {
+for (const phase of ["init", "hydrate", "resolvePorts", "configureModelRouting", "stackEnv", "beforeStack", "smoke", "extendValidation", "configToml", "summary", "clackSetup", "setupCodingAgent"]) {
   check(`exports ${phase}`, typeof wiz[phase] === "function");
 }
 
@@ -253,7 +253,7 @@ await withEnv({ PM_COGNEE_LLM_API_KEY: SECRET, PM_COGNEE_LLM_MODEL: "gpt 4o mini
   check("llm: only key names and the path are printed", text().includes(file) && text().includes("LLM_API_KEY") && text().includes("LLM_MODEL"));
   check("llm: the secret answer is removed from the environment", process.env.PM_COGNEE_LLM_API_KEY === undefined);
   check("llm: no warning when a key is configured", !/warn:/.test(text()));
-  check("llm: mentions how to enable auth by hand", /REQUIRE_AUTHENTICATION=true/.test(text()) && /cognee-indexer\.env/.test(text()));
+  check("llm: mentions auth is pinned off in compose", /ENABLE_BACKEND_ACCESS_CONTROL/.test(text()) && /REQUIRE_AUTHENTICATION=true/.test(text()) && /cognee-indexer\.env/.test(text()));
   check("llm: wizard.conf gets COGNEE_PORT only", saved.length === 1 && JSON.stringify(saved[0][1]) === JSON.stringify({ COGNEE_PORT: "18999" }));
   check("llm: config.toml section carries no secret", !JSON.stringify(saved[0][2]).includes(SECRET));
   const toml = wiz.configToml(ctx);
@@ -313,13 +313,36 @@ await withEnv({}, async () => {
 
 await withEnv({ PM_COGNEE_LLM_MODEL: "local-model", PM_COGNEE_LLM_PROVIDER: "ollama" }, async () => {
   const home = tmp("llm-local");
-  const { h, lines } = makeHelpers({ saveWizardConf: () => {} });
+  const { h, lines, text } = makeHelpers({ saveWizardConf: () => {} });
   const ctx = makeCtx(home);
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
   const body = fs.readFileSync(envFileOf(home), "utf8");
-  check("llm: a local model setup writes pass-through keys without a key", body === "LLM_PROVIDER=ollama\nLLM_MODEL=local-model\n");
-  check("llm: ... and still warns about the missing key", lines.some((l) => l.kind === "warn"));
+  check(
+    "llm: ollama preset writes key, bare endpoint, and matching embeddings",
+    body.includes("LLM_PROVIDER=ollama\n") &&
+      body.includes("LLM_MODEL=local-model\n") &&
+      body.includes("LLM_API_KEY=ollama\n") &&
+      body.includes("LLM_ENDPOINT=http://host.docker.internal:11434\n") &&
+      !body.includes("/v1") &&
+      body.includes("EMBEDDING_PROVIDER=ollama\n") &&
+      body.includes("EMBEDDING_MODEL=nomic-embed-text:latest\n") &&
+      body.includes("EMBEDDING_ENDPOINT=http://host.docker.internal:11434/api/embed\n") &&
+      body.includes("EMBEDDING_DIMENSIONS=768\n"),
+    body,
+  );
+  check("llm: ollama preset is cognify-ready (no missing-key warning)", !lines.some((l) => l.kind === "warn" && /not searchable/.test(l.msg)), text());
+});
+await withEnv({ PM_COGNEE_LLM_PROVIDER: "ollama", PM_COGNEE_EMBEDDING_PROVIDER: "openai" }, async () => {
+  const home = tmp("llm-mismatch");
+  const { h, lines } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  check(
+    "llm: warns when LLM and embedding providers disagree",
+    lines.some((l) => l.kind === "warn" && /LLM_PROVIDER=ollama but EMBEDDING_PROVIDER=openai/.test(l.msg)),
+  );
 });
 
 await withEnv({ PM_COGNEE_LLM_API_KEY: SECRET, PM_COGNEE_LLM_MODEL: "a\nb" }, async () => {
@@ -376,7 +399,7 @@ await withEnv({}, async () => {
   const home = tmp("llm-ask");
   /** @type {string[]} */
   const prompts = [];
-  const { h, text } = makeHelpers({
+  const { h, text, lines } = makeHelpers({
     saveWizardConf: () => {},
     ask: async (_c, prompt) => {
       prompts.push(prompt);
@@ -386,8 +409,13 @@ await withEnv({}, async () => {
   const ctx = makeCtx(home, { yes: false });
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
-  check("llm: an interactive run asks once through helpers.ask", prompts.length === 1 && /LLM_API_KEY/.test(prompts[0]));
-  check("llm: the typed key lands in the env file only", fs.readFileSync(envFileOf(home), "utf8").includes(SECRET) && !text().includes(SECRET));
+  check("llm: interactive run never calls helpers.ask for the key (it echoes)", prompts.length === 0);
+  check(
+    "llm: ... and prints put-in-file instructions instead",
+    lines.some((l) => l.kind === "info" && /put LLM_API_KEY=/.test(l.msg) && /mode 600/.test(l.msg)),
+    text(),
+  );
+  check("llm: no env file without a key or Clack hand-off", !fs.existsSync(envFileOf(home)));
 });
 
 // beforeStack.
@@ -449,9 +477,30 @@ await withEnv({}, async () => {
   fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
   fs.writeFileSync(path.join(home, ".config/personal-memory/cognee-indexer.env"), "COGNEE_API_KEY=k\n");
   check("summary: ... and listed once it does", wiz.summary(ctx).configFiles.some((l) => l.includes("cognee-indexer.env")));
-  check("summary: notes cover the LLM key, graph status, first start and delete semantics", /LLM_API_KEY/.test(all) && /api\/v1\/datasets\/status/.test(all) && /large image/.test(all) && /graph and vectors/.test(all));
+  check("summary: notes cover cognify config, graph status, first start, delete and REST agents", /cognify-ready|LLM_API_KEY|Ollama/.test(all) && /api\/v1\/datasets\/status/.test(all) && /large image/.test(all) && /graph and vectors/.test(all) && /REST API/.test(all));
   check("summary: no secret text", !all.includes("COGNEE_API_KEY=k"));
   check("summary: log services", s.logServices.join() === "cognee,indexer");
+});
+
+// setupCodingAgent.
+await withEnv({}, async () => {
+  const home = tmp("coding-agent");
+  const { h, text } = makeHelpers();
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  ctx.portCognee = "18999";
+  ctx.cogneeUrl = "http://127.0.0.1:18999";
+  await wiz.setupCodingAgent(ctx, h);
+  check(
+    "setupCodingAgent: prints REST paths, no plugin package",
+    /no coding-agent plugin/.test(text()) &&
+      /\/docs/.test(text()) &&
+      /\/api\/v1\/add/.test(text()) &&
+      /\/api\/v1\/cognify/.test(text()) &&
+      /\/api\/v1\/search/.test(text()) &&
+      !/npx/.test(text()),
+    text(),
+  );
 });
 
 // clackSetup.
@@ -460,18 +509,32 @@ await withEnv({}, async () => {
   const { h } = makeHelpers();
   /** @type {string[]} */
   const asked = [];
+  /** @type {string[]} */
+  const choices = [];
   const ui = {
+    select: async ({ message }) => (choices.push(message), "openai"),
     password: async ({ message }) => (asked.push(message), `  ${SECRET} `),
     confirm: async () => true,
     isCancel: () => false,
     cancel: () => {},
-    log: { info: () => {} },
+    log: { info: () => {}, warn: () => {} },
   };
   const handoff = await wiz.clackSetup({ repoRoot: path.join(home, "stack"), home, pmMerged: {} }, ui, h);
-  check("clackSetup: uses a hidden password prompt", asked.length === 1 && /hidden/.test(asked[0]));
+  check("clackSetup: offers OpenAI vs Ollama then a hidden password prompt", choices.length === 1 && /Ollama|LLM/.test(choices[0]) && asked.length === 1 && /hidden/.test(asked[0]));
   check("clackSetup: hands the key over as PM_COGNEE_LLM_API_KEY and skips the wizard's own step", handoff.PM_COGNEE_LLM_API_KEY === SECRET && handoff.WIZARD_SKIP_BACKEND_STEP === "1");
   const empty = await wiz.clackSetup({ repoRoot: home, home, pmMerged: {} }, { ...ui, password: async () => "" }, h);
   check("clackSetup: an empty answer hands over no key", empty.PM_COGNEE_LLM_API_KEY === undefined && empty.WIZARD_SKIP_BACKEND_STEP === "1");
+  const ollamaUi = { ...ui, select: async () => "ollama" };
+  const ollama = await wiz.clackSetup({ repoRoot: home, home, pmMerged: {} }, ollamaUi, h);
+  check(
+    "clackSetup: Ollama choice hands over provider + embeddings (no password)",
+    ollama.PM_COGNEE_LLM_PROVIDER === "ollama" &&
+      ollama.PM_COGNEE_LLM_API_KEY === "ollama" &&
+      ollama.PM_COGNEE_LLM_ENDPOINT === "http://host.docker.internal:11434" &&
+      ollama.PM_COGNEE_EMBEDDING_PROVIDER === "ollama" &&
+      ollama.PM_COGNEE_EMBEDDING_ENDPOINT === "http://host.docker.internal:11434/api/embed" &&
+      ollama.WIZARD_SKIP_BACKEND_STEP === "1",
+  );
   fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
   fs.writeFileSync(envFileOf(home), `LLM_API_KEY=${SECRET}\n`);
   /** @type {string[]} */
@@ -480,9 +543,9 @@ await withEnv({}, async () => {
   check("clackSetup: an existing key is kept unless the user replaces it", passwordCalls.length === 0 && kept.PM_COGNEE_LLM_API_KEY === undefined);
 });
 
-// B1: secrets leave process.env in `init`, before any child process can inherit them.
-const SECRET_VARS = ["PM_COGNEE_LLM_API_KEY", "PM_COGNEE_EMBEDDING_API_KEY", "LLM_API_KEY", "EMBEDDING_API_KEY"];
-await withEnv({ PM_COGNEE_LLM_API_KEY: "pm-llm-secret", PM_COGNEE_EMBEDDING_API_KEY: "pm-emb-secret", LLM_API_KEY: "plain-llm-secret", EMBEDDING_API_KEY: "plain-emb-secret" }, async () => {
+// B1/B2: secrets leave process.env in `init`, before any child process can inherit them.
+const SECRET_VARS = ["PM_COGNEE_LLM_API_KEY", "PM_COGNEE_EMBEDDING_API_KEY", "LLM_API_KEY", "EMBEDDING_API_KEY", "COGNEE_API_KEY"];
+await withEnv({ PM_COGNEE_LLM_API_KEY: "pm-llm-secret", PM_COGNEE_EMBEDDING_API_KEY: "pm-emb-secret", LLM_API_KEY: "plain-llm-secret", EMBEDDING_API_KEY: "plain-emb-secret", COGNEE_API_KEY: "cognee-env-secret" }, async () => {
   const home = tmp("b1-yes");
   const { h, text } = makeHelpers({ saveWizardConf: () => {} });
   const ctx = makeCtx(home);
@@ -516,7 +579,7 @@ await withEnv({ LLM_API_KEY: "plain-llm-secret", PM_COGNEE_LLM_API_KEY: "hand-of
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
   check("Clack hand-off: PM_COGNEE_LLM_API_KEY is taken and used", process.env.PM_COGNEE_LLM_API_KEY === undefined && fs.readFileSync(envFileOf(home), "utf8") === "LLM_API_KEY=hand-off-secret\n");
-  check("Clack hand-off: the operator's plain LLM_API_KEY is left alone", process.env.LLM_API_KEY === "plain-llm-secret");
+  check("Clack hand-off: plain LLM_API_KEY is scrubbed (not left for children)", process.env.LLM_API_KEY === undefined);
 });
 await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
   const home = tmp("b1-keep");
@@ -527,7 +590,7 @@ await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
   const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
-  check("Clack 'keep existing key': a plain LLM_API_KEY in the environment does not replace it", fs.readFileSync(file, "utf8") === "LLM_API_KEY=stored-secret\n" && !lines.some((l) => l.kind === "warn"));
+  check("Clack 'keep existing key': a plain LLM_API_KEY in the environment does not replace it", fs.readFileSync(file, "utf8") === "LLM_API_KEY=stored-secret\n" && !lines.some((l) => l.kind === "warn") && process.env.LLM_API_KEY === undefined);
 });
 await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
   const home = tmp("b1-noplain");
@@ -535,7 +598,7 @@ await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
   const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
-  check("skipBackendStep alone never reads the plain LLM_API_KEY", !fs.existsSync(envFileOf(home)) && lines.some((l) => l.kind === "warn"));
+  check("skipBackendStep alone never reads the plain LLM_API_KEY", !fs.existsSync(envFileOf(home)) && lines.some((l) => l.kind === "warn") && process.env.LLM_API_KEY === undefined);
 });
 
 // Escapes: a second run changes nothing for a value that needed quoting.
@@ -897,9 +960,19 @@ console.log("--- (b) smoke");
   check("smoke: the API key is never printed", !r.text().includes(KEY));
 }
 {
-  const KEY = "cognee-key-from-env";
-  const r = await smokeScenario({ requireKey: KEY }, { env: { COGNEE_API_KEY: KEY }, indexerEnv: "COGNEE_API_KEY=other\n" });
-  check("smoke: COGNEE_API_KEY in the environment wins over the file", r.threw === "" && r.stub.requests.every((q) => q.headers["x-api-key"] === KEY));
+  const KEY = "cognee-key-from-file";
+  const r = await smokeScenario({ requireKey: KEY }, { env: { COGNEE_API_KEY: "from-env-ignored" }, indexerEnv: `COGNEE_API_KEY=${KEY}\n` });
+  check("smoke: indexer env file wins over a captured COGNEE_API_KEY", r.threw === "" && r.stub.requests.every((q) => q.headers["x-api-key"] === KEY) && process.env.COGNEE_API_KEY === undefined);
+}
+{
+  const KEY = "cognee-key-captured-only";
+  const r = await smokeScenario({ requireKey: KEY }, { env: { COGNEE_API_KEY: KEY } });
+  check("smoke: captured COGNEE_API_KEY is used when the indexer file is absent", r.threw === "" && r.stub.requests.every((q) => q.headers["x-api-key"] === KEY) && process.env.COGNEE_API_KEY === undefined);
+}
+{
+  const KEY = "cognee-secret-in-detail";
+  const r = await smokeScenario({ requireKey: KEY, addStatus: 500, addDetail: `auth failed for ${KEY}` }, { env: { COGNEE_API_KEY: KEY } });
+  check("smoke: redacts COGNEE_API_KEY from server detail in errors", /add failed/.test(r.threw) && !r.threw.includes(KEY) && /\*\*\*/.test(r.threw), r.threw);
 }
 {
   const r = await smokeScenario({ requireKey: "needed" });
@@ -921,7 +994,7 @@ console.log("--- (b) smoke");
   check("smoke: a create that times out is found by name and deleted", /create dataset request failed \(TimeoutError\)/.test(r.threw) && r.stub.datasets.size === 0 && r.stub.requests.at(-1)?.method === "DELETE", r.threw);
 }
 {
-  const r = await smokeScenario({ requireKey: "k" }, { env: { COGNEE_API_KEY: "k" } });
+  const r = await smokeScenario({ requireKey: "k" }, { indexerEnv: "COGNEE_API_KEY=k\n" });
   check("smoke: a definite create answer (not 5xx) does not trigger the by-name lookup", !r.stub.requests.some((q) => q.method === "GET" && q.url === "/api/v1/datasets"));
 }
 {
@@ -987,11 +1060,25 @@ async function validation(arrange) {
 }
 {
   const v = await validation((_h, ctx) => fs.appendFileSync(path.join(ctx.repoRoot, ".env"), "LLM_API_KEY=oops\n"));
-  check("validate: LLM_API_KEY text in the stack .env is an error", v.errors.some((e) => /repo \.env must not contain/.test(e)) && !v.errors.join().includes("oops"));
+  check("validate: LLM_API_KEY assignment in the stack .env is an error", v.errors.some((e) => /repo \.env must not contain/.test(e)) && !v.errors.join().includes("oops"));
 }
 {
-  const v = await validation((_h, ctx) => fs.appendFileSync(path.join(ctx.repoRoot, ".env"), "# COGNEE_API_KEY=oops\n"));
-  check("validate: COGNEE_API_KEY text in the stack .env is an error", v.errors.some((e) => /repo \.env must not contain/.test(e)));
+  const v = await validation((_h, ctx) => fs.appendFileSync(path.join(ctx.repoRoot, ".env"), "COGNEE_API_KEY=oops\n"));
+  check("validate: COGNEE_API_KEY assignment in the stack .env is an error", v.errors.some((e) => /repo \.env must not contain/.test(e)));
+}
+{
+  const v = await validation((_h, ctx) => fs.appendFileSync(path.join(ctx.repoRoot, ".env"), "HINDSIGHT_API_LLM_API_KEY=leftover\n"));
+  check("validate: HINDSIGHT_API_LLM_API_KEY does not false-positive as a Cognee secret", !v.errors.some((e) => /repo \.env must not contain/.test(e)));
+}
+{
+  const v = await validation((_h, ctx) => {
+    fs.writeFileSync(
+      ctx.cognee.envFile,
+      "LLM_PROVIDER=ollama\nLLM_API_KEY=ollama\nLLM_ENDPOINT=http://host.docker.internal:11434\nEMBEDDING_PROVIDER=ollama\nEMBEDDING_MODEL=nomic-embed-text:latest\nEMBEDDING_ENDPOINT=http://host.docker.internal:11434/api/embed\nEMBEDDING_DIMENSIONS=768\n",
+      { mode: 0o600 },
+    );
+  });
+  check("validate: ollama + embeddings is cognify-ready", v.errors.length === 0 && v.checks.some((c) => /cognify-ready \(ollama/.test(c)), JSON.stringify(v));
 }
 {
   const v = await validation((_h, ctx) => fs.rmSync(path.join(ctx.repoRoot, "providers/cognee/compose.yaml")));
@@ -1235,7 +1322,7 @@ function runWizard(w, port, args, over = {}) {
   check("no key: --yes still exits 0", code === 0, out.split("\n").slice(-15).join("\n"));
   check("no key: warns that documents are not searchable", /documents will be stored but not searchable until LLM_API_KEY works \(cognify needs it\)/.test(out));
   check("no key: validation reports the missing key without failing", /LLM_API_KEY missing: documents are stored but not searchable/.test(out) && /memory setup validation passed/.test(out));
-  check("no key: summary tells the operator what to set", /Cognee needs an LLM key to build its graph/.test(out));
+  check("no key: summary tells the operator what to set", /Cognee needs a cognify-ready LLM config/.test(out));
   check("no key: no cognee.env is created", !fs.existsSync(envFileOf(w.home)));
   await stub.close();
 }

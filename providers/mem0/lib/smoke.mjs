@@ -120,10 +120,15 @@ export async function smoke(ctx, h) {
     if (!docs.ok) throw failed(docs, "GET /docs");
     h.ok("GET /docs answered");
 
-    // 2. Retain verbatim.
+    // 2. Retain verbatim. infer:false must return at least one results[].id (same rule as the sink).
     const retain = await request(base, "POST", "/memories", { key, body: RETAIN_BODY, timeoutMs: 120000 });
     if (!retain.ok) throw failed(retain, "POST /memories");
     ids = memoryIds(retain.json);
+    if (!ids.length) {
+      throw new SmokeFailure(
+        "POST /memories returned no memory ids (empty results); the server must store with infer:false and return results[].id",
+      );
+    }
     h.ok(`stored the smoke fact (${ids.length} memory)`);
 
     // 3. Search must find it.

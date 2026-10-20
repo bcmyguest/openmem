@@ -7,6 +7,7 @@ import { containerUrl, displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
 
 const DOCS = "https://docs.mem0.ai/open-source/features/rest-api";
+const OPERATOR = "providers/mem0/OPERATOR.md";
 
 /**
  * @param {Record<string, any>} ctx
@@ -32,12 +33,10 @@ export function summary(ctx, h) {
   /** @type {string[]} */
   const notes = [];
   if (ctx.action === "down") return { running, configFiles, notes, logServices: ["indexer"] };
-  let hostname = "<host>";
   let loopback = false;
   if (valid) {
     const parsed = new URL(raw);
-    hostname = parsed.hostname;
-    loopback = ["127.0.0.1", "localhost", "0.0.0.0", "[::1]"].includes(hostname);
+    loopback = ["127.0.0.1", "localhost", "0.0.0.0", "[::1]"].includes(parsed.hostname);
   }
   let hasKey = false;
   try {
@@ -47,12 +46,12 @@ export function summary(ctx, h) {
   }
   if (!hasKey) {
     notes.push(
-      `API key: create one in the mem0 dashboard (http://${hostname}:3000) or with POST /api-keys, then put MEM0_API_KEY=<key> in ${envFile} (mode 600). ` +
+      `API key: create one in your mem0 dashboard (port varies by install) or with POST /api-keys, then put MEM0_API_KEY=<key> in ${envFile} (mode 600). ` +
         "A server run with AUTH_DISABLED=true needs none (development only).",
     );
   }
   notes.push(
-    `The mem0 server is yours to run: its first-time setup (JWT_SECRET, embedder keys) is provider-native, see ${DOCS}`,
+    `The mem0 server is yours to run: first-time setup (JWT_SECRET, embedder keys) is provider-native — ${OPERATOR} and ${DOCS}`,
     loopback
       ? "The indexer container reaches a loopback server as host.docker.internal; on Linux a server bound only to 127.0.0.1 is not reachable that way: bind it to 0.0.0.0 or the docker bridge IP, or use a hostname in MEM0_API_URL."
       : "The indexer container must be able to reach the server at the URL above (it uses the same host name).",

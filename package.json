@@ -22,7 +22,8 @@
     "coding-agent"
   ],
   "bin": {
-    "personal-memory": "cli/personal-memory.mjs"
+    "personal-memory": "cli/personal-memory.mjs",
+    "personal-memory-setup": "wizard/bin/setup.mjs"
   },
   "files": [
     "cli/",
@@ -45,7 +46,7 @@
     "LICENSE",
     "docs/",
     "!docs/ROADMAP*",
-    "!docs/WAVE2*",
+    "!docs/WAVE*",
     "!**/__pycache__",
     "!**/*.pyc",
     "!**/tests",
@@ -58,6 +59,9 @@
     "access": "public"
   },
   "scripts": {
+    "setup": "node wizard/bin/setup.mjs",
+    "pm": "node wizard/bin/pm.mjs",
+    "personal-memory": "node cli/personal-memory.mjs",
     "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
     "test:unit": "node scripts/tests/test_cli_package.mjs --unit",
     "pack:check": "node scripts/check-pack.mjs"

@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readEnvFile } from "./env-file.mjs";
+import { isCognifyReady } from "./llm-env.mjs";
 import { currentPort, ensureState } from "./state.mjs";
 
 /**
@@ -22,14 +23,19 @@ export function summary(ctx) {
     configFiles.push(`  ${ctx.cognee.indexerEnvFile} (indexer API key, mode 600)`);
   }
   configFiles.push(`  ${path.join(ctx.repoRoot, ".env")} (COGNEE_PORT, COMPOSE_PROFILES)`);
-  const hasKey = Boolean(readEnvFile(ctx.cognee.envFile).values.get("LLM_API_KEY"));
+  const env = readEnvFile(ctx.cognee.envFile);
+  const ready = isCognifyReady(env.values);
+  const provider = (env.values.get("LLM_PROVIDER") || "").toLowerCase();
   const notes = [
-    hasKey
-      ? `Cognee builds its graph with the LLM configured in ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`
-      : `Cognee needs an LLM key to build its graph: set LLM_API_KEY in ${ctx.cognee.envFile}; without it documents are stored but not searchable. Then restart with: ./pm up`,
+    ready
+      ? provider === "ollama"
+        ? `Cognee builds its graph with Ollama (LLM + embeddings) from ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`
+        : `Cognee builds its graph with the LLM configured in ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`
+      : `Cognee needs a cognify-ready LLM config: set LLM_API_KEY in ${ctx.cognee.envFile}, or use LLM_PROVIDER=ollama with matching embeddings; without it documents are stored but not searchable. Then restart with: ./pm up`,
     `Graph status: GET ${url}/api/v1/datasets/status`,
     "The first start downloads a large image and may take several minutes.",
     "Deleting a dataset removes its graph and vectors, not just the stored files.",
+    `Coding agents: no plugin — call the REST API at ${url} (see /docs); ingest POST /api/v1/add, then cognify, then search.`,
   ];
   return { running, configFiles, notes, logServices: ["cognee", "indexer"] };
 }

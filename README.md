@@ -1,8 +1,9 @@
 # Local Hindsight memory
 
-Docker Compose setup for the local Hindsight coding-agent memory (the default **memory
-provider**; see [docs/memory-providers.md](docs/memory-providers.md) for adding mem0 and others).
-It runs three services:
+Docker Compose setup for local coding-agent memory. The default **memory provider** is
+Hindsight; **mem0** and **Cognee** are experimental (see
+[docs/memory-providers.md](docs/memory-providers.md), `providers/mem0/OPERATOR.md`, and
+`providers/cognee/` for operator notes). With Hindsight it runs three services:
 
 - `litellm`: an OpenAI-compatible proxy (`ghcr.io/berriai/litellm:v1.105.1`) on the internal Docker network only. Hindsight sends every LLM call to it.
 - `hindsight`: the Hindsight API on `127.0.0.1:8888` (`HINDSIGHT_PORT`), control plane on `127.0.0.1:9999` (`HINDSIGHT_CP_PORT`). Its database lives in the named volume `hindsight-data` (mounted at `/home/hindsight/.pg0`).
@@ -11,11 +12,11 @@ It runs three services:
 ## Does cloning just work?
 
 Not without a few one-time steps: **Docker** (compose v2,
-your user in the `docker` group), **Node 18+** for the interactive `./setup` UI, and a **model
+your user in the `docker` group), **Node 18+** for the interactive setup UI, and a **model
 backend** you configure in the wizard (lemond, Ollama, or an OpenAI-compatible server). There is
-no cloud account in the loop unless you point custom routes at one. After `./setup` succeeds,
-Hindsight listens on `http://127.0.0.1:8888` and the coding-agent plugin uses
-`~/.hindsight/coding-agent.json` (linked from this repo).
+no cloud account in the loop unless you point custom routes at one. After `npm run setup` (or
+`npx personal-memory setup`) succeeds, Hindsight listens on `http://127.0.0.1:8888` and the
+coding-agent plugin uses `~/.hindsight/coding-agent.json` (linked from this repo).
 
 ## Prerequisites
 
@@ -40,11 +41,15 @@ start / stop — default is configure), **memory provider** (default from `wizar
 git clone git@github.com:bcmyguest/personal-memory.git
 cd personal-memory
 cp config/machine.env.example config/machine.env   # optional per-machine defaults
-./setup
+npm install
+npm run setup          # same wizard as ./setup and: npx personal-memory setup
+# or: ./setup
+# or: npx personal-memory setup   # after publish / npm link
 ```
 
 First interactive run installs `wizard/` npm deps automatically. `--yes` / `--dry-run` skip Clack
-and need no `wizard/node_modules`.
+and need no `wizard/node_modules`. The published package bin is `personal-memory` (subcommand
+`setup`); a checkout also has `./setup` and `npm run setup`.
 
 **Mise-like config:** copy **`config/personal-memory.toml.example`** to
 **`~/.config/personal-memory/config.toml`** — declarative provider, stack, model routing, and tasks.
@@ -57,7 +62,9 @@ The wizard asks for:
 1. Preflight: Docker with Compose v2, and free API and control-plane ports. A taken port offers the next free one.
 2. Model backend (UI: pick **first**, then only that endpoint is queried): lemond, Ollama, or custom OpenAI-compatible (Meridian, hosted API). Reflect model can differ from retain/consolidate.
 3. Secrets and env files under `~/.config/hindsight/` (mode 600), then `scripts/setup.sh`.
-4. Source roots to index (default `~`, depth 3) and the Obsidian vaults it finds.
+4. Source roots to index (comma-separated, default `~`, depth 3), optional extra Obsidian vault
+   paths, and vaults auto-discovered under those roots. A vault outside the scan roots is skipped
+   unless you list it (for example `~/work-notes/work`).
 5. Optional NotebookLM sync (default no).
 6. Start the stack, wait for health, and run a smoke retain and recall in a temporary bank.
 7. Optional coding-agent config link and plugin install (default no).

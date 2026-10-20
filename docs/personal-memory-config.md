@@ -89,7 +89,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   mount, and setup warns about a file elsewhere under `$HOME`.
 
   Cognee builds its graph with an LLM, so documents are stored but not searchable until
-  `LLM_API_KEY` works. `./setup` writes the key into the env file (mode 600 in a mode 700
+  cognify can run. `./setup` writes settings into the env file (mode 600 in a mode 700
   directory), merging into any existing file and replacing only the keys it was given; it prints
   the path and the key names, never a value. Where the answers come from:
 
@@ -99,16 +99,43 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   | `PM_COGNEE_LLM_PROVIDER`, `PM_COGNEE_LLM_MODEL`, `PM_COGNEE_LLM_ENDPOINT` | `LLM_PROVIDER`, `LLM_MODEL`, `LLM_ENDPOINT` |
   | `PM_COGNEE_EMBEDDING_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_DIMENSIONS` | the same names without `PM_COGNEE_` |
   | `PM_COGNEE_EMBEDDING_API_KEY`; under `--yes` or `--dry-run` also plain `EMBEDDING_API_KEY` | `EMBEDDING_API_KEY` |
+  | `PM_COGNEE_HUGGINGFACE_TOKENIZER` | `HUGGINGFACE_TOKENIZER` |
 
-  Only variables that are set are written, so a local model needs no key:
-  `PM_COGNEE_LLM_PROVIDER=ollama PM_COGNEE_LLM_MODEL=... PM_COGNEE_LLM_ENDPOINT=http://host.docker.internal:11434/v1 ./setup --yes`
-  (a model server on the host is `host.docker.internal` from the container). The interactive
-  setup asks for the key with a hidden prompt. The key variables are removed from the wizard's
-  own environment before it starts docker or any other child process, so nothing it launches
-  inherits them. With no key under `--yes` the wizard warns and carries on. The key never goes into the stack `.env`, `wizard.conf`, `config.toml` or the
-  summary. Authentication is off in this stack; to turn it on by hand, set
-  `REQUIRE_AUTHENTICATION=true` in `cognee.env` and `COGNEE_API_KEY` in `cognee-indexer.env` (see
-  the comments in `providers/cognee/compose.yaml`).
+  **Local Ollama** (no cloud key): set `PM_COGNEE_LLM_PROVIDER=ollama` (and optionally
+  `PM_COGNEE_LLM_MODEL=...`). The wizard fills in a complete local block when fields are missing:
+
+  ```bash
+  PM_COGNEE_LLM_PROVIDER=ollama PM_COGNEE_LLM_MODEL=llama3.2 ./setup --yes
+  ```
+
+  That writes (defaults only where unset):
+
+  ```env
+  LLM_PROVIDER=ollama
+  LLM_API_KEY=ollama
+  LLM_ENDPOINT=http://host.docker.internal:11434
+  EMBEDDING_PROVIDER=ollama
+  EMBEDDING_MODEL=nomic-embed-text:latest
+  EMBEDDING_ENDPOINT=http://host.docker.internal:11434/api/embed
+  EMBEDDING_DIMENSIONS=768
+  ```
+
+  Use the bare Ollama host (`…:11434`), not `…:11434/v1` — Cognee's Ollama path appends
+  `/api/generate` itself. **Host Ollama** (listening on the Docker bridge or all interfaces):
+  `host.docker.internal` is correct. **Compose Ollama** published as `127.0.0.1:11434` only
+  (this repo's default): that address is unreachable via `host.docker.internal` — set
+  `PM_COGNEE_OLLAMA_COMPOSE=1` (or reuse `MEMORY_OLLAMA_IN_COMPOSE=1` from a Hindsight Ollama
+  setup) so the wizard writes `http://ollama:11434`, and attach the Cognee container to the
+  same Docker network as the `ollama` service. Slow local models may need
+  `COGNEE_SKIP_CONNECTION_TEST=true` in `cognee.env`. The interactive setup offers OpenAI key
+  vs Ollama; the OpenAI path uses a hidden prompt. Do not type the key into a non-Clack
+  `./setup` prompt — put `LLM_API_KEY=...` in `cognee.env` (mode 600) by hand, or use the UI /
+  `--yes` with `PM_COGNEE_LLM_API_KEY`. Secret variables (including plain `LLM_API_KEY` /
+  `EMBEDDING_API_KEY` / `COGNEE_API_KEY`) are removed from the wizard's environment before it
+  starts docker. With no cognify-ready config under `--yes` the wizard warns and carries on.
+  Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the summary.
+  Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
+  overrides the env file (see `providers/cognee/compose.yaml`).
 - **`[tasks.*]`** — descriptions for `./pm`; execution maps to `./setup` (see `wizard/bin/pm.mjs`).
 
 ## Apply

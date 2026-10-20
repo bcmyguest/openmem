@@ -1,18 +1,18 @@
 # Pluggable memory providers
 
-This repo today ships **one** supported backend: [Hindsight](https://github.com/vectorize-io/hindsight)
-(API + retain/reflect/consolidate, LiteLLM in front of local models). The goal is to treat Hindsight as
-the first **memory provider plugin**, not as implicit global state, so other stores (**mem0**, **Cognee**,
-or a hosted API) can be added without rewriting indexing and setup from scratch. Wave 2 adds indexer
-sinks and compose profiles for those providers; manifests under `providers/` show `planned` vs
-`supported` today.
+This repo ships **one** supported backend: [Hindsight](https://github.com/vectorize-io/hindsight)
+(API + retain/reflect/consolidate, LiteLLM in front of local models). **mem0** and **Cognee** are
+**experimental** plugins (indexer sink, compose profile, wizard hooks, stub tests). Wave 3 hardened
+operator DX (coding-agent steps, secrets, Ollama wiring); live Cognee cognify+search with a small
+local model is not yet a promotion bar — see `docs/WAVE3-orchestrator.md`. Manifests under
+`providers/` show `experimental` vs `supported`.
 
 ## Meta setup wizard (what this is — and is not)
 
-`./setup` is a **meta** wizard: it orchestrates **machine-local plumbing** that is the same idea
-across providers (Docker project, ports, indexer sources, smoke “is the API alive?”, coding-agent
-symlink, compose up/down). It does **not** replace each provider’s **native** settings UI, CLI, or
-config format.
+`npm run setup` (checkout), `npx personal-memory setup`, or `./setup` is a **meta** wizard: it
+orchestrates **machine-local plumbing** that is the same idea across providers (Docker project,
+ports, indexer sources, smoke “is the API alive?”, coding-agent symlink, compose up/down). It does
+**not** replace each provider’s **native** settings UI, CLI, or config format.
 
 | This wizard owns (cross-cutting) | Provider still owns (native) |
 | --- | --- |
@@ -159,14 +159,25 @@ first step); default action is full **configure and start**.
 - `./setup` passes `--profile hindsight` on compose commands; `scripts/setup.mjs` writes `COMPOSE_PROFILES=hindsight` into the stack `.env`.
 - Alternate providers layer `providers/<id>/compose.yaml` with their own profile (`MEMORY_SINK`, `MEMORY_API_URL`, `depends_on`).
 
-### Phase C — mem0 and Cognee (Wave 2)
+### Phase C — mem0 and Cognee (Wave 2 + Wave 3 DX)
 
 - mem0 is **URL-only** in v1: the indexer talks to a mem0 server the operator already runs, and this
   repo ships no mem0 container yet. A mem0 service built from a pinned upstream ref is a follow-up.
+  Operator runbook: `providers/mem0/OPERATOR.md`. Coding-agent: wizard `setupCodingAgent` prints
+  SDK/MCP steps (no fake `pluginPackage`).
 - Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
-  an optional env file.
-- `providers/<id>/manifest.json` moves from `planned` to `experimental` only after the Wave 2
-  acceptance gate passes; `supported` additionally needs a live end-to-end run.
+  an optional env file (`~/.config/personal-memory/cognee.env`, mode 600).
+- **Cognee + Ollama:** default endpoints use `host.docker.internal:11434` (host Ollama on the Docker
+  bridge). When this stack’s compose profile `ollama` publishes **loopback-only**
+  (`127.0.0.1:11434`), that default is refused from the Cognee container. Set
+  `PM_COGNEE_OLLAMA_COMPOSE=1` or `MEMORY_OLLAMA_IN_COMPOSE=1` (wizard Clack also detects
+  `MEMORY_OLLAMA_IN_COMPOSE=1` in `wizard.conf`) so defaults become `http://ollama:11434` and attach
+  Cognee to the same Docker network as the `ollama` service. Cognify still needs a model that can
+  emit Cognee’s structured extraction schemas; small local models (for example `gemma4:e2b`) may
+  pass HTTP add/cognify start but never finish the graph — stay `experimental` until a recorded
+  cognify+search live E2E.
+- `providers/<id>/manifest.json` stays `experimental` until that live E2E; Wave 2 only moved them
+  off `planned`.
 - `indexer/sinks/mem0.py` and `indexer/sinks/cognee.py` implementing the sink protocol (Cognee also
   implements the optional `flush()`).
 - Wizard branch: provider select (Clack) before model backend when multiple providers are supported.
