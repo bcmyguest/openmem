@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+@import './tokens.css';
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/600.css';
+@import '@fontsource/dm-sans/700.css';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Landing-only derived tokens: primary action, amber (experimental), green (supported). */
+:root,
+:root[data-theme='dark'] {
+  --c-decision: #aab4f6;
+  --c-on-decision: #0f1118;
+  --c-decision-hover: #c6cdfb;
+  --c-inferred: #e0b06f;
+  --c-inferred-soft: #3a2e1c;
+  --c-ok: #9be0b3;
+  --c-ok-soft: #1c3427;
+}
+:root[data-theme='light'] {
+  --c-decision: #3a45a0;
+  --c-on-decision: #ffffff;
+  --c-decision-hover: #2d3785;
+  --c-inferred: #c48a43;
+  --c-inferred-soft: #f6ead9;
+  --c-ok: #1b6137;
+  --c-ok-soft: #e0f3e6;
+}
+
+@theme inline {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --color-canvas: var(--c-canvas);
+  --color-panel: var(--c-panel);
+  --color-panel-raised: var(--c-panel-raised);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-line: var(--c-line);
+  --color-brand: var(--c-brand);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-selected: var(--c-selected);
+  --color-hover: var(--c-hover);
+  --color-map-canvas: var(--c-map-canvas);
+  --color-map-dot: var(--c-map-dot);
+  --color-source: var(--c-source);
+  --color-code: var(--c-code);
+  --color-warning: var(--c-warning);
+  --color-danger: var(--c-danger);
+  --color-decision: var(--c-decision);
+  --color-on-decision: var(--c-on-decision);
+  --color-decision-hover: var(--c-decision-hover);
+  --color-inferred: var(--c-inferred);
+  --color-inferred-soft: var(--c-inferred-soft);
+  --color-ok: var(--c-ok);
+  --color-ok-soft: var(--c-ok-soft);
+}
+
+html {
+  background: var(--c-canvas);
+  color: var(--c-ink);
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+
+/* Anchored sections clear the sticky header. */
+section[id] {
+  scroll-margin-top: 4rem;
+}

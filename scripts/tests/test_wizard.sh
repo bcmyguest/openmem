@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests for scripts/wizard.sh with stub docker, curl, ollama, lemonade, and npx on PATH and a scratch HOME.
+# Tests for ./setup (wizard/bin/setup.mjs; scripts/wizard.sh is a thin Node wrapper).
+# Stub docker, curl, ollama, lemonade, and npx on PATH and a scratch HOME.
 # Runs against a copy of the repo, so setup.sh's compose.override.yaml and .env never land in the checkout.
 # Never touches the live stack or the real ~/.config/hindsight.
 set -euo pipefail
@@ -8,6 +9,12 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 FAILS=0
+
+# Full path: unit tests use env -i with a minimal PATH.
+TEST_NODE=""
+if command -v node >/dev/null 2>&1; then
+    TEST_NODE="$(command -v node)"
+fi
 
 pass() { printf 'ok    %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -70,18 +77,32 @@ make_home() {
     printf '# Demo\n' > "${home}/src/demo-repo/README.md"
 }
 
-# run_wizard HOME COPY LOG OUT [args...]: runs the copy's wizard with a clean environment.
+# run_wizard HOME COPY LOG OUT [args...]: runs the Node setup wizard with a clean environment.
 run_wizard() {
+    local home="$1" copy="$2" log="$3" out="$4"; shift 4
+    [ -n "${TEST_NODE}" ] || {
+        echo "FAIL  wizard run skipped (no node on PATH)" >&2
+        return 1
+    }
+    env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit PM_REFLECT_MODEL="${PM_REFLECT_MODEL:-}" HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" "$@" > "${out}" 2>&1
+}
+
+# run_setup HOME COPY LOG OUT [args...]: ./setup entry (Node → bash when --yes or non-TTY).
+run_setup() {
     local home="$1" copy="$2" log="$3" out="$4"; shift 4
     env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
         STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit PM_REFLECT_MODEL="${PM_REFLECT_MODEL:-}" HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
-        bash "${copy}/scripts/wizard.sh" "$@" > "${out}" 2>&1
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" "$@" > "${out}" 2>&1
 }
 
 copy_repo() {
     local dest="$1"
     mkdir -p "${dest}"
-    (cd "${REPO}" && tar --exclude=.git --exclude=.env --exclude=compose.override.yaml --exclude=.build-hash -cf - .) | tar -xf - -C "${dest}"
+    (cd "${REPO}" && tar --exclude=.git --exclude=.env --exclude=compose.override.yaml --exclude=.build-hash \
+        --exclude=wizard/node_modules -cf - .) | tar -xf - -C "${dest}"
+    npm install --prefix "${dest}/wizard" --no-fund --no-audit --silent
 }
 
 make_stubs "${WORK}/stubs"
@@ -97,14 +118,48 @@ test_dry_run() {
     check "dry run exits 0" [ "${rc}" -eq 0 ]
     check "preflight ok (compose v2)" grep -q 'compose v2 work without sudo' "${out}"
     check "preflight uses free ports 28888/29999" grep -q 'Hindsight API port 28888 is free' "${out}"
+    check "memory provider step" grep -q 'memory provider Hindsight' "${out}"
+    check "hindsight sub-wizard model routing" grep -q 'provider hindsight: configureModelRouting' "${out}"
     check "lemond chosen as backend" grep -q 'lemond answers' "${out}"
     check "dry run plans hindsight.env" grep -q '\[dry-run\] create .*hindsight.env' "${out}"
     check "dry run plans setup.sh" grep -q '\[dry-run\] scripts/setup.sh: write .env' "${out}"
-    check "dry run plans compose up" grep -q '\[dry-run\] docker compose -p pm-wizard-unit up -d --no-build' "${out}"
+    check "dry run plans compose up" grep -q '\[dry-run\] docker compose -p pm-wizard-unit --profile hindsight up -d --no-build' "${out}"
     check "dry run plans smoke test" grep -q 'dry-run\] retain and recall' "${out}"
     check "no docker mutation calls" bash -c "! grep -q -E 'docker compose .* (up|build|run) ' '${log}' 2>/dev/null"
     check "scratch HOME unchanged" [ "$(cd "${home}" && find . | sort)" = "${before}" ]
     check "repo copy has no .env or override" bash -c "[ ! -e '${copy}/.env' ] && [ ! -e '${copy}/compose.override.yaml' ]"
+}
+
+# (a2) ./setup --yes --dry-run delegates to the same bash wizard (non-TTY path).
+test_setup_entry_dry_run() {
+    local home="${WORK}/home-setup-dry" copy="${WORK}/copy-setup-dry" out="${WORK}/setup-dry.out" log="${WORK}/setup-dry.log"
+    mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+    [ -n "${TEST_NODE}" ] || {
+        pass "setup entry dry run skipped (no node on PATH)"
+        return 0
+    }
+    local rc=0
+    run_setup "${home}" "${copy}" "${log}" "${out}" --yes --dry-run || rc=$?
+    check "setup --yes --dry-run exits 0" [ "${rc}" -eq 0 ]
+    check "setup entry: lemond chosen as backend" grep -q 'lemond answers' "${out}"
+    check "setup entry: dry run plans hindsight.env" grep -q '\[dry-run\] create .*hindsight.env' "${out}"
+    check "setup entry: dry run plans compose up" grep -q '\[dry-run\] docker compose -p pm-wizard-unit --profile hindsight up -d --no-build' "${out}"
+}
+
+# (a3) Clack handoff env runs the same backend step as bash --yes.
+test_clack_backend_handoff() {
+    local home="${WORK}/home-handoff" copy="${WORK}/copy-handoff" out="${WORK}/handoff.out" log="${WORK}/handoff.log"
+    mkdir -p "${home}"; make_home "${home}"; copy_repo "${copy}"
+    local rc=0
+    env -i PATH="${WORK}/stubs:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+        STUB_LOG="${log}" PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        WIZARD_SKIP_BACKEND_STEP=1 PM_WIZARD_ACTION=configure MEMORY_PROVIDER=hindsight PM_BACKEND=lemond \
+        PM_DEFAULT_MODEL=Custom-Retain-GGUF MEMORY_API_BASE=http://host.docker.internal:13305/v1 \
+        PM_REFLECT_MODEL=Other-Reflect-GGUF \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes --dry-run > "${out}" 2>&1 || rc=$?
+    check "clack handoff dry run exits 0" [ "${rc}" -eq 0 ]
+    check "clack handoff: provider from UI" grep -q 'memory provider Hindsight (setup UI)' "${out}"
+    check "clack handoff: backend from UI" grep -q 'backend lemond, model Custom-Retain-GGUF (setup UI)' "${out}"
 }
 
 # (b) two real runs with stubs: the second keeps everything and writes no new secrets or configs.
@@ -120,12 +175,17 @@ test_idempotent() {
     check "first run: index.yml written" [ -f "${hs}/index.yml" ]
     check "first run: indexer state mount point created" [ -d "${home}/.cache/hindsight-project-index" ]
     check "first run: wizard.conf written" [ -f "${hs}/wizard.conf" ]
+    check "first run: wizard.conf records hindsight provider" grep -q '^MEMORY_PROVIDER=hindsight$' "${hs}/wizard.conf"
+    check "first run: writes mise-like config.toml" [ -f "${home}/.config/personal-memory/config.toml" ]
+    check "first run: config.toml records provider" grep -q 'provider = "hindsight"' "${home}/.config/personal-memory/config.toml"
+    check "first run: memory validation passed" grep -q 'memory setup validation passed' "${WORK}/run1.out"
     check "first run: repo .env has ports" bash -c "grep -q '^HINDSIGHT_PORT=28888$' '${copy}/.env' && grep -q '^HINDSIGHT_CP_PORT=29999$' '${copy}/.env'"
+    check "first run: repo .env enables hindsight profile" grep -q '^COMPOSE_PROFILES=hindsight$' "${copy}/.env"
     check "first run: compose up and --list called" bash -c "grep -q 'up -d --no-build' '${log}' && grep -q -- '--list' '${log}'"
     check "first run: smoke test deleted bank" grep -q 'DELETE.*wizard-smoke' "${log}"
     check "first run: smoke recall passed" grep -q 'retain and recall worked' "${WORK}/run1.out"
     check "first run: change count above zero" grep -Eq '^wizard: changed=[1-9]' "${WORK}/run1.out"
-    check "first run: indexer built once and hash recorded" bash -c "[ \"\$(grep -c 'compose -p pm-wizard-unit build indexer' '${log}')\" = 1 ] && grep -q '^indexer ' '${copy}/.build-hash'"
+    check "first run: indexer built once and hash recorded" bash -c "[ \"\$(grep -c 'compose -p pm-wizard-unit --profile hindsight build indexer' '${log}')\" = 1 ] && grep -q '^indexer ' '${copy}/.build-hash'"
 
     local sums_before baks_before
     sums_before="$(sha256sum "${hs}/hindsight.env" "${hs}/litellm.env" "${hs}/index.yml" "${hs}/wizard.conf" | sort)"
@@ -147,19 +207,19 @@ test_build_cache() {
     local rc=0
     run_wizard "${home}" "${copy}" "${log}.3" "${WORK}/run3.out" --yes || rc=$?
     check "unchanged rerun exits 0" [ "${rc}" -eq 0 ]
-    check "unchanged rerun: no image build" bash -c "! grep -q 'compose -p pm-wizard-unit build' '${log}.3'"
+    check "unchanged rerun: no image build" bash -c "! grep -q 'compose -p pm-wizard-unit --profile hindsight build' '${log}.3'"
     check "unchanged rerun: start skips build" grep -q 'up -d --no-build' "${log}.3"
 
     echo "# edit" >> "${copy}/indexer/watch.py"
     rc=0
     run_wizard "${home}" "${copy}" "${log}.4" "${WORK}/run4.out" --yes || rc=$?
     check "source edit exits 0" [ "${rc}" -eq 0 ]
-    check "source edit: indexer rebuilt" grep -q 'compose -p pm-wizard-unit build indexer' "${log}.4"
+    check "source edit: indexer rebuilt" grep -q 'compose -p pm-wizard-unit --profile hindsight build indexer' "${log}.4"
 
     rc=0
     run_wizard "${home}" "${copy}" "${log}.5" "${WORK}/run5.out" --yes --rebuild || rc=$?
     check "--rebuild exits 0" [ "${rc}" -eq 0 ]
-    check "--rebuild: indexer rebuilt without source change" grep -q 'compose -p pm-wizard-unit build indexer' "${log}.5"
+    check "--rebuild: indexer rebuilt without source change" grep -q 'compose -p pm-wizard-unit --profile hindsight build indexer' "${log}.5"
 }
 
 # route_model ALIAS FILE: the litellm model string of one route in a LiteLLM YAML file.
@@ -187,10 +247,36 @@ test_reflect_route() {
     check "separate reflect model: retain unchanged" [ "$(route_model memory-retain "${ovr}")" = "openai/Custom-Retain-GGUF" ]
 }
 
+# (e) stack down dry-run plans compose down without mutation.
+test_stack_down_dry_run() {
+    local home="${WORK}/home-down" copy="${WORK}/copy-down" out="${WORK}/down.out" log="${WORK}/down.log"
+    mkdir -p "${home}"; copy_repo "${copy}"
+    local rc=0
+    run_wizard "${home}" "${copy}" "${log}" "${out}" --down --yes --dry-run || rc=$?
+    check "stack down dry run exits 0" [ "${rc}" -eq 0 ]
+    check "stack down dry run plans compose down" grep -q '\[dry-run\] docker compose -p pm-wizard-unit --profile hindsight down' "${out}"
+    check "stack down dry run skips full configure" bash -c "! grep -q 'Sources to index' '${out}'"
+}
+
 test_dry_run
+test_setup_entry_dry_run
+test_clack_backend_handoff
 test_idempotent
 test_reflect_route
 test_build_cache
+test_stack_down_dry_run
+
+if [ -n "${TEST_NODE}" ]; then
+    npm install --prefix "${REPO}/wizard" --no-fund --no-audit --silent
+    NODE_PATH="${REPO}/wizard/node_modules" \
+        "${TEST_NODE}" "${REPO}/scripts/tests/test_provider_manifests.mjs" || FAILS=$((FAILS + 1))
+    NODE_PATH="${REPO}/wizard/node_modules" \
+        "${TEST_NODE}" "${REPO}/scripts/tests/test_memory_setup.mjs" || FAILS=$((FAILS + 1))
+    NODE_PATH="${REPO}/wizard/node_modules" \
+        "${TEST_NODE}" "${REPO}/scripts/tests/test_pm_config.mjs" || FAILS=$((FAILS + 1))
+    NODE_PATH="${REPO}/wizard/node_modules" \
+        "${TEST_NODE}" "${REPO}/scripts/tests/test_provider_wizard_hooks.mjs" || FAILS=$((FAILS + 1))
+fi
 
 if [ "${FAILS}" -eq 0 ]; then
     echo "all wizard tests passed"

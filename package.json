@@ -1,0 +1,68 @@
+{
+  "name": "personal-memory",
+  "version": "0.1.0",
+  "description": "Set up and run a self-hosted AI memory stack: setup wizard, docker compose, project indexer.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "author": "B Guest",
+  "homepage": "https://github.com/bcmyguest/personal-memory#readme",
+  "bugs": {
+    "url": "https://github.com/bcmyguest/personal-memory/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bcmyguest/personal-memory.git"
+  },
+  "keywords": [
+    "memory",
+    "ai-memory",
+    "hindsight",
+    "docker-compose",
+    "setup-wizard",
+    "coding-agent"
+  ],
+  "bin": {
+    "personal-memory": "cli/personal-memory.mjs"
+  },
+  "files": [
+    "cli/",
+    "wizard/bin/",
+    "wizard/lib/",
+    "providers/",
+    "compose.yaml",
+    "compose.bench.yaml",
+    "indexer/",
+    "bin/",
+    "sync/",
+    "config/*.example",
+    "config/index.yml",
+    "config/notebooklm.yml",
+    "config/litellm.*.yaml",
+    "config/coding-agent.json",
+    "scripts/*.mjs",
+    "scripts/*.sh",
+    "README.md",
+    "LICENSE",
+    "docs/",
+    "!docs/ROADMAP*",
+    "!**/__pycache__",
+    "!**/*.pyc",
+    "!**/tests",
+    "!**/.pytest_cache"
+  ],
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
+    "test:unit": "node scripts/tests/test_cli_package.mjs --unit",
+    "pack:check": "node scripts/check-pack.mjs"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.2.0",
+    "@iarna/toml": "^2.2.5"
+  }
+}
