@@ -19,7 +19,7 @@ The v1 phase names still work unchanged.
 
 | Field | Env | Meaning | Used for |
 | --- | --- | --- | --- |
-| `ctx.repoRoot` | `PM_STACK_ROOT` | Mutable stack root | compose project dir (`cwd` of every `docker compose` call), `.env`, `compose.override.yaml`, `.build-hash`, `config/machine.env`, generated files |
+| `ctx.repoRoot` | `PM_STACK_ROOT` | Mutable stack root | compose project dir (`cwd` of every `docker compose` call), `.env`, `compose.override.yaml`, `.build-hash`, generated files |
 | `ctx.packageRoot` | `PM_PACKAGE_ROOT` (default: `repoRoot`) | Read-only code root | `providers/` manifests and hook modules, `scripts/setup.mjs`, `scripts/gen-masks.mjs` |
 
 For a git checkout they are the same directory. For an installed package the integrator passes the
@@ -112,7 +112,7 @@ that take `ctx` honor `--dry-run` (they print instead of acting).
 | `ask`, `confirm` | Prompts (answers come from `ctx.yes` and `PM_*` env when non-interactive) |
 | `act(ctx, desc, cmd, args, {env, cwd})`, `actWithEnv` | Run a command, printed only in a dry run |
 | `commandExists(name)` | PATH lookup |
-| `loadMachineEnv(repoRoot)`, `envValue(file, key)`, `expandHome`, `ensureConfigDir(ctx)` | Machine config |
+| `envValue(file, key)`, `expandHome`, `ensureConfigDir(ctx)` | Paths and wizard.conf reads |
 | `curlGet`, `curlJson`, `curlRequest` | HTTP via curl |
 | `portFree`, `choosePort(ctx, label, port, {envVars})`, `resolveHostPort(ctx, label)` | Ports; `resolveHostPort` reads the manifest `compose.hostPortEnv` and `defaultHostPort` |
 | `composeArgs(ctx, ...rest)` | `docker compose` argv: project, optional `-f` files, optional `--profile` |

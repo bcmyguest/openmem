@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseWizardFlags } from "./parse-args.mjs";
-import { loadMachineEnv } from "./load-machine-env.mjs";
 import { step, info, ok, warn, die, problem } from "./log.mjs";
 import { COMPOSE_TOO_OLD_HINT, composeVersionOk, parseComposeVersion } from "./compose-version.mjs";
 import { envValue, ensureHsDir, expandHome, indexerStateDir } from "./paths.mjs";
@@ -68,7 +67,7 @@ async function resolveApiBase(ctx) {
   return providerApiBase(ctx, ctx.memoryProvider);
 }
 
-/** Run the provider's quiet `init` hook (context defaults, TOML/machine.env mapping). */
+/** Run the provider's quiet `init` hook (context defaults, TOML mapping). */
 async function initProvider(ctx) {
   await runProviderPhase(ctx, PROVIDER_PHASES.init, providerHelpers());
 }
@@ -104,8 +103,7 @@ async function hydrateFromWizardConf(ctx) {
 
 async function chooseProvider(ctx) {
   step("2. Memory provider");
-  const machine = loadMachineEnv(ctx.repoRoot);
-  const def = providerDefaultId(ctx, machine);
+  const def = providerDefaultId(ctx);
   const selectable = listSelectableProviders();
   if (ctx.skipBackendStep && process.env.MEMORY_PROVIDER) {
     ctx.providerId = process.env.MEMORY_PROVIDER;
@@ -668,11 +666,11 @@ async function checkPreflight(ctx) {
   await runProviderPhase(ctx, PROVIDER_PHASES.resolvePorts, providerHelpers());
 }
 
-function loadMachineEnvStep(ctx) {
-  const machinePath = path.join(ctx.repoRoot, "config/machine.env");
-  if (fs.existsSync(machinePath)) ok(`machine profile ${machinePath}`);
-  else if (fs.existsSync(path.join(ctx.repoRoot, "config/machine.env.example"))) {
-    info("tip: cp config/machine.env.example config/machine.env for per-machine ./setup defaults");
+function configTomlTip(ctx) {
+  const user = path.join(ctx.home, ".config/personal-memory/config.toml");
+  const example = path.join(ctx.repoRoot, "config/personal-memory.toml.example");
+  if (!fs.existsSync(user) && fs.existsSync(example)) {
+    info(`tip: cp config/personal-memory.toml.example ${user} for declarative defaults`);
   }
 }
 
@@ -700,14 +698,10 @@ export async function runWizard(repoRoot, argv) {
   applyPmConfigEnv(pm.merged);
   ctx.action = parseActionFromArgv(argv);
   if (process.env.PM_PROJECT) ctx.project = process.env.PM_PROJECT;
-  const machine = loadMachineEnv(repoRoot);
-  ctx.providerId =
-    process.env.MEMORY_PROVIDER ||
-    machine.MEMORY_PROVIDER ||
-    providerDefaultId(ctx, machine);
+  ctx.providerId = process.env.MEMORY_PROVIDER || providerDefaultId(ctx);
   ctx.memoryProvider = resolveProvider(ctx.providerId);
   await initProvider(ctx);
-  loadMachineEnvStep(ctx);
+  configTomlTip(ctx);
   const before = await snapshot(ctx);
   if (ctx.dry) info("dry run: no files are written and no containers start");
   info(`wizard action: ${actionLabel(ctx.action)}`);

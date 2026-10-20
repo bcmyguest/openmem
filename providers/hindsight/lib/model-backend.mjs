@@ -65,10 +65,8 @@ function showModels(names, h) {
 
 /** @param {Record<string, any>} ctx @param {Helpers} h */
 async function askReflectModel(ctx, h) {
-  const machine = h.loadMachineEnv(ctx.repoRoot);
   const defaultAnswer =
     process.env.PM_REFLECT_MODEL ||
-    machine.PM_REFLECT_MODEL ||
     storedOr(ctx, h, ctx.backend, "MEMORY_REFLECT_MODEL", "");
   const answer = await h.ask(
     ctx,
@@ -101,13 +99,12 @@ async function pullLemondModels(ctx, h) {
 /** @param {Record<string, any>} ctx @param {Helpers} h */
 async function chooseLemond(ctx, h) {
   ctx.apiBase = "http://host.docker.internal:13305/v1";
-  const machine = h.loadMachineEnv(ctx.repoRoot);
   const defaultModel = storedOr(
     ctx,
     h,
     "lemond",
     "MEMORY_MODEL",
-    process.env.PM_DEFAULT_MODEL || machine.PM_DEFAULT_MODEL || ctx.lemondDefaultModel,
+    process.env.PM_DEFAULT_MODEL || ctx.lemondDefaultModel,
   );
   if (!ctx.lemondJson) {
     h.warn(`lemond is not answering on ${ctx.lemondBase}; the model list is unavailable`);
@@ -121,13 +118,12 @@ async function chooseLemond(ctx, h) {
 
 /** @param {Record<string, any>} ctx @param {Helpers} h */
 async function chooseOllama(ctx, h) {
-  const machine = h.loadMachineEnv(ctx.repoRoot);
   const defaultModel = storedOr(
     ctx,
     h,
     "ollama",
     "MEMORY_MODEL",
-    process.env.PM_DEFAULT_MODEL || machine.PM_DEFAULT_MODEL || ctx.ollamaDefaultModel,
+    process.env.PM_DEFAULT_MODEL || ctx.ollamaDefaultModel,
   );
   if (ctx.ollamaJson) {
     ctx.ollamaInCompose = false;

@@ -21,17 +21,15 @@ Node/Docker; this file describes **how agent memory runs on this machine**.
 | `config/personal-memory.toml.example` | Shipped template; copy to your user config |
 | `~/.config/personal-memory/config.toml` | **Primary** user config (gitignored on your machine) |
 | `./personal-memory.toml` | Optional per-checkout overrides (e.g. different ports in a worktree) |
-| `config/machine.env` | Legacy env KEY=val seeds (still supported) |
-| `~/.config/hindsight/wizard.conf` | Legacy KEY=val **mirror**; updated when setup applies |
+| `~/.config/hindsight/wizard.conf` | Last configure run (`MEMORY_PROVIDER`, ports, …); updated when setup applies |
 
 ## Precedence
 
-1. CLI (`./setup --up`, `--down`, flags)
+1. CLI flags (`npx personal-memory setup --up`, `--down`, …)
 2. Environment (`MEMORY_PROVIDER`, `PM_BACKEND`, `HINDSIGHT_PORT`, …)
 3. `~/.config/personal-memory/config.toml`
-4. `personal-memory.toml` / `config/personal-memory.toml` in the repo
-5. `config/machine.env`
-6. Existing `wizard.conf`
+4. `personal-memory.toml` / `config/personal-memory.toml` in the checkout stack root
+5. Existing `wizard.conf` (provider, ports, model backend from the last wizard run)
 
 Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your answers still win.
 

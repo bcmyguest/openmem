@@ -135,7 +135,7 @@ processing once per batch rather than once per document.
   the indexer container the sink and URL come from `MEMORY_SINK` and `MEMORY_API_URL`.
 
 Default provider id: **`hindsight`**. Change it in **interactive `./setup`** (Clack “Memory provider”,
-defaults to `wizard.conf` / `machine.env`), or set `MEMORY_PROVIDER` for `--yes`. The wizard records
+defaults to `config.toml` and `wizard.conf`), or set `MEMORY_PROVIDER` for `--yes`. The wizard records
 the choice in `wizard.conf`. Stack **up** / **down** are wizard actions (`--up`, `--down`, or Clack
 first step); default action is full **configure and start**.
 

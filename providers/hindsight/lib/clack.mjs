@@ -22,20 +22,17 @@ import {
  * @returns {Promise<Record<string, string>>} environment for the wizard process
  */
 export async function clackSetup(ctx, ui, h) {
-  const machine = h.loadMachineEnv(ctx.repoRoot);
   const wizardConf = ctx.wizardConf;
   if (ctx.pmMerged) applyConfigEnv(ctx.pmMerged);
   /** @type {Record<string, string>} */
   const handoff = {};
 
-  const lemondBase = machine.LEMOND_BASE || "http://127.0.0.1:13305";
+  const lemondBase = process.env.LEMOND_BASE || "http://127.0.0.1:13305";
   handoff.LEMOND_BASE = lemondBase;
 
   const backendDefault =
     process.env.PM_BACKEND ||
-    machine.PM_BACKEND ||
-    machine.MEMORY_BACKEND ||
-    (h.envValue(wizardConf, "MEMORY_BACKEND")) ||
+    h.envValue(wizardConf, "MEMORY_BACKEND") ||
     "lemond";
 
   const backend = await ui.select({

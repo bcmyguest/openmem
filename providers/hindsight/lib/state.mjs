@@ -13,7 +13,7 @@ export const BACKENDS = ["lemond", "ollama", "custom"];
 
 /**
  * Fill the Hindsight fields of the wizard context. Idempotent: a field that is already
- * set (machine.env, a test) is kept.
+ * set (a test) is kept.
  * @param {Record<string, any>} ctx
  */
 export function ensureState(ctx) {
