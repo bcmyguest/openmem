@@ -5,6 +5,10 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO}"
 
+if [ ! -d wizard/node_modules/@clack/prompts ]; then
+    npm install --prefix wizard --no-fund --no-audit
+fi
+
 if [ ! -f config/machine.env ] && [ -f config/machine.env.example ]; then
     cp -n config/machine.env.example config/machine.env
     printf 'Created %s from example — edit for this machine, then rerun ./setup\n' config/machine.env
@@ -21,7 +25,7 @@ fi
 cat <<EOF
 personal-memory is at ${REPO}
 
-Run the setup wizard on a terminal (configures Docker, LiteLLM, reflect routes, indexing):
+Run the setup wizard on a terminal (configures Docker, the memory provider, indexing):
 
   cd ${REPO}
   cp -n config/machine.env.example config/machine.env   # once per machine
