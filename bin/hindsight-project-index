@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Index tracked project docs, tree-sitter code outlines and Obsidian vaults into Hindsight."""
+"""Index tracked project docs, tree-sitter code outlines and Obsidian vaults into a memory provider (Hindsight by default)."""
 
 import argparse
 import fcntl
@@ -9,13 +9,12 @@ import os
 import re
 import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 import code_outline
 import index_config
+import sinks
+from sinks.hindsight import DEFAULT_URL, HttpError  # noqa: F401  (HttpError stays importable from here)
 
 
 SKIP_NAMES = {"auth.json", "credentials.json", "id_rsa", "id_ed25519"}
@@ -24,15 +23,8 @@ DOC_SUFFIXES = {".md", ".mdx"}
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 WIKILINK = re.compile(r"!?\[\[([^\]|#\n]+)[^\]\n]*\]\]")
 INLINE_TAG = re.compile(r"(?<![\w/#&])#([A-Za-z][\w/-]*)")
-DEFAULT_URL = "http://127.0.0.1:8888"
 DEFAULT_STATE = Path.home() / ".cache/hindsight-project-index/state.json"
 AGENT_CONFIG = Path.home() / ".hindsight/coding-agent.json"
-
-
-class HttpError(RuntimeError):
-    def __init__(self, method: str, url: str, status: int, body: str):
-        super().__init__(f"{method} {url}: HTTP {status}: {body}")
-        self.status = status
 
 
 def scan_root(root: Path, depth: int, skip_dirs: frozenset[str], want_vaults: bool) -> tuple[list[Path], list[Path]]:
@@ -253,37 +245,6 @@ def vault_documents(vault: Path, config: index_config.Config | None = None) -> d
     return documents
 
 
-def request(url: str, method: str, payload: dict | None = None) -> dict:
-    data = json.dumps(payload).encode() if payload is not None else None
-    headers = {"Content-Type": "application/json"} if data is not None else {}
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method=method), timeout=300) as response:
-            body = response.read()
-    except urllib.error.HTTPError as error:
-        raise HttpError(method, url, error.code, error.read().decode(errors="replace")[:300]) from error
-    return json.loads(body) if body else {}
-
-
-def ensure_strategy(endpoint: str) -> None:
-    strategy = {"retain_extraction_mode": "chunks", "retain_chunk_size": 3000}
-    try:
-        response = request(endpoint + "/config", "GET")
-    except HttpError as error:
-        if error.status != 404:
-            raise
-        request(endpoint, "PUT", {})
-        response = request(endpoint + "/config", "GET")
-    config = response.get("config", response)
-    strategies = config.get("retain_strategies") or {}
-    updates = {}
-    if strategies.get("project-index") != strategy:
-        updates["retain_strategies"] = {**strategies, "project-index": strategy}
-    if config.get("enable_auto_consolidation") is not False:
-        updates["enable_auto_consolidation"] = False
-    if updates:
-        request(endpoint + "/config", "PATCH", {"updates": updates})
-
-
 def acquire_state_lock(state_path: Path):
     state_path.parent.mkdir(parents=True, exist_ok=True)
     handle = state_path.with_name(state_path.name + ".lock").open("w")
@@ -316,7 +277,7 @@ def kinds_key(source: Path) -> str:
     return f"{source}::kinds"
 
 
-def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
+def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
     if kind:
         documents = {key: value for key, value in documents.items() if value["kind"] == kind}
     old = state.get(str(source), {})
@@ -326,26 +287,18 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
         changed = dict(list(changed.items())[:limit])
     stale = set(old) - set(documents) if limit is None and kind is None else set()
     if apply:
-        endpoint = f"{base_url.rstrip('/')}/v1/default/banks/{urllib.parse.quote(bank, safe='')}"
         if changed:
-            ensure_strategy(endpoint)
+            sink.prepare(bank)
         for doc_id, value in changed.items():
-            item = {"content": value["content"], "document_id": doc_id, "context": value["context"], "metadata": value["metadata"], "timestamp": "unset", "strategy": "project-index"}
-            if value.get("tags"):
-                item["tags"] = value["tags"]
-            request(endpoint + "/memories", "POST", {"items": [item], "async": False})
+            sink.retain(bank, doc_id, value["content"], tags=value.get("tags"), metadata=value["metadata"], context=value["context"])
             old[doc_id] = value["digest"]
             kinds[doc_id] = value["kind"]
             state[str(source)] = old
             state[kinds_key(source)] = kinds
             save_state(state_path, state)
         for doc_id in sorted(stale):
-            try:
-                request(endpoint + "/documents/" + urllib.parse.quote(doc_id, safe=""), "DELETE")
-            except HttpError as error:
-                # 404: already gone (deleted server-side or never retained). Drop it from the manifest anyway.
-                if error.status != 404:
-                    raise
+            # A document already gone (never retained, or deleted server-side) is not an error; drop it from the manifest.
+            sink.delete(bank, doc_id)
             old.pop(doc_id)
             kinds.pop(doc_id, None)
             save_state(state_path, state)
@@ -354,12 +307,12 @@ def sync(source: Path, bank: str, documents: dict[str, dict], base_url: str, sta
     return len(changed), len(stale)
 
 
-def sync_repo(repo: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(repo, bank_id(repo, config), source_documents(repo, config), base_url, state, state_path, apply, limit, kind)
+def sync_repo(repo: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, config: index_config.Config | None = None) -> tuple[int, int]:
+    return sync(repo, bank_id(repo, config), source_documents(repo, config), sink, state, state_path, apply, limit, kind)
 
 
-def sync_vault(vault: Path, base_url: str, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(vault, vault_bank(vault, config), vault_documents(vault, config), base_url, state, state_path, apply, limit, None)
+def sync_vault(vault: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
+    return sync(vault, vault_bank(vault, config), vault_documents(vault, config), sink, state, state_path, apply, limit, None)
 
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
@@ -384,19 +337,32 @@ def selected_sources(args: argparse.Namespace, config: index_config.Config) -> l
     return [("repo", repo) for repo in repos] + [("vault", vault) for vault in vaults]
 
 
+def resolve_url(sink_name: str, explicit: str | None) -> str | None:
+    """--url wins. Otherwise $HINDSIGHT_URL for the hindsight sink (then its default), $MEMORY_API_URL for any other."""
+    if explicit:
+        return explicit
+    if sink_name == "hindsight":
+        return os.environ.get("HINDSIGHT_URL") or DEFAULT_URL
+    return os.environ.get("MEMORY_API_URL") or None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, help="index.yml to use (default: $HINDSIGHT_INDEX_CONFIG, ~/.config/hindsight/index.yml, then config/index.yml)")
     parser.add_argument("--repo", type=Path, action="append", help="index only these repositories (repeatable)")
     parser.add_argument("--vault", type=Path, action="append", help="index an Obsidian vault (repeatable); with --repo or --vault, only the named sources run")
-    parser.add_argument("--url", default=os.environ.get("HINDSIGHT_URL", DEFAULT_URL), help="Hindsight API base URL (default: $HINDSIGHT_URL, then %(default)s)")
+    parser.add_argument("--sink", default=os.environ.get("MEMORY_SINK") or sinks.DEFAULT_SINK, help="memory provider to write to (default: $MEMORY_SINK, then %(default)s); registered: " + ", ".join(sinks.registered_sinks()))
+    parser.add_argument("--url", help="provider API base URL (default: $HINDSIGHT_URL for the hindsight sink, $MEMORY_API_URL for other sinks, then the sink's own default)")
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--limit", type=int, help="at most N changed documents per source; disables deletion")
     parser.add_argument("--kind", choices=("doc", "code"), help="index only documentation or code in repositories; disables deletion")
-    parser.add_argument("--apply", action="store_true", help="write to Hindsight")
+    parser.add_argument("--apply", action="store_true", help="write to the memory provider")
     parser.add_argument("--list", action="store_true", help="print the selected sources as 'kind<TAB>path' and exit")
     args = parser.parse_args()
 
+    if args.sink not in sinks.registered_sinks():
+        print(f"unknown sink {args.sink!r}; registered sinks: {', '.join(sinks.registered_sinks())}", file=sys.stderr)
+        return 2
     try:
         config = index_config.load(args.config)
     except index_config.ConfigError as error:
@@ -417,6 +383,13 @@ def main() -> int:
             print(f"{kind}\t{path}")
         return 0
 
+    sink = None
+    if args.apply:
+        try:
+            sink = sinks.get_sink(args.sink, url=resolve_url(args.sink, args.url))
+        except ValueError as error:  # includes sinks.UnknownSinkError
+            print(f"sink error: {error}", file=sys.stderr)
+            return 2
     # Held until exit: the watcher and manual runs must not overwrite each other's state file.
     state_lock = acquire_state_lock(args.state) if args.apply else None
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
@@ -426,9 +399,9 @@ def main() -> int:
             continue
         try:
             if kind == "repo":
-                changed, stale = sync_repo(path, args.url, state, args.state, args.apply, args.limit, args.kind, config)
+                changed, stale = sync_repo(path, sink, state, args.state, args.apply, args.limit, args.kind, config)
             else:
-                changed, stale = sync_vault(path, args.url, state, args.state, args.apply, args.limit, config)
+                changed, stale = sync_vault(path, sink, state, args.state, args.apply, args.limit, config)
             print(f"{path}: {changed} to retain, {stale} stale" + (" (applied)" if args.apply else " (dry run)"))
             if args.apply:
                 save_state(args.state, state)

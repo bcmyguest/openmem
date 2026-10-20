@@ -20,12 +20,16 @@ RUN git config --system safe.directory '*'
 
 COPY bin/hindsight-project-index /usr/local/bin/hindsight-project-index
 COPY indexer/watch.py indexer/index_config.py indexer/code_outline.py /opt/indexer/
+# Memory sinks (one module per provider). A new indexer/sinks/<name>.py needs no Dockerfile edit.
+COPY indexer/sinks/ /opt/indexer/sinks/
 # Shipped default config. index_config.py finds it at ../config/index.yml relative to itself.
 COPY config/index.yml /opt/config/index.yml
-RUN chmod 0755 /usr/local/bin/hindsight-project-index /opt/indexer/watch.py
+RUN chmod 0755 /usr/local/bin/hindsight-project-index /opt/indexer/watch.py \
+    && chmod -R a+rX /opt/indexer
 
 # $HOME is bind-mounted, so ignore the host's ~/.local site-packages (they would shadow the pinned packages).
-# PYTHONPATH makes index_config and code_outline importable from both the indexer script and watch.py.
+# PYTHONPATH makes index_config, code_outline and the sinks package importable from both the indexer script and
+# watch.py.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONNOUSERSITE=1 \
     PYTHONPATH=/opt/indexer \

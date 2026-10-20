@@ -1,0 +1,188 @@
+[
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/config"
+  },
+  {
+    "body": {},
+    "method": "PUT",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/config"
+  },
+  {
+    "body": {
+      "updates": {
+        "enable_auto_consolidation": false,
+        "retain_strategies": {
+          "project-index": {
+            "retain_chunk_size": 3000,
+            "retain_extraction_mode": "chunks"
+          }
+        }
+      }
+    },
+    "method": "PATCH",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/config"
+  },
+  {
+    "body": {
+      "async": false,
+      "items": [
+        {
+          "content": "Project: proj\nSource: README.md\nSection: Proj\n\nFirst version of the readme.",
+          "context": "Project proj doc source",
+          "document_id": "<DOC:1>",
+          "metadata": {
+            "kind": "doc",
+            "path": "README.md"
+          },
+          "strategy": "project-index",
+          "timestamp": "unset"
+        }
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/memories"
+  },
+  {
+    "body": {
+      "async": false,
+      "items": [
+        {
+          "content": "Project: proj\nSource: app.py\nSection: outline\n\nFile: app.py\nLanguage: python\nSymbols:\n- L1 def handler(event):",
+          "context": "Project proj code source",
+          "document_id": "<DOC:2>",
+          "metadata": {
+            "kind": "code",
+            "path": "app.py"
+          },
+          "strategy": "project-index",
+          "timestamp": "unset"
+        }
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/memories"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/config"
+  },
+  {
+    "body": {},
+    "method": "PUT",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/config"
+  },
+  {
+    "body": {
+      "updates": {
+        "enable_auto_consolidation": false,
+        "retain_strategies": {
+          "project-index": {
+            "retain_chunk_size": 3000,
+            "retain_extraction_mode": "chunks"
+          }
+        }
+      }
+    },
+    "method": "PATCH",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/config"
+  },
+  {
+    "body": {
+      "async": false,
+      "items": [
+        {
+          "content": "Vault: My Vault\nSource: plan.md\nSection: Plan\n\nShip it with #ops and [[Roadmap]].",
+          "context": "Obsidian vault My Vault note",
+          "document_id": "<DOC:3>",
+          "metadata": {
+            "kind": "note",
+            "links": "Roadmap",
+            "path": "plan.md"
+          },
+          "strategy": "project-index",
+          "tags": [
+            "work",
+            "infra",
+            "ops"
+          ],
+          "timestamp": "unset"
+        }
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/memories"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/config"
+  },
+  {
+    "body": {
+      "async": false,
+      "items": [
+        {
+          "content": "Project: proj\nSource: README.md\nSection: Proj\n\nSecond version of the readme.",
+          "context": "Project proj doc source",
+          "document_id": "<DOC:1>",
+          "metadata": {
+            "kind": "doc",
+            "path": "README.md"
+          },
+          "strategy": "project-index",
+          "timestamp": "unset"
+        }
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/memories"
+  },
+  {
+    "body": null,
+    "method": "DELETE",
+    "path": "/v1/default/banks/coding-agent%3A%3Aproj/documents/<DOC:2>"
+  },
+  {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/config"
+  },
+  {
+    "body": {
+      "async": false,
+      "items": [
+        {
+          "content": "Vault: My Vault\nSource: other.md\nSection: Other\n\nA different note.",
+          "context": "Obsidian vault My Vault note",
+          "document_id": "<DOC:4>",
+          "metadata": {
+            "kind": "note",
+            "path": "other.md"
+          },
+          "strategy": "project-index",
+          "timestamp": "unset"
+        }
+      ]
+    },
+    "method": "POST",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/memories"
+  },
+  {
+    "body": null,
+    "method": "DELETE",
+    "path": "/v1/default/banks/obsidian%3A%3Amy-vault/documents/<DOC:3>"
+  }
+]
