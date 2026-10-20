@@ -975,10 +975,16 @@ function copyTree(dest) {
       filter: (src) => !skip.test(path.relative(root, src)),
     });
   }
-  const r = spawnSync("npm", ["install", "--no-fund", "--no-audit", "--silent"], {
+  let r = spawnSync("npm", ["ci", "--no-fund", "--no-audit", "--silent"], {
     cwd: dest,
     encoding: "utf8",
   });
+  if (r.status !== 0) {
+    r = spawnSync("npm", ["install", "--no-fund", "--no-audit", "--silent"], {
+      cwd: dest,
+      encoding: "utf8",
+    });
+  }
   if (r.status !== 0) {
     throw new Error(`npm install failed in ${dest}: ${(r.stderr || r.stdout || "").trim()}`);
   }
