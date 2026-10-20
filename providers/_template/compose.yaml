@@ -1,0 +1,52 @@
+# TEMPLATE compose fragment for a memory provider. Copy to providers/<id>/compose.yaml and replace every
+# "example" / EXAMPLE_ below with the provider id. Directories starting with "_" are not providers; the wizard's
+# provider registry must skip them.
+#
+# Layering (the wizard passes both, then `up -d`):
+#   docker compose -f compose.yaml -f providers/<id>/compose.yaml --profile <id> up -d
+# Add `-f compose.override.yaml` when you use the generated secret masks (Compose skips that file once -f is given).
+#
+# What the base compose.yaml gives you:
+#   - `indexer` and `indexer-state-init` have no profile and no provider dependency, so they start for every
+#     provider. This fragment points the indexer at your service and makes it wait for it.
+#   - `litellm` and `hindsight` carry the profile "hindsight" and do not start under any other profile.
+# Keep this fragment small: one service (or a few), its volumes, and the indexer wiring. Never copy the indexer
+# build or image; `personal-memory-indexer:local` is shared.
+
+services:
+  example:
+    profiles: ["example"]
+    # Pin a tag or digest. Bump deliberately.
+    image: example/memory-server:0.0.0
+    # Loopback only. Host port from .env (EXAMPLE_PORT); change the default to the provider's usual port + 10000.
+    ports:
+      - "127.0.0.1:${EXAMPLE_PORT:-18080}:8080"
+    # Secrets live in an env file outside the repo, like HINDSIGHT_ENV_FILE. Delete if the provider needs none.
+    # required: false lets `config` and `up` run before the wizard has written the file (Compose 2.24+).
+    env_file:
+      - path: ${EXAMPLE_ENV_FILE:-${HOME}/.config/personal-memory/example.env}
+        required: false
+    volumes:
+      - example-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # The image has no curl in most cases; use the interpreter that is there.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  indexer:
+    environment:
+      # Selects indexer/sinks/example.py and gives it the API base URL (the compose service name, not localhost).
+      MEMORY_SINK: example
+      MEMORY_API_URL: http://example:8080
+    depends_on:
+      # Hard dependency (required defaults to true): this fragment is only layered together with --profile example,
+      # so a missing profile fails loudly instead of starting an indexer with nothing to write to.
+      example:
+        condition: service_healthy
+
+volumes:
+  example-data:

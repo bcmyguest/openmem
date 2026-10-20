@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+import sinks
+
 
 SCRIPT = Path(__file__).resolve().parents[2] / "bin" / "hindsight-project-index"
 
@@ -47,11 +49,37 @@ def test_code_files_become_outline_documents_and_unknown_suffixes_are_skipped(in
     assert all(value["path"] != "notes.txt" for value in documents.values())
 
 
+class RecordingSink:
+    """Satisfies sinks.Sink; records calls and optionally fails deletes."""
+
+    capabilities = sinks.Capabilities()
+
+    def __init__(self, delete_error: Exception | None = None):
+        self.calls: list[tuple] = []
+        self.delete_error = delete_error
+
+    def health(self) -> bool:
+        return True
+
+    def prepare(self, bank):
+        self.calls.append(("prepare", bank))
+
+    def retain(self, bank, doc_id, content, *, tags=None, metadata=None, context=None, timestamp=None):
+        self.calls.append(("retain", bank, doc_id, content, tags, metadata, context, timestamp))
+
+    def delete(self, bank, doc_id):
+        self.calls.append(("delete", bank, doc_id))
+        if self.delete_error:
+            raise self.delete_error
+
+
 def test_unguarded_sync_counts_all_stale_documents(indexer, tmp_path):
     source = tmp_path / "repo"
     state = {str(source): {"code-id": "d1", "doc-id": "d2"}, indexer.kinds_key(source): {"code-id": "code", "doc-id": "doc"}}
-    _, stale = indexer.sync(source, "bank", {}, "http://unused", state, tmp_path / "state.json", False, None, None)
+    sink = RecordingSink()
+    _, stale = indexer.sync(source, "bank", {}, sink, state, tmp_path / "state.json", False, None, None)
     assert stale == 2
+    assert sink.calls == []  # a dry run never touches the sink
 
 
 def stale_state(source: Path) -> dict:
@@ -62,35 +90,44 @@ def indexer_kinds(source: Path) -> str:
     return f"{source}::kinds"
 
 
-def test_delete_404_counts_as_removed_and_drops_manifest_entry(indexer, tmp_path, monkeypatch):
+def test_stale_document_is_deleted_and_dropped_from_manifest(indexer, tmp_path):
     source = tmp_path / "repo"
-    state_path = tmp_path / "state.json"
     state = stale_state(source)
-    calls = []
+    sink = RecordingSink()
 
-    def fake_request(url, method, payload=None):
-        calls.append((method, url))
-        raise indexer.HttpError(method, url, 404, "Document not found")
-
-    monkeypatch.setattr(indexer, "request", fake_request)
-
-    changed, stale = indexer.sync(source, "bank", {}, "http://unused", state, state_path, True, None, None)
+    changed, stale = indexer.sync(source, "bank", {}, sink, state, tmp_path / "state.json", True, None, None)
 
     assert (changed, stale) == (0, 1)
-    assert calls and calls[0][0] == "DELETE"
+    assert sink.calls == [("delete", "bank", "gone-id")]
     assert "gone-id" not in state[str(source)]
     assert "gone-id" not in state[indexer_kinds(source)]
 
 
-def test_delete_500_still_fails(indexer, tmp_path, monkeypatch):
+def test_sink_delete_failure_keeps_manifest_entry(indexer, tmp_path):
     source = tmp_path / "repo"
     state = stale_state(source)
+    sink = RecordingSink(delete_error=sinks.SinkError("boom", 500))
 
-    def fake_request(url, method, payload=None):
-        raise indexer.HttpError(method, url, 500, "boom")
-
-    monkeypatch.setattr(indexer, "request", fake_request)
-
-    with pytest.raises(indexer.HttpError, match="HTTP 500"):
-        indexer.sync(source, "bank", {}, "http://unused", state, tmp_path / "state.json", True, None, None)
+    with pytest.raises(sinks.SinkError, match="boom"):
+        indexer.sync(source, "bank", {}, sink, state, tmp_path / "state.json", True, None, None)
     assert "gone-id" in state[str(source)]
+
+
+def test_changed_documents_prepare_once_then_retain_each(indexer, tmp_path):
+    source = tmp_path / "repo"
+    documents = {
+        "id-1": {"content": "one", "digest": "d1", "kind": "doc", "context": "ctx", "metadata": {"path": "a.md"}},
+        "id-2": {"content": "two", "digest": "d2", "kind": "note", "context": "ctx", "metadata": {"path": "b.md"}, "tags": ["x"]},
+    }
+    state: dict = {}
+    sink = RecordingSink()
+
+    changed, stale = indexer.sync(source, "bank", documents, sink, state, tmp_path / "state.json", True, None, None)
+
+    assert (changed, stale) == (2, 0)
+    assert sink.calls == [
+        ("prepare", "bank"),
+        ("retain", "bank", "id-1", "one", None, {"path": "a.md"}, "ctx", None),
+        ("retain", "bank", "id-2", "two", ["x"], {"path": "b.md"}, "ctx", None),
+    ]
+    assert state[str(source)] == {"id-1": "d1", "id-2": "d2"}

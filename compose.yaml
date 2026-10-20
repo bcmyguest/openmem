@@ -1,7 +1,16 @@
 name: personal-memory
 
-# Hindsight memory API and the project/Obsidian indexer.
+# Memory provider stack (Hindsight by default) and the project/Obsidian indexer.
 # Set HINDSIGHT_ENV_FILE to use an env file other than ~/.config/hindsight/hindsight.env.
+#
+# Provider selection is by compose profile:
+#   - litellm and hindsight carry the profile "hindsight" (and "notebooklm", which needs them).
+#   - indexer and indexer-state-init have no profile and no hard provider dependency; they start for every provider.
+#   - Another provider ships providers/<id>/compose.yaml (see providers/_template/compose.yaml) with its own
+#     profile, and layers over this file: docker compose -f compose.yaml -f providers/<id>/compose.yaml --profile <id> up -d
+# Compose starts no profiled service unless a profile is enabled, so the plain `docker compose up -d` of the README
+# needs COMPOSE_PROFILES=hindsight in .env (or --profile hindsight). Note that a --profile flag replaces
+# COMPOSE_PROFILES rather than adding to it; name every profile you want on the command line.
 
 # Shared build for the indexer and its state-volume init step.
 x-indexer-build: &indexer-build
@@ -14,6 +23,7 @@ services:
   # fixed aliases memory-retain, memory-reflect, memory-consolidate. Routes live in LITELLM_CONFIG (set by scripts/setup.sh).
   # Internal network only: nothing is published to the host.
   litellm:
+    profiles: ["hindsight", "notebooklm"]
     image: ghcr.io/berriai/litellm:v1.105.1
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     env_file: ${LITELLM_ENV_FILE:-${HOME}/.config/hindsight/litellm.env}
@@ -30,6 +40,7 @@ services:
       start_period: 30s
 
   hindsight:
+    profiles: ["hindsight", "notebooklm"]
     depends_on:
       litellm:
         condition: service_healthy
@@ -72,8 +83,12 @@ services:
       HOME: ${HOME}
       HINDSIGHT_URL: http://hindsight:8888
     depends_on:
+      # Soft: waits for Hindsight to be healthy when its profile is active and is ignored otherwise (other providers
+      # add their own dependency in providers/<id>/compose.yaml). Unlike a hard dependency, an unhealthy Hindsight
+      # only logs a warning; the indexer starts anyway and its watcher retries.
       hindsight:
         condition: service_healthy
+        required: false
       indexer-state-init:
         condition: service_completed_successfully
     restart: unless-stopped

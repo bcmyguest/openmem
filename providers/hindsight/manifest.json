@@ -1,0 +1,52 @@
+{
+  "id": "hindsight",
+  "label": "Hindsight",
+  "status": "supported",
+  "compose": {
+    "services": ["litellm", "hindsight", "indexer"],
+    "healthService": "hindsight",
+    "healthPath": "/health",
+    "hostPortEnv": "HINDSIGHT_PORT",
+    "defaultHostPort": 8888,
+    "profile": "hindsight",
+    "files": []
+  },
+  "indexer": {
+    "apiUrlEnv": "HINDSIGHT_URL",
+    "sinkDriver": "hindsight-rest-v1"
+  },
+  "codingAgent": {
+    "pluginPackage": "@vectorize-io/hindsight-coding-agents",
+    "configTemplate": "config/coding-agent.json"
+  },
+  "settings": {
+    "nativeDocs": "https://github.com/vectorize-io/hindsight",
+    "nativeConfigPaths": [
+      "~/.config/hindsight/hindsight.env",
+      "~/.config/hindsight/litellm.yaml",
+      "config/litellm.lemond.yaml"
+    ],
+    "wizardOwns": [
+      "compose stack and ports",
+      "index.yml sources",
+      "LiteLLM proxy wiring for Hindsight LLM aliases",
+      "coding-agent.json symlink"
+    ]
+  },
+  "wizardHooks": {
+    "module": "wizard.mjs",
+    "delegates": {}
+  },
+  "wizard": {
+    "smokeBank": "wizard-smoke",
+    "retainMethod": "POST",
+    "retainPath": "/v1/default/banks/{bank}/memories",
+    "retainBody": "{\"items\":[{\"content\":\"Wizard smoke test: the project codename is heron.\"}],\"async\":false}",
+    "recallMethod": "POST",
+    "recallPath": "/v1/default/banks/{bank}/memories/recall",
+    "recallBody": "{\"query\":\"What is the project codename?\"}",
+    "recallMustMatch": "heron",
+    "deleteMethod": "DELETE",
+    "deletePath": "/v1/default/banks/{bank}"
+  }
+}
