@@ -47,6 +47,23 @@ export const PAGES = [
     description: 'Every provider, its status, and its self-host story, generated from the provider manifests.',
   },
   {
+    slug: 'hindsight',
+    kind: 'doc',
+    source: 'docs/hindsight.md',
+    group: 'Providers',
+    title: 'Hindsight',
+    description: 'Default Compose stack, LiteLLM, loopback API, session hooks, and optional plugin.',
+  },
+  {
+    slug: 'model-configuration',
+    kind: 'doc',
+    source: 'docs/model-configuration.md',
+    group: 'Providers',
+    optional: true,
+    title: 'Model configuration',
+    description: 'LiteLLM aliases and backends for Hindsight retain, reflect, and consolidate.',
+  },
+  {
     slug: 'mem0',
     kind: 'doc',
     source: 'docs/mem0.md',

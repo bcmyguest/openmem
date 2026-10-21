@@ -18,6 +18,7 @@ const manifest = (id, status, extra = {}) => ({ id, label: id.toUpperCase(), sta
 const DOCS = {
   'docs/quickstart.md': '# Quickstart\n\nBody.\n',
   'docs/architecture.md': '# Architecture\n\nSee [config](personal-memory-config.md).\n',
+  'docs/hindsight.md': '# Hindsight\n\nBody.\n',
   'docs/personal-memory-config.md': '# Config\n\nBody.\n',
   '.agents/s/SKILL.md': 'x',
 };
@@ -38,6 +39,7 @@ test('generates pages and rewrites links; an absent optional doc is skipped', ()
     'getting-started',
     'architecture',
     'provider-status',
+    'hindsight',
     'personal-memory-config',
   ]);
   const out = readFileSync(join(f.site, 'src/content/docs/docs/architecture.md'), 'utf8');
