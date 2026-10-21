@@ -12,7 +12,7 @@
 | --- | --- |
 | 1. Wizard | `npx personal-memory` |
 | 2. Check | `npx personal-memory doctor` |
-| 3. NotebookLM MCP (optional) | `npx personal-memory install-mcp --yes --notebooklm` |
+| 3. MCP (optional) | `npx personal-memory install-mcp --yes` |
 
 **Checkout instead of npx:**
 
@@ -23,9 +23,18 @@ npm install && npx . setup
 
 **Needs:** Docker Compose v2, Node ≥ 20.12, and an LLM route if you use Hindsight (lemond, Ollama, or OpenAI-compatible — set in the wizard).
 
-Day-2: `npx personal-memory up` · `down` · `switch <provider> --yes`
+### Day-2
 
-![Setup wizard dry-run](docs/assets/setup-demo.gif)
+```sh
+npx personal-memory up
+npx personal-memory down
+npx personal-memory switch mem0 --yes
+npx personal-memory doctor
+```
+
+Wizard dry-run (what first setup plans — no writes):
+
+![Setup dry-run: npx personal-memory setup --dry-run](https://bcmyguest.github.io/personal-memory/setup-demo.gif)
 
 Full guide: [docs/quickstart.md](docs/quickstart.md) · [docs site](https://bcmyguest.github.io/personal-memory/docs/getting-started/)
 
@@ -36,7 +45,7 @@ flowchart TB
   subgraph setup["personal-memory (npm CLI)"]
     W[setup wizard]
     W --> ENV["~/.config/hindsight/*\nstack .env · index.yml"]
-    W --> MCP["install-mcp\n(NotebookLM MCP)"]
+    W --> MCP["install-mcp\n(unified + NotebookLM)"]
   end
 
   subgraph sources["Sources on disk"]
@@ -75,7 +84,7 @@ flowchart TB
 | --- | --- |
 | Wizard → stack | Provider, env, indexer image, compose up, smoke test |
 | Sources → indexer | Shared watcher; sink from active provider manifest |
-| Agents → provider | Hindsight plugin for session memory; `install-mcp` for NotebookLM MCP (and mem0/Cognee with `--provider-only`) |
+| Agents → provider | Hindsight plugin; `install-mcp` for unified `memory_*` MCP (+ NotebookLM / native provider MCP) |
 
 Default Hindsight compose services: `litellm`, `hindsight` (API `127.0.0.1:8888`), `indexer`.
 

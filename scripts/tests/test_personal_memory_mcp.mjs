@@ -63,7 +63,20 @@ process.on("exit", () => {
 }
 
 {
-  const r = await callUnifiedTool({ provider: "hindsight", hindsightUrl: "http://127.0.0.1:1" }, "memory_export", {});
+  /** @type {typeof fetch} */
+  const fetchFn = async (url) => {
+    const u = String(url);
+    if (u.endsWith("/v1/default/banks")) {
+      return { ok: true, async json() { return { banks: [] }; }, async text() { return '{"banks":[]}'; } };
+    }
+    return { ok: true, async text() { return '{"items":[],"total":0}'; } };
+  };
+  const r = await callUnifiedTool(
+    { provider: "hindsight", hindsightUrl: "http://127.0.0.1:8888" },
+    "memory_export",
+    {},
+    fetchFn,
+  );
   const text = r.content[0].text;
   check("memory_export PMM", text.includes("pmm_version"));
 }

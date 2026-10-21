@@ -105,7 +105,7 @@ export const works = [
 ];
 
 export const next = [
-  'PMM export/import: Hindsight list export and Cognee dataset export',
+  'PMM import: mem0 duplicate detection; richer Cognee export (full document text)',
   ...notSupported.map((p) => `${p.label}: manifest status is ${p.status}`),
   'Live end-to-end runs against real mem0 and Cognee servers (required before supported)',
   site.npm.published ? 'Further npm releases' : `The first npm release, which makes npx ${site.npm.package} work`,

@@ -1,4 +1,6 @@
-/** PMM (Personal Memory Manifest) export/import — provider adapters. */
+/** PMM (Personal Memory Manifest) export/import — orchestrator over provider adapters. */
+
+import { runProviderExport } from "./export/index.mjs";
 
 export const PMM_VERSION = 1;
 
@@ -13,6 +15,19 @@ export function buildPmm(parts) {
     scope: parts.scope,
     records: parts.records,
   };
+}
+
+/**
+ * @param {ReturnType<typeof buildPmm>} pmm
+ * @param {string} format
+ */
+export function serializePmm(pmm, format) {
+  if (format === "jsonl") {
+    const header = { ...pmm, records: undefined };
+    const lines = [JSON.stringify(header), ...(pmm.records || []).map((r) => JSON.stringify(r))];
+    return `${lines.join("\n")}\n`;
+  }
+  return pmm;
 }
 
 /**
@@ -51,62 +66,11 @@ export function parsePmm(data) {
  * @param {typeof fetch} fetchFn
  */
 export async function memoryExport(ctx, args, fetchFn = fetch) {
-  const scopeBank = String(args.bank || "personal-memory-mcp").trim() || "personal-memory-mcp";
   const format = String(args.format || "json").toLowerCase();
-  if (ctx.provider === "mem0") {
-    return exportMem0(ctx, { user_id: scopeBank }, format, fetchFn);
-  }
-  if (ctx.provider === "hindsight") {
-    const pmm = buildPmm({
-      provider: "hindsight",
-      scope: { bank: scopeBank },
-      records: [],
-    });
-    pmm.note =
-      "Hindsight has no list-memories API in PMM v1; use recall per bank or export from the Hindsight API directly.";
-    return format === "jsonl" ? `${JSON.stringify(pmm)}\n` : pmm;
-  }
-  if (ctx.provider === "cognee") {
-    const pmm = buildPmm({
-      provider: "cognee",
-      scope: { dataset: scopeBank },
-      records: [],
-    });
-    pmm.note = "Cognee bulk export is not implemented in PMM v1; use Cognee REST or dataset tools.";
-    return format === "jsonl" ? `${JSON.stringify(pmm)}\n` : pmm;
-  }
-  throw new Error(`export not supported for provider ${ctx.provider}`);
-}
-
-async function exportMem0(ctx, scope, format, fetchFn) {
-  const base = ctx.mem0?.baseUrl;
-  const key = ctx.mem0?.apiKey;
-  if (!base) throw new Error("mem0 API URL not configured");
-  /** @type {Record<string, string>} */
-  const headers = {};
-  if (key) headers["X-API-Key"] = key;
-  const q = new URLSearchParams({ user_id: scope.user_id, top_k: "1000" });
-  const res = await fetchFn(`${base}/memories?${q}`, { headers });
-  const text = await res.text();
-  let json;
-  try {
-    json = text ? JSON.parse(text) : {};
-  } catch {
-    throw new Error(`GET /memories → ${res.status}: ${text.slice(0, 200)}`);
-  }
-  if (!res.ok) throw new Error(`GET /memories → ${res.status}: ${text.slice(0, 400)}`);
-  const raw = Array.isArray(json) ? json : json.results || json.memories || [];
-  const records = raw.map((row) => ({
-    id: row.id ?? row.memory_id ?? null,
-    content: row.memory ?? row.text ?? row.content ?? JSON.stringify(row),
-    metadata: row.metadata ?? {},
-    scope_key: scope.user_id,
-  }));
-  const pmm = buildPmm({ provider: "mem0", scope, records });
-  if (format === "jsonl") {
-    return `${JSON.stringify({ ...pmm, records: undefined })}\n${records.map((r) => JSON.stringify(r)).join("\n")}\n`;
-  }
-  return pmm;
+  const { scope, records, note } = await runProviderExport(ctx.provider, ctx, args, fetchFn);
+  const pmm = buildPmm({ provider: ctx.provider, scope, records });
+  if (note) pmm.note = note;
+  return serializePmm(pmm, format);
 }
 
 /**

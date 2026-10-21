@@ -60,18 +60,23 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_export",
-    description: "Export portable memories (coming soon — provider-neutral format).",
+    description:
+      "Export memories as PMM v1 (json/jsonl). Hindsight lists via /memories/list; mem0 GET /memories; Cognee dataset /data.",
     inputSchema: {
       type: "object",
       properties: {
-        format: { type: "string", enum: ["json", "jsonl"], description: "Target format when available" },
+        format: { type: "string", enum: ["json", "jsonl"], description: "Serialization (default json)" },
+        bank: {
+          type: "string",
+          description: "Hindsight bank, mem0 user_id, or indexer bank for Cognee dataset mapping. Omit on Hindsight to export all banks.",
+        },
       },
       additionalProperties: false,
     },
   },
   {
     name: "memory_import",
-    description: "Import portable memories (coming soon).",
+    description: "Import PMM v1 payload into the active provider (best-effort cross-provider).",
     inputSchema: {
       type: "object",
       properties: {

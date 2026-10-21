@@ -37,7 +37,7 @@ exist only inside a checkout; prefer `npx personal-memory …` (or `npx . …` i
 | `configure` | non-interactive setup and start (`setup --yes`) |
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
-| `install-mcp` | merge **NotebookLM** MCP into `~/.cursor/mcp.json` (Hindsight default); `--provider-only` for mem0/Cognee; `--notebooklm` to force NotebookLM |
+| `install-mcp` | merge **personal-memory** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |
 | `init [--force] [--dry-run] [--json]` | create or upgrade the stack root without running the wizard |
