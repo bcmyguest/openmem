@@ -17,27 +17,32 @@ flowchart TB
     IDX[indexer]
     PROV[(Active provider API)]
     IDX -->|retain / update via sink| PROV
-    LIT[LiteLLM proxy]
+    LIT[LiteLLM]
     NLM[NotebookLM sync]
-    LIT -.->|Hindsight only| PROV
-    NLM -.->|optional profile; Hindsight banks| PROV
+    LIT -.->|Hindsight stack only| PROV
+    NLM -.->|opt-in profile| PROV
   end
+
+  LIT --> LLM[(Local or cloud LLM)]
 
   subgraph host["Host — IDE / coding agents"]
     AG[Coding agents]
     UMCP["personal-memory MCP\n(memory_*)"]
     PLG["Hindsight plugin\n(Hindsight only)"]
-    NAT["Optional MCP\nnotebooklm · mem0 · cognee"]
+    PMCP["Provider MCP\nmem0 or Cognee, optional"]
+    NLMCP["NotebookLM MCP\noptional, separate server"]
   end
 
   GIT --> IDX
   OBS --> IDX
   AG <-->|stdio| UMCP
   AG <-->|in-IDE session| PLG
-  AG <-->|stdio| NAT
+  AG <-->|stdio| PMCP
+  AG <-->|stdio| NLMCP
   UMCP -->|loopback HTTP| PROV
   PLG -->|loopback HTTP| PROV
-  NAT -->|loopback HTTP| PROV
+  PMCP -->|loopback HTTP| PROV
+  NLMCP -->|loopback HTTP| PROV
 ```
 
 | Path | What moves |
@@ -45,7 +50,10 @@ flowchart TB
 | **Indexing** | Git/Obsidian → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
 | **Agents** | Cursor/Claude/Codex → stdio MCP or plugin → same provider API |
 | **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
-| **LiteLLM / NotebookLM** | Only on the default **Hindsight** compose profile; other providers use their own LLM/env |
+| **LiteLLM** | **Hindsight only.** Sidecar that routes Hindsight retain/reflect/consolidate calls to lemond, Ollama, or another OpenAI-compatible endpoint — not used on mem0/Cognee stacks |
+| **NotebookLM sync** | **Hindsight only, opt-in.** Background sync writes NotebookLM content into Hindsight via the API (`notebooklm::*` scope); not the same as the NotebookLM MCP |
+| **Provider MCP** | Native mem0 or Cognee tool names (`install-mcp --provider-only`); same API as unified MCP, different stdio server |
+| **NotebookLM MCP** | Read-only list/search over synced notebooks; separate entry in `mcp.json`, not a memory provider |
 
 Only **one provider** is active at a time (`MEMORY_PROVIDER`). The indexer uses that provider’s HTTP sink (`MEMORY_SINK` / manifest).
 
@@ -107,6 +115,14 @@ Adding a provider means a new manifest + hooks + sink driver; agents can keep us
 | `~/.config/hindsight/index.yml` | What the indexer watches |
 
 `npx personal-memory switch <id>` updates provider selection and restarts compose; it does **not** migrate memories ([export/import](memory-portability.md) is for that).
+
+### Example: unified MCP on mem0
+
+1. `npx personal-memory switch mem0 --yes` — compose and env point the indexer and unified MCP at `MEM0_API_URL`.
+2. `npx personal-memory install-mcp --yes` — merges the `personal-memory` server into `~/.cursor/mcp.json` (NotebookLM MCP only if you enabled sync or pass `--notebooklm`).
+3. The agent calls `memory_add` with `{ content: "…", bank: "my-project" }`. The facade sends `POST /memories` with `user_id=my-project` and `infer: false`.
+
+`install-mcp --provider-only` is a **different** stdio server: same mem0 API, but upstream mem0 tool names from `@yeyuan98/mem0-mcp`. NotebookLM MCP is **different again** — search over notebooks synced into Hindsight, not a substitute for mem0/Cognee/Hindsight memory.
 
 ### Unified MCP → provider HTTP
 

@@ -8,7 +8,8 @@
     "sync": "node scripts/sync.mjs",
     "theme": "node scripts/gen-theme.mjs",
     "dev": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro dev",
-    "build": "node scripts/ensure-mermaid-browser.mjs && node scripts/sync.mjs && node scripts/gen-theme.mjs && astro build && node scripts/check-privacy.mjs dist && node scripts/check-links.mjs dist",
+    "build": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro build && node scripts/check-privacy.mjs dist && node scripts/check-links.mjs dist",
+    "render-diagrams": "node scripts/render-diagrams.mjs",
     "check:privacy": "node scripts/check-privacy.mjs dist",
     "check:sources": "node scripts/check-privacy.mjs --sources-report",
     "check:links": "node scripts/check-links.mjs dist",
@@ -23,7 +24,6 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@mermaid-js/mermaid-cli": "^11.17.0",
     "@resvg/resvg-js": "^2.6.2",
     "satori": "^0.57.2",
     "yaml": "^2.9.1"

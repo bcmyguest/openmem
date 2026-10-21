@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PAGES, firstHeading, rewriteLinks, stripH1, withFrontmatter } from './docs.mjs';
-import { mermaidBlockCount, replaceMermaidWithImages } from './mermaid-svg.mjs';
+import { embedMermaidAsImages, mermaidBlockCount } from './mermaid-svg.mjs';
 import { site } from '../../src/site.config.mjs';
 import { readProviders } from './manifests.mjs';
 import { applyAllowlist, formatFinding, scanText, validateAllowlist } from './privacy.mjs';
@@ -99,12 +99,12 @@ export function runSync({ repoRoot, siteRoot, repoUrl, branch, log = () => {} })
     if (mermaidBlocks > 0) {
       const basePath = String(process.env.BASE_PATH ?? site.basePath).replace(/\/?$/, '/');
       const diagramsDir = join(siteRoot, 'public', 'diagrams');
-      raw = replaceMermaidWithImages(raw, {
+      raw = embedMermaidAsImages(raw, {
         outDir: diagramsDir,
         urlPrefix: `${basePath}diagrams/`,
         namePrefix: page.slug.replace(/[^a-z0-9-]+/g, '-'),
       });
-      log(`diagrams: ${page.slug} (${mermaidBlocks} mermaid → svg)`);
+      log(`diagrams: ${page.slug} (${mermaidBlocks} mermaid → committed svg)`);
     }
     const title = page.slug === 'npx-install' ? (firstHeading(raw) ?? page.title) : page.title;
     const body = rewriteLinks(stripH1(raw), { sourcePath: page.source, published, kindOf, repoUrl, branch });
