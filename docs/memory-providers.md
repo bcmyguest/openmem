@@ -165,7 +165,7 @@ Switching does **not** migrate memories between backends. The NotebookLM compose
 
 - HTTP retain/delete/health live in `indexer/sinks/`; default sink is `hindsight`.
 - CLI: `--sink <name>` or env `MEMORY_SINK`; non-Hindsight sinks use `MEMORY_API_URL` for the API base.
-- Contract tests: `indexer/tests/sink_contract.py` and `test_sinks.py`.
+- Contract tests: `indexer/tests/sink_contract.py` and `test_sinks.py`. Per-provider bank mapping and compose env: [indexer-sinks.md](indexer-sinks.md).
 
 ### Phase D — Compose profiles (implemented for Hindsight)
 
@@ -213,6 +213,14 @@ mem0’s API and deployment model differ from Hindsight banks and retain/reflect
 - Different **namespace** model instead of `bank` strings.
 - Possibly **no** LiteLLM sidecar in this repo (mem0 cloud or separate compose).
 - Coding-agent integration likely **not** the Hindsight npx package; manifest should name the real install path when known.
+
+## Developer deep dives (repo only)
+
+These stay under `docs/` and are **not** synced to the Starlight site (see `site/scripts/lib/docs.mjs` —
+only user-facing guides like [Architecture](architecture.md) are listed in `PAGES`).
+
+- [Indexer sink drivers](indexer-sinks.md) — `sink` vs `sinkDriver`, env vars, bank/scope mapping for Hindsight, mem0, Cognee
+- [MCP install guide](mcp-install-guide.md) — unified MCP vs `--provider-only` vs NotebookLM MCP
 
 ## Site and docs
 
