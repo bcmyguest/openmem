@@ -65,6 +65,8 @@ after meta steps — like asdf plugin install scripts, not reimplemented npm/mem
 
 NotebookLM sync is **orthogonal** to which provider you picked: enable the `notebooklm` profile and the sync container uses the same `MEMORY_SINK` as the indexer (Hindsight, mem0, or Cognee).
 
+Coding-agent session memory uses the **same** in-repo hooks and unified MCP for every provider; optional `--hindsight-plugin` adds the upstream Hindsight plugin on Hindsight stacks only.
+
 ## Provider manifest
 
 Each provider lives under `providers/<id>/manifest.json`. The wizard loads manifests via
