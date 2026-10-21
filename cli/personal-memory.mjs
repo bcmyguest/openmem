@@ -28,7 +28,9 @@ Usage (prefer npx once published: npx ${BIN} <command>):
   ${BIN} up [flags]            start the stack with the saved configuration
   ${BIN} down [flags]          stop the stack
   ${BIN} doctor [flags]        validate the configuration without the smoke test
+  ${BIN} wiring [--json]       report provider, API URLs, and MCP alignment
   ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
+  ${BIN} install-coding-agent [flags]  Hindsight plugin or MCP session path (Claude/Codex/OpenCode/Cursor)
   ${BIN} switch <provider> [flags]
                                change MEMORY_PROVIDER (stack + MCP; no data migration)
   ${BIN} providers [--json]    list memory providers and their status
@@ -45,7 +47,7 @@ Stack root (where .env, compose files and generated config live):
 Upgrades overwrite only shipped files you did not modify; modified ones are reported as conflicts.
 Docs: docs/npx-install.md`;
 
-const WIZARD_TASKS = new Set(["configure", "up", "down", "doctor", "install-mcp", "switch"]);
+const WIZARD_TASKS = new Set(["configure", "up", "down", "doctor", "install-mcp", "install-coding-agent", "switch"]);
 
 /** @param {string} msg */
 function die(msg, code = 1) {
@@ -170,6 +172,12 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   cmdProviders(argv.slice(1));
 } else if (cmd === "init") {
   cmdInit(argv.slice(1));
+} else if (cmd === "wiring") {
+  const r = spawnSync(process.execPath, [path.join(PKG_ROOT, "cli/wiring-report.mjs"), ...argv.slice(1)], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(r.status ?? 1);
 } else if (cmd === undefined || cmd === "setup" || cmd.startsWith("-")) {
   const args = cmd === "setup" ? argv.slice(1) : argv;
   // Wizard help does not need a stack root.
