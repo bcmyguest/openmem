@@ -8,11 +8,16 @@ import { withBase } from '../../lib/url';
 import { site } from '../../site.config.mjs';
 import Badge from '../ui/Badge.astro';
 
-const sources = ['Git repositories', 'Obsidian vaults'];
-const indexer = ['Tree-sitter code outlines', 'Poll repos · watch vaults', 'Sink → active provider API'];
+const sources = [
+  'Git repositories',
+  'Obsidian vaults',
+  'Notes · papers · bookmarks',
+  'Feed cache (RSS / OpenAlex)',
+];
+const indexer = ['Tree-sitter code outlines', 'Poll repos · watch folders', 'Sink → active provider API'];
 const bridge = [
   'personal-memory MCP (memory_*)',
-  'Hindsight plugin (session)',
+  'Session hooks (all providers)',
   'Provider MCP (mem0/Cognee, optional)',
   'NotebookLM MCP (optional)',
 ];
@@ -76,9 +81,9 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
     </div>
   </div>
   <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    <strong>Indexing:</strong> Git and Obsidian → shared indexer → one active provider API (badges from manifests).
-    <strong>Agents:</strong> stdio MCP and plugins on the host talk to the same API (<code>install-mcp</code> registers unified <code>personal-memory</code> / <code>memory_*</code>).
-    LiteLLM and NotebookLM sync are <strong>Hindsight-only</strong> compose pieces (not shown). Hindsight session memory uses the plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)}.
+    <strong>Indexing:</strong> repos, vaults, markdown trees, and feed cache → shared indexer → one active provider API (badges from manifests).
+    <strong>Agents:</strong> unified <code>memory_*</code> MCP and session hooks on the host; optional provider-native MCP and NotebookLM MCP.
+    LiteLLM is optional on Hindsight stacks (not shown). Optional upstream Hindsight plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)} via <code>--hindsight-plugin</code>.
     <a href={withBase('docs/architecture/')}>Architecture</a>.
   </figcaption>
 </figure>

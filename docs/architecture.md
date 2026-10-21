@@ -11,6 +11,8 @@ flowchart TB
   subgraph disk["Sources on disk"]
     GIT[Git repos]
     OBS[Obsidian vaults]
+    MD[notes · papers · bookmarks]
+    FEED[Feed cache]
   end
 
   subgraph compose["Docker Compose"]
@@ -36,6 +38,8 @@ flowchart TB
 
   GIT --> IDX
   OBS --> IDX
+  MD --> IDX
+  FEED --> IDX
   AG <-->|stdio| UMCP
   AG <-->|hooks| SHIM
   AG <-->|optional| PLG
@@ -50,7 +54,7 @@ flowchart TB
 
 | Path | What moves |
 | --- | --- |
-| **Indexing** | Git/Obsidian → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
+| **Indexing** | Git, Obsidian, markdown trees, feed cache → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
 | **Agents** | Cursor/Claude/Codex → session hooks and/or MCP → same provider API |
 | **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
 | **LiteLLM** | Optional sidecar on Hindsight stacks; also used for **cross-provider reflect synthesis** when `PM_LLM_URL` / stack LiteLLM is reachable (`memory_reflect` on mem0/Cognee) |
@@ -157,17 +161,19 @@ Default scope key for MCP-created rows: bank / `user_id` **`personal-memory-mcp`
 
 ## How file changes become memory
 
-The indexer does not watch your editor — it watches **repositories and vaults** on a schedule.
+The indexer does not watch your editor — it watches **configured sources** on disk (poll, inotify, or periodic re-list).
 
 | Source | Detection | What gets sent to the provider |
 | --- | --- | --- |
 | Git repo | Poll every `poll_seconds` (default 60): `HEAD` + tracked-file status | Tree-sitter outlines + text for changed files → **retain** on the active sink |
 | Obsidian vault | inotify; re-index after `vault_quiet_seconds` (default 30) without edits | Vault documents → provider-specific banks |
-| New repo/vault under scan roots | Re-list sources every `relist_seconds` (default 600) | Picked up without restarting the stack |
+| Notes / papers / bookmarks | `notes.paths`, `papers.paths`, `bookmarks.paths`; inotify on `.md` (bookmarks also `.html`, `.txt`) | Markdown (and bookmark exports) → `notes::`, `papers::`, `bookmarks::` banks |
+| Feed cache | `feeds.out_dir` after `npx personal-memory feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
+| New sources under scan roots | Re-list every `relist_seconds` (default 600) | Picked up without restarting the stack |
 
-Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed.
+Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Full source list and examples: [index-sources.md](index-sources.md) · [sources-feeds.md](sources-feeds.md) · [sources-zotero.md](sources-zotero.md) · [sources-readwise.md](sources-readwise.md). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed.
 
-Hindsight names banks `obsidian::<slug>`, `coding-agent::<repo>`, optional `notebooklm::*`. mem0 uses `user_id` / `agent_id` / `run_id`; Cognee uses **datasets** mapped from indexer banks.
+Bank prefixes include `coding-agent::`, `obsidian::`, `notes::`, `papers::`, `bookmarks::`, `feed::`, and optional `notebooklm::*`. mem0 uses `user_id` / `agent_id` / `run_id`; Cognee uses **datasets** mapped from indexer banks.
 
 ## Industry context
 

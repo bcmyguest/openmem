@@ -62,7 +62,7 @@ Details: [Model configuration](model-configuration.md) (Hindsight), `providers/m
 | Stack root `.env`, `.build-hash`, `compose.override.yaml` | `scripts/setup.mjs` | Compose project; indexer UID; secret-path masks |
 | `~/.config/hindsight/wizard.conf` | Wizard | Provider id, backend choice, ports |
 | `~/.config/hindsight/hindsight.env`, `litellm.env` | Setup / Hindsight hooks | Hindsight + LiteLLM secrets |
-| `~/.config/hindsight/index.yml` | Wizard step 5 | Index roots, repos, vaults |
+| `~/.config/hindsight/index.yml` | Wizard step 5 | Index roots, repos, vaults; optional `notes` / `papers` / `bookmarks` / `feeds` ([index-sources.md](index-sources.md)) |
 | `~/.config/hindsight/notebooklm.yml` | Wizard step 6 | NotebookLM sync toggles |
 | `~/.config/personal-memory/config.toml` | Optional; synced on configure | Declarative overrides ([Configuration file](personal-memory-config.md)) |
 | `~/.hindsight/coding-agent.json` | Wizard / install-mcp | **Real file on disk** — do not symlink to the repo template |

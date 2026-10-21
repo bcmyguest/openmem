@@ -253,7 +253,7 @@ async function configureIndex(ctx) {
       return;
     }
   }
-  info("Scan roots cover git repos and Obsidian vaults (.obsidian/). Notes outside those roots need an explicit vault path.");
+  info("Scan roots cover git repos and Obsidian vaults (.obsidian/). Add notes/papers/bookmarks paths or feeds in index.yml for other markdown trees ([docs/index-sources.md](https://github.com/bcmyguest/personal-memory/blob/main/docs/index-sources.md)).");
   const rootsCsv = await ask(
     ctx,
     "Root folder(s) to scan, comma-separated",

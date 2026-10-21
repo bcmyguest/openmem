@@ -34,6 +34,6 @@ vaults:
 
 Exclude paths with `exclude:` globs. Tune `poll_seconds`, `vault_quiet_seconds`, and `relist_seconds` for watcher behavior.
 
-**More source types** (OpenAlex, Zotero API, Readwise, feeds): [index-sources-roadmap.md](index-sources-roadmap.md).
+**Guides:** [Feed sync](sources-feeds.md) (RSS / OpenAlex → `feed::*`) · [Zotero exports](sources-zotero.md) · [Readwise exports](sources-readwise.md). Native API connectors and more kinds: [index-sources-roadmap.md](index-sources-roadmap.md).
 
 See [indexer sinks](indexer-sinks.md) for how banks map to mem0/Cognee/Hindsight scopes.

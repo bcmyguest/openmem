@@ -49,8 +49,8 @@ export const features = [
     body: 'Hindsight publishes API and control on 127.0.0.1. LiteLLM stays on the Docker network as Hindsight’s model proxy.',
   },
   {
-    title: 'Git and Obsidian indexer',
-    body: 'Polls repos, watches vaults, tree-sitter outlines for code. Sends retains to whichever sink the active manifest declares.',
+    title: 'Multi-source indexer',
+    body: 'Git repos (poll), Obsidian vaults, notes/papers/bookmarks folders, and RSS/OpenAlex feed cache (inotify). Tree-sitter outlines for code. One sink for the active provider.',
   },
   {
     title: 'Indexer secret masking',
@@ -74,7 +74,7 @@ export const features = [
   },
   {
     title: 'NotebookLM (opt-in)',
-    body: 'Compose profile syncs into Hindsight; optional MCP for list/search. Off until you enable sync.',
+    body: 'Compose profile syncs into the active provider; optional MCP for list/search. Off until you enable sync.',
     tag: 'Opt-in',
   },
 ];
