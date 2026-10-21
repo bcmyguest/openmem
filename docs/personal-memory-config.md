@@ -145,6 +145,9 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
     (`updatePmConfigProvider`), optionally restarts the stack and re-points provider MCP.
     Flags: `--yes`, `--dry-run`, `--no-stack`, `--no-mcp`. Does not migrate data between
     backends. See [README — Switch memory provider](../README.md#switch-memory-provider).
+  - `feed-sync` — runs `cli/feed-sync.mjs` (RSS + OpenAlex → `feeds.out_dir` in `index.yml`).
+  - `install-coding-agent` — session hooks / Hindsight plugin install per agent; see
+    [coding-agent hooks](coding-agent-hooks.md).
 
 ## Apply
 
