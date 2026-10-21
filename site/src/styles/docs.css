@@ -19,11 +19,31 @@
   border-radius: 0.5rem;
 }
 
-:root[data-theme='dark'] .sl-markdown-content img[src*='diagrams/'] {
+:root[data-theme='dark'] .sl-markdown-content img[src*='diagrams/']:not(.pm-diagram-dark) {
   background: #f9f9fb;
   border: 1px solid var(--sl-color-gray-5);
   padding: 0.75rem;
   box-sizing: border-box;
+}
+
+.pm-diagram-duo {
+  margin: 1.25rem 0;
+}
+.pm-diagram-duo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+.pm-diagram-duo .pm-diagram-dark {
+  display: none;
+}
+:root[data-theme='dark'] .pm-diagram-duo .pm-diagram-light {
+  display: none;
+}
+:root[data-theme='dark'] .pm-diagram-duo .pm-diagram-dark {
+  display: block;
+  border: 1px solid var(--sl-color-gray-5);
 }
 
 .sl-markdown-content table {
