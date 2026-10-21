@@ -1,0 +1,29 @@
+{
+  "id": "zep",
+  "label": "Zep",
+  "status": "planned",
+  "notes": "Placeholder manifest. Zep Cloud/self-hosted API integration is not wired; track via issues before changing status.",
+  "settings": {
+    "nativeDocs": "https://docs.getzep.com/",
+    "nativeConfigPaths": [],
+    "wizardOwns": []
+  },
+  "compose": {
+    "profile": "zep",
+    "files": [],
+    "services": [],
+    "healthService": null,
+    "healthPath": null,
+    "hostPortEnv": null,
+    "defaultHostPort": null
+  },
+  "indexer": {
+    "apiUrlEnv": "ZEP_API_URL",
+    "sink": "zep"
+  },
+  "codingAgent": {
+    "pluginPackage": null,
+    "configTemplate": null
+  },
+  "wizard": {}
+}
