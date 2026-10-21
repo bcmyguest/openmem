@@ -222,6 +222,10 @@ only user-facing guides like [Architecture](architecture.md) are listed in `PAGE
 - [Indexer sink drivers](indexer-sinks.md) — `sink` vs `sinkDriver`, env vars, bank/scope mapping for Hindsight, mem0, Cognee
 - [MCP install guide](mcp-install-guide.md) — unified MCP vs `--provider-only` vs NotebookLM MCP
 
+## Coding-agent session hooks
+
+See [coding-agent-hooks.md](coding-agent-hooks.md), [coding-agent-scopes.md](coding-agent-scopes.md), and `npx personal-memory install-coding-agent`.
+
 ## Site and docs
 
 Published pages sync from `docs/*.md` at build time. If you change mermaid in a synced doc (for example `docs/architecture.md`), run `cd site && pnpm render-diagrams` and commit `site/public/diagrams/*.svg`. Then run `SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/ pnpm build` in `site/` — the same check as CI and GitHub Pages.
