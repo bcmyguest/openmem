@@ -16,6 +16,10 @@ vaults:
   auto: true     # any folder within a root's depth that contains .obsidian/
   paths: []      # extra vault folders
 
+# Markdown folders without .obsidian (watched like vaults; banks default to notes::<slug>).
+notes:
+  paths: []
+
 # Glob patterns on absolute paths. A source that matches is skipped.
 exclude: []
 

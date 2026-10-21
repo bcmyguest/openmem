@@ -222,6 +222,10 @@ only user-facing guides like [Architecture](architecture.md) are listed in `PAGE
 - [Indexer sink drivers](indexer-sinks.md) — `sink` vs `sinkDriver`, env vars, bank/scope mapping for Hindsight, mem0, Cognee
 - [MCP install guide](mcp-install-guide.md) — unified MCP vs `--provider-only` vs NotebookLM MCP
 
+## Index sources
+
+See [index-sources.md](index-sources.md) (git repos, Obsidian vaults, plain `notes.paths`).
+
 ## Coding-agent session hooks
 
 See [coding-agent-hooks.md](coding-agent-hooks.md), [coding-agent-scopes.md](coding-agent-scopes.md), and `npx personal-memory install-coding-agent`.
