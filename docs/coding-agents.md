@@ -4,7 +4,7 @@ One entry point for session wiring (Hindsight plugin vs mem0/Cognee MCP path):
 
 ```sh
 npx personal-memory install-coding-agent --yes
-# same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli
+# same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli,hermes,gemini-cli,amp,cline
 ```
 
 **Hindsight** runs `@vectorize-io/hindsight-coding-agents install` with your loopback API URL.

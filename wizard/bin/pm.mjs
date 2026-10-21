@@ -26,6 +26,10 @@ const TASKS = {
     script: "cli/install-coding-agent.mjs",
     help: "Wire session memory for Claude Code, Codex, OpenCode, Cursor CLI",
   },
+  "feed-sync": {
+    script: "cli/feed-sync.mjs",
+    help: "Fetch RSS/OpenAlex feeds into index.yml feeds.out_dir",
+  },
   switch: {
     script: "cli/switch-memory-provider.mjs",
     help: "Switch MEMORY_PROVIDER (wizard.conf + optional stack/MCP)",

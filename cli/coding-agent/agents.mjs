@@ -17,6 +17,18 @@ export const CODING_AGENTS = Object.freeze([
     hindsightInstall: false,
     sessionPath: "Use install-mcp; configure Gemini MCP per Google docs.",
   },
+  {
+    id: "amp",
+    label: "Amp (Sourcegraph)",
+    hindsightInstall: false,
+    sessionPath: "Unified MCP via install-mcp; follow Amp MCP configuration.",
+  },
+  {
+    id: "cline",
+    label: "Cline",
+    hindsightInstall: false,
+    sessionPath: "Unified MCP in Cursor/VS Code; install-mcp for memory_* tools.",
+  },
 ]);
 
 export const DEFAULT_AGENT_IDS = CODING_AGENTS.filter((a) => a.hindsightInstall).map((a) => a.id);

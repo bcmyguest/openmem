@@ -81,6 +81,24 @@ export const PAGES = [
     title: 'Configuration file',
     description: 'The mise-like config.toml: files, precedence, sections, and the pm tasks.',
   },
+  {
+    slug: 'index-sources',
+    kind: 'doc',
+    source: 'docs/index-sources.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Index sources',
+    description: 'Git, Obsidian, notes, papers, bookmarks, and feed cache banks for the shared indexer.',
+  },
+  {
+    slug: 'sources-feeds',
+    kind: 'doc',
+    source: 'docs/sources-feeds.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Feed sync',
+    description: 'RSS and OpenAlex queries into a watched markdown cache for feed::* banks.',
+  },
 ];
 
 /**

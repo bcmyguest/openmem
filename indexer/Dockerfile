@@ -19,7 +19,7 @@ download(['python', 'javascript', 'typescript', 'tsx', 'go', 'rust', 'java', 'c'
 RUN git config --system safe.directory '*'
 
 COPY bin/hindsight-project-index /usr/local/bin/hindsight-project-index
-COPY indexer/watch.py indexer/index_config.py indexer/code_outline.py /opt/indexer/
+COPY indexer/watch.py indexer/index_config.py indexer/code_outline.py indexer/feed_sync.py /opt/indexer/
 # Memory sinks (one module per provider). A new indexer/sinks/<name>.py needs no Dockerfile edit.
 COPY indexer/sinks/ /opt/indexer/sinks/
 # Shipped default config. index_config.py finds it at ../config/index.yml relative to itself.
