@@ -198,4 +198,4 @@ Hindsight **session** retain/recall in the editor still uses the [`@vectorize-io
 - [Cognee operator guide](cognee.md) — loopback container + LLM env
 - [Configuration file](personal-memory-config.md) — `config.toml` for provider and stack defaults
 
-Developer docs (wizard phases, hooks, manual compose) live in the git repository under `docs/` and are not published on this site.
+Developer docs (wizard phases, hooks, manual compose, [indexer sinks](https://github.com/bcmyguest/personal-memory/blob/main/docs/indexer-sinks.md), [MCP install modes](https://github.com/bcmyguest/personal-memory/blob/main/docs/mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](https://github.com/bcmyguest/personal-memory/blob/main/docs/memory-providers.md).
