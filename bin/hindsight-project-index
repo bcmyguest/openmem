@@ -192,7 +192,7 @@ def markdown_bank(kind: str, root: Path, config: index_config.Config | None = No
     mapped = cfg.bank_for(root)
     if mapped:
         return mapped
-    prefix = {"notes": "notes", "papers": "papers", "bookmarks": "bookmarks"}.get(kind, "notes")
+    prefix = {"notes": "notes", "papers": "papers", "bookmarks": "bookmarks", "feed": "feed"}.get(kind, "notes")
     return f"{prefix}::{slugify(root.name)}"
 
 
@@ -222,14 +222,23 @@ def split_frontmatter(text: str) -> tuple[list[str], str]:
     return [tag for tag in cleaned if tag], body
 
 
-def vault_documents(vault: Path, config: index_config.Config | None = None) -> dict[str, dict]:
+MARKDOWN_SUFFIXES = {
+    "notes": (".md",),
+    "papers": (".md", ".txt"),
+    "bookmarks": (".md", ".html", ".htm", ".txt"),
+    "feed": (".md",),
+}
+
+
+def vault_documents(vault: Path, config: index_config.Config | None = None, *, kind: str = "notes") -> dict[str, dict]:
     config = _config(config)
+    suffixes = MARKDOWN_SUFFIXES.get(kind, (".md",))
     documents = {}
     for current, dirs, files in os.walk(vault):
         dirs[:] = [name for name in dirs if name not in VAULT_SKIP_DIRS]
         for name in files:
             path = Path(current) / name
-            if path.suffix.lower() != ".md" or path.is_symlink():
+            if path.suffix.lower() not in suffixes or path.is_symlink():
                 continue
             if name.startswith(".env") or any(word in name.lower() for word in ("secret", "credential", "private_key")):
                 continue
@@ -239,6 +248,10 @@ def vault_documents(vault: Path, config: index_config.Config | None = None) -> d
                 text = path.read_text(encoding="utf-8")
             except UnicodeError:
                 continue
+            if path.suffix.lower() in (".html", ".htm"):
+                text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", text)
+                text = re.sub(r"<[^>]+>", " ", text)
+                text = re.sub(r"\s+", " ", text).strip()
             rel = path.relative_to(vault).as_posix()
             frontmatter_tags, body = split_frontmatter(text)
             tags = list(dict.fromkeys(frontmatter_tags + INLINE_TAG.findall(body)))
@@ -363,7 +376,7 @@ def sync_vault(vault: Path, sink: sinks.Sink, state: dict, state_path: Path, app
 
 
 def sync_markdown(kind: str, root: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(root, markdown_bank(kind, root, config), vault_documents(root, config), sink, state, state_path, apply, limit, None)
+    return sync(root, markdown_bank(kind, root, config), vault_documents(root, config, kind=kind), sink, state, state_path, apply, limit, None)
 
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
@@ -382,13 +395,14 @@ def opted_in(path: Path, allowed: list[Path] | None) -> bool:
 
 def selected_sources(args: argparse.Namespace, config: index_config.Config) -> list[tuple[str, Path]]:
     # Explicit --repo or --vault narrows the run to exactly those sources.
-    if args.repo or args.vault or args.notes or args.papers or args.bookmarks:
+    if args.repo or args.vault or args.notes or args.papers or args.bookmarks or args.feed:
         return (
             [("repo", path) for path in args.repo or []]
             + [("vault", path) for path in args.vault or []]
             + [("notes", path) for path in args.notes or []]
             + [("papers", path) for path in args.papers or []]
             + [("bookmarks", path) for path in args.bookmarks or []]
+            + [("feed", path) for path in args.feed or []]
         )
     repos, vaults, markdown = discover(config)
     return (
@@ -415,6 +429,7 @@ def main() -> int:
     parser.add_argument("--notes", type=Path, action="append", help="index a markdown notes folder (repeatable)")
     parser.add_argument("--papers", type=Path, action="append", help="index a papers library folder (markdown exports; repeatable)")
     parser.add_argument("--bookmarks", type=Path, action="append", help="index a bookmarks export folder (repeatable)")
+    parser.add_argument("--feed", type=Path, action="append", help="index feed-sync markdown cache (repeatable)")
     parser.add_argument("--sink", default=os.environ.get("MEMORY_SINK") or sinks.DEFAULT_SINK, help="memory provider to write to (default: $MEMORY_SINK, then %(default)s); registered: " + ", ".join(sinks.registered_sinks()))
     parser.add_argument("--url", help="provider API base URL (default: $HINDSIGHT_URL for the hindsight sink, $MEMORY_API_URL for other sinks, then the sink's own default)")
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
@@ -459,12 +474,12 @@ def main() -> int:
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     failed = 0
     for kind, path in sources:
-        if kind in ("vault", "notes", "papers", "bookmarks") and args.kind:
+        if kind in ("vault", "notes", "papers", "bookmarks", "feed") and args.kind:
             continue
         try:
             if kind == "repo":
                 changed, stale = sync_repo(path, sink, state, args.state, args.apply, args.limit, args.kind, config)
-            elif kind in ("notes", "papers", "bookmarks"):
+            elif kind in ("notes", "papers", "bookmarks", "feed"):
                 changed, stale = sync_markdown(kind, path, sink, state, args.state, args.apply, args.limit, config)
             else:
                 changed, stale = sync_vault(path, sink, state, args.state, args.apply, args.limit, config)

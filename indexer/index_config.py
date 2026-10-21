@@ -23,6 +23,7 @@ TOP_LEVEL_KEYS = (
     "notes",
     "papers",
     "bookmarks",
+    "feeds",
     "exclude",
     "banks",
     "max_file_kb",
@@ -33,6 +34,7 @@ TOP_LEVEL_KEYS = (
 )
 VAULT_KEYS = ("auto", "paths")
 PATH_LIST_KEYS = ("paths",)
+FEEDS_KEYS = ("out_dir", "rss", "openalex_queries")
 ROOT_KEYS = ("path", "depth")
 DEFAULT_SKIP_DIRS = [".cache", ".codegraph", ".decision", ".git", ".next", ".tasks", ".venv", "build", "dist", "node_modules", "target", "vendor"]
 DEFAULT_DATA = {
@@ -42,6 +44,7 @@ DEFAULT_DATA = {
     "notes": {"paths": []},
     "papers": {"paths": []},
     "bookmarks": {"paths": []},
+    "feeds": {"out_dir": "~/.local/share/personal-memory/feeds", "rss": [], "openalex_queries": []},
     "exclude": [],
     "banks": {"~/Documents/sample-project": "coding-agent::documents-sample-project"},
     "max_file_kb": 128,
@@ -71,6 +74,9 @@ class Config:
     notes_paths: tuple[Path, ...]
     papers_paths: tuple[Path, ...]
     bookmarks_paths: tuple[Path, ...]
+    feeds_out_dir: Path | None
+    feeds_rss: tuple[object, ...]
+    feeds_openalex_queries: tuple[object, ...]
     exclude: tuple[str, ...]
     banks: tuple[tuple[Path, str], ...]  # longest prefix first
     max_file_kb: int
@@ -94,7 +100,7 @@ class Config:
         return any(fnmatch.fnmatchcase(str(path), pattern) for pattern in self.exclude)
 
     def markdown_sources(self) -> tuple[tuple[str, Path], ...]:
-        """(kind, path) for watched markdown trees: notes, papers, bookmarks."""
+        """(kind, path) for watched markdown trees: notes, papers, bookmarks, feed cache."""
         out: list[tuple[str, Path]] = []
         for kind, paths in (
             ("notes", self.notes_paths),
@@ -103,6 +109,8 @@ class Config:
         ):
             for path in paths:
                 out.append((kind, path))
+        if self.feeds_out_dir is not None:
+            out.append(("feed", self.feeds_out_dir))
         return tuple(out)
 
 
@@ -222,6 +230,11 @@ def parse(data: object, source: str = "built-in") -> Config:
     notes = _mapping(source, "notes", merged["notes"], PATH_LIST_KEYS)
     papers = _mapping(source, "papers", merged["papers"], PATH_LIST_KEYS)
     bookmarks = _mapping(source, "bookmarks", merged["bookmarks"], PATH_LIST_KEYS)
+    feeds_raw = _mapping(source, "feeds", merged.get("feeds") or DEFAULT_DATA["feeds"], FEEDS_KEYS)
+    feeds_out = _paths(source, "feeds.out_dir", [feeds_raw.get("out_dir") or DEFAULT_DATA["feeds"]["out_dir"]])[0]
+    feeds_rss = tuple(_list(source, "feeds.rss", feeds_raw.get("rss") or []))
+    feeds_oa = tuple(_list(source, "feeds.openalex_queries", feeds_raw.get("openalex_queries") or []))
+    has_feeds = bool(feeds_rss or feeds_oa)
     banks = merged["banks"]
     return Config(
         roots=_roots(source, merged["roots"]),
@@ -231,6 +244,9 @@ def parse(data: object, source: str = "built-in") -> Config:
         notes_paths=_paths(source, "notes.paths", notes.get("paths", [])),
         papers_paths=_paths(source, "papers.paths", papers.get("paths", [])),
         bookmarks_paths=_paths(source, "bookmarks.paths", bookmarks.get("paths", [])),
+        feeds_out_dir=feeds_out if has_feeds else None,
+        feeds_rss=feeds_rss,
+        feeds_openalex_queries=feeds_oa,
         exclude=_exclude(source, merged["exclude"]),
         banks=_banks(source, banks),
         max_file_kb=_int(source, "max_file_kb", merged["max_file_kb"], 1),

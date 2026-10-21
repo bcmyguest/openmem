@@ -8,7 +8,8 @@ The shared indexer reads `~/.config/hindsight/index.yml` (or `config/index.yml` 
 | **Obsidian vault** | `roots` + `vaults.auto`, `vaults.paths` | inotify after quiet period | `obsidian::<slug>` |
 | **Notes** | `notes.paths` | inotify | `notes::<slug>` |
 | **Papers** | `papers.paths` | inotify | `papers::<slug>` |
-| **Bookmarks** | `bookmarks.paths` | inotify | `bookmarks::<slug>` |
+| **Bookmarks** | `bookmarks.paths` | inotify (.md, .html, .txt) | `bookmarks::<slug>` |
+| **Feed cache** | `feeds` + `feed-sync` | inotify on `feeds.out_dir` | `feed::<slug>` |
 
 Markdown trees index `.md` (and Obsidian-style structure) the same way; use separate keys so banks stay readable in Hindsight/mem0 scopes.
 

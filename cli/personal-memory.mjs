@@ -29,6 +29,7 @@ Usage (prefer npx once published: npx ${BIN} <command>):
   ${BIN} down [flags]          stop the stack
   ${BIN} doctor [flags]        validate the configuration without the smoke test
   ${BIN} wiring [--json]       report provider, API URLs, and MCP alignment
+  ${BIN} feed-sync             fetch RSS/OpenAlex into feeds.out_dir (then indexer watches it)
   ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
   ${BIN} install-coding-agent [flags]  Hindsight plugin or MCP session path (Claude/Codex/OpenCode/Cursor)
   ${BIN} switch <provider> [flags]
@@ -172,6 +173,12 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   cmdProviders(argv.slice(1));
 } else if (cmd === "init") {
   cmdInit(argv.slice(1));
+} else if (cmd === "feed-sync") {
+  const r = spawnSync(process.execPath, [path.join(PKG_ROOT, "cli/feed-sync.mjs"), ...argv.slice(1)], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(r.status ?? 1);
 } else if (cmd === "wiring") {
   const r = spawnSync(process.execPath, [path.join(PKG_ROOT, "cli/wiring-report.mjs"), ...argv.slice(1)], {
     stdio: "inherit",

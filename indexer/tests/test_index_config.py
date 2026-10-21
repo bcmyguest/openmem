@@ -27,6 +27,9 @@ def test_defaults_reproduce_previous_behaviour(home):
     assert config.notes_paths == ()
     assert config.papers_paths == ()
     assert config.bookmarks_paths == ()
+    assert config.feeds_out_dir is None
+    assert config.feeds_rss == ()
+    assert config.feeds_openalex_queries == ()
     assert config.exclude == ()
     assert config.max_file_bytes == 128_000
     assert config.poll_seconds == 60
