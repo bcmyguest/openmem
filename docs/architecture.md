@@ -1,6 +1,6 @@
 # Architecture
 
-personal-memory’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** use that provider’s native plugin or MCP (Hindsight plugin, mem0 MCP, and so on). Only one provider is active at a time; `npx personal-memory switch` rewires the stack without pretending to migrate your data. Setup (`npx personal-memory`) is install plumbing only — not part of the runtime data path.
+personal-memory’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx personal-memory switch` rewires the stack without pretending to migrate your data. Setup (`npx personal-memory`) is install plumbing only — not part of the runtime data path.
 
 ## Runtime data flow
 
@@ -28,7 +28,8 @@ flowchart TB
   subgraph host["Host — IDE / coding agents"]
     AG[Coding agents]
     UMCP["personal-memory MCP\n(memory_*)"]
-    PLG["Hindsight plugin\n(Hindsight only)"]
+    SHIM["Session hooks\n(all providers)"]
+    PLG["Hindsight plugin\n(optional --hindsight-plugin)"]
     PMCP["Provider MCP\nmem0 or Cognee, optional"]
     NLMCP["NotebookLM MCP\noptional, separate server"]
   end
@@ -36,7 +37,9 @@ flowchart TB
   GIT --> IDX
   OBS --> IDX
   AG <-->|stdio| UMCP
-  AG <-->|in-IDE session| PLG
+  AG <-->|hooks| SHIM
+  AG <-->|optional| PLG
+  SHIM -->|memory_*| UMCP
   AG <-->|stdio| PMCP
   AG <-->|stdio| NLMCP
   UMCP -->|loopback HTTP| PROV
@@ -48,7 +51,7 @@ flowchart TB
 | Path | What moves |
 | --- | --- |
 | **Indexing** | Git/Obsidian → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
-| **Agents** | Cursor/Claude/Codex → stdio MCP or plugin → same provider API |
+| **Agents** | Cursor/Claude/Codex → session hooks and/or MCP → same provider API |
 | **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
 | **LiteLLM** | Optional sidecar on Hindsight stacks; also used for **cross-provider reflect synthesis** when `PM_LLM_URL` / stack LiteLLM is reachable (`memory_reflect` on mem0/Cognee) |
 | **NotebookLM sync** | **Opt-in, any active provider.** Background sync writes into `notebooklm::*` via the same indexer sinks (Hindsight / mem0 / Cognee); not the same as the NotebookLM MCP |
@@ -101,7 +104,7 @@ flowchart TB
 | **Wizard hooks** | Provider-specific env, keys, smoke, coding-agent notes | `providers/<id>/wizard.mjs` |
 | **Indexer sink** | Poll/vault → retain/update/delete on the provider API | `indexer/` (driver id in manifest, e.g. `hindsight-rest-v1`, `mem0-rest`) |
 | **Unified MCP** | Stable `memory_*` tools → provider HTTP | `cli/mcp/memory-facade.mjs`, `cli/personal-memory-mcp.mjs` |
-| **Native agent paths** | Plugin or provider MCP (unchanged upstream tool names) | Hindsight plugin; `cli/mem0-mcp.mjs`, `cli/cognee-mcp.mjs`, NotebookLM |
+| **Native agent paths** | Session hooks + optional plugin/MCP | `cli/coding-agent/hook-runner.mjs`; optional Hindsight plugin; `cli/mem0-mcp.mjs`, `cli/cognee-mcp.mjs`, NotebookLM |
 
 Adding a provider means a new manifest + hooks + sink driver; agents can keep using **`memory_*`** once the facade implements that backend.
 
@@ -132,6 +135,8 @@ The `personal-memory` MCP server delegates each tool to the **active** provider:
 | --- | --- | --- | --- |
 | `memory_add` | `POST /v1/default/banks/{bank}/memories` | `POST /memories` (`infer: false`, `user_id` from `bank` arg) | `POST /api/v1/add` |
 | `memory_search` / `memory_recall` | `POST /v1/default/banks/{bank}/memories/recall` | `POST /search` with `filters.user_id` | `POST /api/v1/search` |
+| `memory_reflect` | Same recall path | Search + optional LiteLLM synthesis | Search + optional LiteLLM synthesis |
+| `memory_consolidate` | LiteLLM / Hindsight consolidate routes | Skipped (no equivalent) | `POST /api/v1/cognify` |
 | `memory_forget` | `DELETE /v1/default/banks/{bank}` (bank scope) | `DELETE /memories/{id}` | Not exposed yet |
 | `memory_provider_status` | Returns provider id + loopback URL | Same | Same |
 | `memory_export` / `memory_import` | PMM envelope; mem0 list/add — see [Memory portability](memory-portability.md) | | |
@@ -142,7 +147,8 @@ Default scope key for MCP-created rows: bank / `user_id` **`personal-memory-mcp`
 
 | Provider | Session / tools | Install |
 | --- | --- | --- |
-| **Hindsight** | `@vectorize-io/hindsight-coding-agents` plugin (retain / recall / reflect) | Wizard coding-agent step |
+| **All providers** | In-repo session hooks → unified `memory_*` | `install-coding-agent --yes` |
+| **Hindsight (optional)** | `@vectorize-io/hindsight-coding-agents` plugin | `install-coding-agent --hindsight-plugin` |
 | **mem0** | `@yeyuan98/mem0-mcp` tools | `install-mcp --provider-only` |
 | **Cognee** | `cognee_health`, `cognee_search` | `install-mcp --provider-only` |
 | **NotebookLM** | `notebooklm_list_banks`, `notebooklm_search` | `install-mcp` when sync enabled or `--notebooklm` |
@@ -175,17 +181,20 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 | --- | --- |
 | `memory_add` | Store text (Hindsight bank, mem0 user scope, Cognee dataset add) |
 | `memory_search` / `memory_recall` | Query memories on the active backend |
+| `memory_reflect` | Session-style context (recall or search + optional LiteLLM) |
+| `memory_consolidate` | Cognee cognify; Hindsight notes; mem0 skip |
 | `memory_forget` | Delete by id (mem0) or drop a Hindsight bank |
 | `memory_provider_status` | Active provider and loopback URL (no secrets) |
 | `memory_export` / `memory_import` | PMM portable format — [Memory portability](memory-portability.md) (mem0 beta) |
 
-Hindsight **session** retain/recall in the editor still uses the [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) plugin; the unified MCP is for the same stable tool names across providers (and automation that speaks MCP).
+**Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) with `--hindsight-plugin` adds a second hook set on Hindsight stacks.
 
 ### Other MCP integrations
 
 | Integration | Tools / path | Role |
 | --- | --- | --- |
-| Hindsight plugin | retain / recall / reflect in session | Primary in-IDE session memory |
+| Session hooks | SessionStart / prompt / Stop → `memory_*` | Default in-IDE session memory (all providers) |
+| Hindsight plugin (optional) | Upstream retain / recall / reflect | `--hindsight-plugin` only |
 | `notebooklm` (`install-mcp`) | `notebooklm_list_banks`, `notebooklm_search` | Opt-in synced notebooks |
 | `mem0` (`--provider-only`) | mem0 REST tools via `@yeyuan98/mem0-mcp` | Native mem0 tool names |
 | `cognee` (`--provider-only`) | `cognee_health`, `cognee_search` | Native Cognee read-only MCP |
