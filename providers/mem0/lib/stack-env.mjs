@@ -125,16 +125,24 @@ export function prepareStackEnv({ repo, home, env }) {
   const litellmConfig =
     (env.LITELLM_CONFIG || "").trim() || envValue(stackEnv, "LITELLM_CONFIG").trim() || shippedLitellmConfig();
 
+  const profiles = ["mem0"];
+  const notebookYml = path.join(home, ".config/hindsight/notebooklm.yml");
+  if (fs.existsSync(notebookYml) && /^enabled:\s*true\b/m.test(fs.readFileSync(notebookYml, "utf8"))) {
+    profiles.push("notebooklm");
+  }
+
   /** @type {[string, string][]} */
   const entries = [
     ["MEM0_API_URL", hostUrl],
     ["MEM0_INDEXER_URL", containerUrl],
+    ["MEMORY_API_URL", containerUrl],
     // Like Hindsight, name the profile in the stack .env so a plain `docker compose config` agrees with the wizard.
-    ["COMPOSE_PROFILES", "mem0"],
+    ["COMPOSE_PROFILES", profiles.join(",")],
+    ["MEMORY_SINK", "mem0"],
     ["LITELLM_CONFIG", litellmConfig],
   ];
-  const drop = ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG"];
-  const report = [`MEM0_INDEXER_URL=${containerUrl}`, `COMPOSE_PROFILES=mem0`, `LITELLM_CONFIG=${litellmConfig}`];
+  const drop = ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG", "MEMORY_API_URL", "MEMORY_SINK"];
+  const report = [`MEM0_INDEXER_URL=${containerUrl}`, `COMPOSE_PROFILES=${profiles.join(",")}`, `LITELLM_CONFIG=${litellmConfig}`];
 
   // A custom key file location is a path, not a secret: persist it so a hand-run `docker compose`
   // and `./pm up` read the same env_file as this run. With no custom path in the process

@@ -1,38 +1,21 @@
 #!/usr/bin/env node
 /**
- * Opt-in stdio MCP: list/search notebooklm::* banks on local Hindsight.
- * Config: ~/.hindsight/coding-agent.json (apiUrl + notebooklmAccess). Zero npm deps.
+ * Opt-in stdio MCP: list/search notebooklm::* banks on the active memory provider.
+ * Config: ~/.hindsight/coding-agent.json (notebooklmAccess); API from MEMORY_PROVIDER + stack env.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveMcpContext } from "./mcp/context.mjs";
+import { listNotebooklmBanks, searchNotebooklmBank } from "./mcp/notebooklm-provider.mjs";
+import { resolveStackRoot } from "./stack.mjs";
 
-export const PREFIX = "notebooklm::";
+export { PREFIX, bankAllowed, filterNotebooklmBanks, isNotebooklmBank, notebooklmSlug } from "./mcp/notebooklm-banks.mjs";
+export { listBanks, listMemories, recallBank } from "./mcp/notebooklm-hindsight-rest.mjs";
+
 export const DEFAULT_API_URL = "http://127.0.0.1:8888";
 export const DEFAULT_CONFIG = path.join(os.homedir(), ".hindsight", "coding-agent.json");
-
-export function isNotebooklmBank(bankId) {
-  return typeof bankId === "string" && bankId.startsWith(PREFIX);
-}
-
-export function notebooklmSlug(bankId) {
-  return isNotebooklmBank(bankId) ? bankId.slice(PREFIX.length) : null;
-}
-
-/** @param {string} bankId @param {string[] | undefined} allowlist */
-export function bankAllowed(bankId, allowlist) {
-  if (!isNotebooklmBank(bankId)) return false;
-  const list = Array.isArray(allowlist) && allowlist.length ? allowlist : ["*"];
-  if (list.includes("*")) return true;
-  const slug = notebooklmSlug(bankId);
-  return list.some((e) => e === bankId || e === slug);
-}
-
-/** @param {Array<{ bank_id?: string, id?: string, name?: string }>} banks @param {string[]} allowlist */
-export function filterNotebooklmBanks(banks, allowlist) {
-  return (banks || []).filter((b) => bankAllowed(b.bank_id || b.id || b.name || "", allowlist));
-}
 
 /** @param {Record<string, any> | null | undefined} cfg */
 export function resolveAccess(cfg) {
@@ -48,63 +31,13 @@ export function loadCodingAgentConfig(configPath = DEFAULT_CONFIG) {
   return JSON.parse(fs.readFileSync(configPath, "utf8"));
 }
 
-/** @param {string} apiUrl @param {typeof fetch} [fetchFn] */
-export async function listBanks(apiUrl, fetchFn = fetch) {
-  const res = await fetchFn(`${apiUrl}/v1/default/banks`);
-  if (!res.ok) throw new Error(`GET /v1/default/banks → ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return Array.isArray(data?.banks) ? data.banks : Array.isArray(data) ? data : [];
-}
-
-/**
- * Fast full-text list (no LLM). Prefer this for MCP — local recall often exceeds
- * Cursor's tool timeout (~30–60s) when memory-reflect runs on CPU.
- * @param {string} apiUrl @param {string} bankId @param {string} query
- * @param {{ limit?: number, offset?: number }} [opts] @param {typeof fetch} [fetchFn]
- */
-export async function listMemories(apiUrl, bankId, query, opts = {}, fetchFn = fetch) {
-  const limit = Number.isFinite(opts.limit) ? Math.max(0, Math.floor(opts.limit)) : 20;
-  const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.floor(opts.offset)) : 0;
-  const qs = new URLSearchParams({ q: query, limit: String(limit), offset: String(offset) });
-  const url = `${apiUrl}/v1/default/banks/${encodeURIComponent(bankId)}/memories/list?${qs}`;
-  const res = await fetchFn(url);
-  const text = await res.text();
-  if (!res.ok) throw new Error(`GET memories/list ${bankId} → ${res.status}: ${text.slice(0, 400)}`);
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-/** @param {string} apiUrl @param {string} bankId @param {string} query @param {typeof fetch} [fetchFn] @param {{ budget?: string, max_tokens?: number }} [opts] */
-export async function recallBank(apiUrl, bankId, query, fetchFn = fetch, opts = {}) {
-  const url = `${apiUrl}/v1/default/banks/${encodeURIComponent(bankId)}/memories/recall`;
-  const body = {
-    query,
-    budget: opts.budget || "low",
-    max_tokens: opts.max_tokens ?? 1024,
-    include: { entities: null, chunks: null, source_facts: null },
-  };
-  const res = await fetchFn(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`POST recall ${bankId} → ${res.status}: ${text.slice(0, 400)}`);
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
+import { bankAllowed } from "./mcp/notebooklm-banks.mjs";
 
 const TOOLS = [
   {
     name: "notebooklm_list_banks",
     description:
-      "List notebooklm::* banks on local Hindsight (filtered by notebooklmAccess.banks). Returns bank_id and fact_count.",
+      "List notebooklm::* banks on the active memory provider (filtered by notebooklmAccess.banks). Returns bank_id and fact_count.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -136,7 +69,7 @@ function textResult(value, isError = false) {
   return { content: [{ type: "text", text }], isError };
 }
 
-/** @param {{ apiUrl: string, banks: string[], enabled?: boolean }} access @param {string} name @param {Record<string, unknown>} [args] @param {typeof fetch} [fetchFn] */
+/** @param {{ apiUrl: string, banks: string[], enabled?: boolean, ctx?: import("./mcp/context.mjs").McpContext }} access @param {string} name @param {Record<string, unknown>} [args] @param {typeof fetch} [fetchFn] */
 export async function callTool(access, name, args = {}, fetchFn = fetch) {
   if (access.enabled !== true) {
     return textResult(
@@ -145,13 +78,10 @@ export async function callTool(access, name, args = {}, fetchFn = fetch) {
       true,
     );
   }
+  if (!access.ctx) return textResult("MCP context not initialized (internal error)", true);
   if (name === "notebooklm_list_banks") {
-    const filtered = filterNotebooklmBanks(await listBanks(access.apiUrl, fetchFn), access.banks).map((b) => ({
-      bank_id: b.bank_id || b.id || b.name,
-      fact_count: b.fact_count ?? null,
-      name: b.name ?? null,
-    }));
-    return textResult({ banks: filtered, count: filtered.length });
+    const filtered = await listNotebooklmBanks(access.ctx, access.banks, fetchFn);
+    return textResult({ banks: filtered, count: filtered.length, provider: access.ctx.provider });
   }
   if (name === "notebooklm_search") {
     const bankId = String(args.bank_id || "");
@@ -161,32 +91,13 @@ export async function callTool(access, name, args = {}, fetchFn = fetch) {
     if (!bankAllowed(bankId, access.banks)) {
       return textResult(`bank not allowlisted or not a notebooklm::* bank: ${bankId}`, true);
     }
-    if (mode === "recall") {
-      return textResult({
-        bank_id: bankId,
-        query,
-        mode,
-        result: await recallBank(access.apiUrl, bankId, query, fetchFn),
-      });
-    }
     const limit = args.limit != null ? Number(args.limit) : 20;
-    const listed = await listMemories(access.apiUrl, bankId, query, { limit }, fetchFn);
-    const items = Array.isArray(listed?.items)
-      ? listed.items.map((m) => ({
-          id: m.id ?? m.memory_id ?? null,
-          type: m.type ?? null,
-          text: m.text ?? m.content ?? null,
-        }))
-      : listed;
-    return textResult({
-      bank_id: bankId,
-      query,
-      mode: "list",
-      total: listed?.total ?? null,
-      limit: listed?.limit ?? limit,
-      offset: listed?.offset ?? 0,
-      items,
-    });
+    const payload = await searchNotebooklmBank(
+      access.ctx,
+      { bankId, query, mode, limit, hindsightApiUrl: access.apiUrl },
+      fetchFn,
+    );
+    return textResult(payload);
   }
   return textResult(`unknown tool: ${name}`, true);
 }
@@ -290,17 +201,21 @@ export async function serveStdio(input, onMsg) {
 }
 
 async function main() {
+  const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const configPath = process.env.HINDSIGHT_CODING_AGENT_JSON || DEFAULT_CONFIG;
   let cfg = null;
   let access;
   try {
     cfg = loadCodingAgentConfig(configPath);
     access = resolveAccess(cfg);
+    const home = process.env.HOME || os.homedir();
+    const stack = resolveStackRoot({ pkgRoot, env: process.env, home });
+    access.ctx = resolveMcpContext({ home, stackRoot: stack.root, repoRoot: pkgRoot, env: process.env });
   } catch (err) {
     // Stay alive so Cursor's MCP client does not report "Connection closed".
     // Tools return isError until coding-agent.json is readable.
     console.error(`notebooklm-mcp: cannot read ${configPath}: ${err instanceof Error ? err.message : err}`);
-    access = { enabled: false, banks: ["*"], apiUrl: DEFAULT_API_URL };
+    access = { enabled: false, banks: ["*"], apiUrl: DEFAULT_API_URL, ctx: null };
   }
   if (!access.enabled) {
     console.error(

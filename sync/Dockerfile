@@ -6,7 +6,8 @@ FROM python:3.12-slim
 # [markdown] pulls markdownify — sources.get_fulltext(..., output_format="markdown") needs it.
 RUN pip install --no-cache-dir 'notebooklm-py[markdown]==0.8.5' pyyaml==6.0.3 google-auth==2.62.0 requests==2.34.2
 
-COPY sync/notebooklm_sync.py /opt/notebooklm/notebooklm_sync.py
+COPY sync/notebooklm_sync.py sync/memory_backend.py /opt/notebooklm/
+COPY indexer/sinks/ /opt/indexer/sinks/
 # Shipped default config. The per-machine override is mounted at /etc/notebooklm/override.yml by compose.
 COPY config/notebooklm.yml /opt/config/notebooklm.yml
 RUN chmod 0755 /opt/notebooklm/notebooklm_sync.py
@@ -16,9 +17,11 @@ RUN chmod 0755 /opt/notebooklm/notebooklm_sync.py
 RUN mkdir -p /data/state /data/notebooklm /tmp/nlm-home && chmod 0777 /data/state /data/notebooklm /tmp/nlm-home
 ENV PYTHONUNBUFFERED=1 \
     PYTHONNOUSERSITE=1 \
+    PYTHONPATH=/opt/indexer \
     HOME=/tmp/nlm-home \
     NOTEBOOKLM_HOME=/data/notebooklm \
     NOTEBOOKLM_STATE=/data/state/state.json \
-    HINDSIGHT_URL=http://hindsight:8888
+    HINDSIGHT_URL=http://hindsight:8888 \
+    MEMORY_SINK=hindsight
 
 CMD ["python3", "/opt/notebooklm/notebooklm_sync.py"]

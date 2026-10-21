@@ -71,5 +71,16 @@ services:
       cognee:
         condition: service_healthy
 
+  notebooklm:
+    environment:
+      MEMORY_SINK: cognee
+      MEMORY_API_URL: http://cognee:8000
+    env_file:
+      - path: ${COGNEE_INDEXER_ENV_FILE:-${HOME}/.config/personal-memory/cognee-indexer.env}
+        required: false
+    depends_on:
+      cognee:
+        condition: service_healthy
+
 volumes:
   cognee-data:

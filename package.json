@@ -1,6 +1,6 @@
 {
   "name": "personal-memory",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Choose your coding-agent memory backend (Hindsight, mem0, Cognee): one wizard, shared indexer, switch providers without vendor lock-in.",
   "type": "module",
   "license": "Apache-2.0",
