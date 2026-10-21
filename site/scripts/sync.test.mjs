@@ -16,8 +16,8 @@ const write = (root, files) => {
 const manifest = (id, status, extra = {}) => ({ id, label: id.toUpperCase(), status, ...extra });
 
 const DOCS = {
-  'docs/memory-providers.md': '# Providers\n\nSee [config](personal-memory-config.md) and [skill](../.agents/s/SKILL.md).\n',
-  'docs/provider-wizard-hooks.md': '# Hooks\n\nBody.\n',
+  'docs/quickstart.md': '# Quickstart\n\nBody.\n',
+  'docs/architecture.md': '# Architecture\n\nSee [config](personal-memory-config.md).\n',
   'docs/personal-memory-config.md': '# Config\n\nBody.\n',
   '.agents/s/SKILL.md': 'x',
 };
@@ -27,7 +27,6 @@ function fixture({ docs = DOCS, manifests = { a: manifest('a', 'supported') } } 
   const site = mkdtempSync(join(tmpdir(), 'pm-site-'));
   write(repo, docs);
   for (const [id, m] of Object.entries(manifests)) write(repo, { [`providers/${id}/manifest.json`]: m });
-  write(site, { 'src/content/docs/docs/getting-started.md': '---\ntitle: g\n---\n' });
   return { repo, site };
 }
 const opts = (f) => ({ repoRoot: f.repo, siteRoot: f.site, repoUrl: 'https://github.com/o/r', branch: 'main' });
@@ -35,11 +34,15 @@ const opts = (f) => ({ repoRoot: f.repo, siteRoot: f.site, repoUrl: 'https://git
 test('generates pages and rewrites links; an absent optional doc is skipped', () => {
   const f = fixture();
   const { pages } = runSync(opts(f));
-  assert.deepEqual(pages.map((p) => p.slug), ['getting-started', 'provider-status', 'memory-providers', 'provider-wizard-hooks', 'personal-memory-config']);
-  const out = readFileSync(join(f.site, 'src/content/docs/docs/memory-providers.md'), 'utf8');
+  assert.deepEqual(pages.map((p) => p.slug), [
+    'getting-started',
+    'architecture',
+    'provider-status',
+    'personal-memory-config',
+  ]);
+  const out = readFileSync(join(f.site, 'src/content/docs/docs/architecture.md'), 'utf8');
   assert.match(out, /\[config\]\(\.\.\/personal-memory-config\/\)/);
-  assert.match(out, /\[skill\]\(https:\/\/github\.com\/o\/r\/blob\/main\/\.agents\/s\/SKILL\.md\)/);
-  assert.doesNotMatch(out, /^# Providers/m);
+  assert.doesNotMatch(out, /^# Architecture/m);
   assert.equal(existsSync(join(f.site, 'src/content/docs/docs/npx-install.md')), false);
 });
 
@@ -52,12 +55,12 @@ test('picks up docs/npx-install.md when it exists and uses its heading', () => {
 });
 
 test('a privacy finding in a published doc fails the build and lists it, without redacting', () => {
-  const f = fixture({ docs: { ...DOCS, 'docs/provider-wizard-hooks.md': '# Hooks\n\nRuns on box d at /home/alice/x\n\nLITELLM_MASTER_KEY=hunter2\n' } });
+  const f = fixture({ docs: { ...DOCS, 'docs/architecture.md': '# Architecture\n\nRuns on box d at /home/alice/x\n\nLITELLM_MASTER_KEY=hunter2\n' } });
   assert.throws(
     () => runSync(opts(f)),
     (e) => {
       assert.match(e.message, /3 finding\(s\)/);
-      assert.match(e.message, /docs\/provider-wizard-hooks\.md:3\s+\[home-path\]/);
+      assert.match(e.message, /docs\/architecture\.md:3\s+\[home-path\]/);
       assert.match(e.message, /\[operator-box\]/);
       assert.match(e.message, /LITELLM_MASTER_KEY=<redacted>/);
       assert.doesNotMatch(e.message, /hunter2/);
@@ -67,22 +70,22 @@ test('a privacy finding in a published doc fails the build and lists it, without
 });
 
 test('an allowlist entry admits a code match but not the same string in prose', () => {
-  const f = fixture({ docs: { ...DOCS, 'docs/provider-wizard-hooks.md': '# Hooks\n\n`host.docker.internal`\n' } });
+  const f = fixture({ docs: { ...DOCS, 'docs/architecture.md': '# Architecture\n\n`host.docker.internal`\n' } });
   write(f.site, {
-    'scripts/privacy-allowlist.json': [{ rule: 'docker-host', match: 'host.docker.internal', files: ['docs/provider-wizard-hooks.md'], reason: 'generic docker alias, documented' }],
+    'scripts/privacy-allowlist.json': [{ rule: 'docker-host', match: 'host.docker.internal', files: ['docs/architecture.md'], reason: 'generic docker alias, documented' }],
   });
   assert.doesNotThrow(() => runSync(opts(f)));
-  write(f.repo, { 'docs/provider-wizard-hooks.md': '# Hooks\n\nplain host.docker.internal prose\n' });
+  write(f.repo, { 'docs/architecture.md': '# Architecture\n\nplain host.docker.internal prose\n' });
   assert.throws(() => runSync(opts(f)), /docker-host/);
 });
 
 test('a broken relative link fails the build', () => {
-  const f = fixture({ docs: { ...DOCS, 'docs/provider-wizard-hooks.md': '# Hooks\n\n[x](gone.md)\n' } });
+  const f = fixture({ docs: { ...DOCS, 'docs/architecture.md': '# Architecture\n\n[x](gone.md)\n' } });
   assert.throws(() => runSync(opts(f)), /docs\/gone\.md/);
 });
 
 test('a missing required doc fails the build', () => {
-  const docs = { ...DOCS, 'docs/memory-providers.md': '# Providers\n\nBody.\n' };
+  const docs = { ...DOCS, 'docs/architecture.md': '# Architecture\n\nBody.\n' };
   delete docs['docs/personal-memory-config.md'];
   assert.throws(() => runSync(opts(fixture({ docs }))), /required doc source is missing/);
 });

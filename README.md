@@ -1,8 +1,10 @@
 # personal-memory
 
-**Docs site:** [bcmyguest.github.io/personal-memory](https://bcmyguest.github.io/personal-memory/)
+[![npm version](https://img.shields.io/npm/v/personal-memory.svg)](https://www.npmjs.com/package/personal-memory)
 
-Pluggable **local memory for coding agents**: one wizard and indexer, multiple backends (Hindsight supported; mem0 and Cognee experimental). Details: [memory providers](docs/memory-providers.md).
+**npm:** [personal-memory](https://www.npmjs.com/package/personal-memory) · **Docs:** [bcmyguest.github.io/personal-memory](https://bcmyguest.github.io/personal-memory/)
+
+**Use the memory system you want** — not a single vendor lock-in. One wizard and shared indexer for coding agents; pick **Hindsight**, **mem0**, or **Cognee** (and add more via manifests). Hindsight is supported today; mem0 and Cognee are experimental. Architecture: [docs/architecture.md](docs/architecture.md) · contributor guide: [memory providers](docs/memory-providers.md).
 
 ## Quickstart
 
@@ -10,7 +12,7 @@ Pluggable **local memory for coding agents**: one wizard and indexer, multiple b
 | --- | --- |
 | 1. Wizard | `npx personal-memory` |
 | 2. Check | `npx personal-memory doctor` |
-| 3. MCP (optional) | `npx personal-memory install-mcp --yes` |
+| 3. NotebookLM MCP (optional) | `npx personal-memory install-mcp --yes --notebooklm` |
 
 **Checkout instead of npx:**
 
@@ -34,7 +36,7 @@ flowchart TB
   subgraph setup["personal-memory (npm CLI)"]
     W[setup wizard]
     W --> ENV["~/.config/hindsight/*\nstack .env · index.yml"]
-    W --> MCP[install-mcp]
+    W --> MCP["install-mcp\n(NotebookLM MCP)"]
   end
 
   subgraph sources["Sources on disk"]
@@ -73,7 +75,7 @@ flowchart TB
 | --- | --- |
 | Wizard → stack | Provider, env, indexer image, compose up, smoke test |
 | Sources → indexer | Shared watcher; sink from active provider manifest |
-| Agents → provider | Provider plugin and/or MCP from `install-mcp` |
+| Agents → provider | Hindsight plugin for session memory; `install-mcp` for NotebookLM MCP (and mem0/Cognee with `--provider-only`) |
 
 Default Hindsight compose services: `litellm`, `hindsight` (API `127.0.0.1:8888`), `indexer`.
 

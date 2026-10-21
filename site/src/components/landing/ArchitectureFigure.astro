@@ -4,11 +4,13 @@
 // own plugin. The provider column is built from the manifests, so its status
 // badges can never disagree with the provider table below.
 import { providers, STATUS_LABEL } from '../../lib/content';
+import { withBase } from '../../lib/url';
 import { site } from '../../site.config.mjs';
 import Badge from '../ui/Badge.astro';
 
 const sources = ['Git repositories', 'Obsidian vaults', 'NotebookLM (opt-in)'];
 const indexer = ['Tree-sitter code outlines', 'Repository polling, vault watching', 'Secret paths masked'];
+const bridge = ['Hindsight plugin (session memory)', 'personal-memory MCP (memory_*)', 'NotebookLM / native provider MCP'];
 const agents = ['Claude Code', 'Codex', 'OpenCode'];
 const agentPackage = providers.find((p) => p.status === 'supported' && p.codingAgentPackage)?.codingAgentPackage;
 ---
@@ -45,6 +47,15 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
         </ul>
       </div>
 
+      <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
+
+      <div class="arch-col" role="group" aria-labelledby="arch-h-bridge">
+        <p id="arch-h-bridge" class="arch-label">Agent bridge</p>
+        <ul class="arch-list">
+          {bridge.map((s) => <li class="arch-node">{s}</li>)}
+        </ul>
+      </div>
+
       <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M8 8H32" /><path class="tip-l" d="M10 3L2 8l8 5z" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
 
       <div class="arch-col" role="group" aria-labelledby="arch-h-agents">
@@ -55,17 +66,12 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
       </div>
     </div>
 
-    <div class="arch-wizard">
-      <p class="arch-label">Wizard</p>
-      <p class="text-sm"><code>npx personal-memory</code> (or <code>npx .</code> in a checkout) picks the provider, ports, and compose project, writes the index sources, starts the stack, and runs the smoke test.</p>
-    </div>
-
     <div class="arch-title" aria-hidden="true">
       <span>{site.name.toUpperCase()}</span><span>DATA FLOW</span>
     </div>
   </div>
   <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    Sources flow through the shared indexer into the active provider. Agents reach the provider through its own plugin{agentPackage && (<Fragment>, for Hindsight <code>{agentPackage}</code>, installed separately</Fragment>)}. Provider badges are read from <code>providers/*/manifest.json</code> when the site is built.
+    Sources flow through the shared indexer into the active provider. Hindsight session memory uses the coding-agent plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)}; <code>install-mcp</code> is the NotebookLM MCP today (mem0/Cognee with <code>--provider-only</code>). See <a href={withBase('docs/architecture/')}>Architecture</a>. Provider badges come from <code>providers/*/manifest.json</code> at build time.
   </figcaption>
 </figure>
 
@@ -87,10 +93,10 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
   }
   @media (min-width: 64rem) {
     .arch-flow {
-      grid-template-columns: 1fr 2.5rem 1.1fr 2.5rem 1.2fr 2.5rem 1fr;
+      grid-template-columns: 1fr 2rem 1fr 2rem 1.05fr 2rem 1fr 2rem 0.95fr;
       align-items: center;
       gap: 0;
-      padding: 1.75rem 1.5rem 1.25rem;
+      padding: 1.75rem 1rem 1.25rem;
     }
   }
   .arch-col {
@@ -178,21 +184,6 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
     .arch-arrow .flow {
       animation: none;
     }
-  }
-  .arch-wizard {
-    margin: 0 1rem 1rem;
-    border: 1px dashed var(--c-brand);
-    border-radius: 0.75rem;
-    background: var(--c-panel);
-    padding: 0.75rem 0.875rem;
-  }
-  @media (min-width: 64rem) {
-    .arch-wizard {
-      margin: 0 1.5rem 2.75rem;
-    }
-  }
-  .arch-wizard .arch-label {
-    margin-bottom: 0.25rem;
   }
   .arch-title {
     display: none;

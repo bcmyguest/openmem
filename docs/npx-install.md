@@ -9,7 +9,7 @@ Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the co
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
 bash dependency in the CLI (macOS ships bash 3.2).
 
-Wizard phases and flags: [setup-wizard.md](setup-wizard.md).
+Wizard phases and flags live in the repository: [docs/setup-wizard.md](https://github.com/bcmyguest/personal-memory/blob/main/docs/setup-wizard.md). Runtime architecture: [architecture.md](architecture.md).
 
 ## Install paths
 
@@ -37,7 +37,7 @@ exist only inside a checkout; prefer `npx personal-memory …` (or `npx . …` i
 | `configure` | non-interactive setup and start (`setup --yes`) |
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
-| `install-mcp` | merge memory MCP entries into `~/.cursor/mcp.json` |
+| `install-mcp` | merge **NotebookLM** MCP into `~/.cursor/mcp.json` (Hindsight default); `--provider-only` for mem0/Cognee; `--notebooklm` to force NotebookLM |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |
 | `init [--force] [--dry-run] [--json]` | create or upgrade the stack root without running the wizard |

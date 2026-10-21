@@ -116,9 +116,13 @@ export function runSync({ repoRoot, siteRoot, repoUrl, branch, log = () => {} })
     `${JSON.stringify(pages.map(({ slug, group, title, description }) => ({ slug, group, title, description })), null, 2)}\n`,
   );
 
-  // Drop generated pages whose source vanished; hand-written pages stay.
+  // Drop stale generated pages (including slugs removed from PAGES); hand-written pages stay.
   const keep = new Set(pages.map((p) => `${p.slug}.md`));
-  const generatedSlugs = new Set(PAGES.filter((p) => p.kind !== 'hand').map((p) => `${p.slug}.md`));
-  for (const f of readdirSync(docsOut)) if (generatedSlugs.has(f) && !keep.has(f)) rmSync(join(docsOut, f));
+  const handSlugs = new Set(PAGES.filter((p) => p.kind === 'hand').map((p) => `${p.slug}.md`));
+  for (const f of readdirSync(docsOut)) {
+    if (!f.endsWith('.md') || handSlugs.has(f) || keep.has(f)) continue;
+    rmSync(join(docsOut, f));
+    log(`removed stale page ${f}`);
+  }
   return { providers, pages };
 }

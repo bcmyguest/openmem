@@ -9,6 +9,9 @@ import { posix } from 'node:path';
  *  - doc: generated from a repository doc (`source`); `optional` sources are
  *    skipped when absent (another worker may not have written them yet)
  *  - manifest: generated from providers/*\/manifest.json
+ *
+ * Developer-only guides (setup-wizard, memory-providers, hooks, manual compose,
+ * indexing internals) stay in the git repo under docs/ and are not listed here.
  */
 export const PAGES = [
   {
@@ -29,58 +32,12 @@ export const PAGES = [
     description: 'Install and run the personal-memory wizard through npx.',
   },
   {
-    slug: 'setup-wizard',
+    slug: 'architecture',
     kind: 'doc',
-    source: 'docs/setup-wizard.md',
+    source: 'docs/architecture.md',
     group: 'Start',
-    optional: true,
-    title: 'Setup wizard',
-    description: 'Wizard phases, flags, and where configuration is written.',
-  },
-  {
-    slug: 'manual-stack-setup',
-    kind: 'doc',
-    source: 'docs/manual-stack-setup.md',
-    group: 'Reference',
-    optional: true,
-    title: 'Manual stack setup',
-    description: 'Compose and setup.mjs without the interactive wizard.',
-  },
-  {
-    slug: 'model-configuration',
-    kind: 'doc',
-    source: 'docs/model-configuration.md',
-    group: 'Reference',
-    optional: true,
-    title: 'Model configuration',
-    description: 'LiteLLM aliases, routes, and Hindsight LLM settings.',
-  },
-  {
-    slug: 'indexing',
-    kind: 'doc',
-    source: 'docs/indexing.md',
-    group: 'Reference',
-    optional: true,
-    title: 'Indexing',
-    description: 'How the indexer watches repos and Obsidian vaults.',
-  },
-  {
-    slug: 'notebooklm',
-    kind: 'doc',
-    source: 'docs/notebooklm.md',
-    group: 'Reference',
-    optional: true,
-    title: 'NotebookLM',
-    description: 'Opt-in NotebookLM sync and agent MCP access.',
-  },
-  {
-    slug: 'coding-agents',
-    kind: 'doc',
-    source: 'docs/coding-agents.md',
-    group: 'Reference',
-    optional: true,
-    title: 'Coding agents and MCP',
-    description: 'Hindsight plugin install, install-mcp, and provider switch.',
+    title: 'Architecture',
+    description: 'Runtime data flow, how changes update memory, and MCP access per provider.',
   },
   {
     slug: 'provider-status',
@@ -90,20 +47,31 @@ export const PAGES = [
     description: 'Every provider, its status, and its self-host story, generated from the provider manifests.',
   },
   {
-    slug: 'memory-providers',
+    slug: 'mem0',
     kind: 'doc',
-    source: 'docs/memory-providers.md',
+    source: 'docs/mem0.md',
     group: 'Providers',
-    title: 'Pluggable memory providers',
-    description: 'How the meta wizard splits work with a provider, the provider manifest, and the phases for adding a provider.',
+    optional: true,
+    title: 'mem0',
+    description: 'Self-hosted mem0 REST URL, API key file, and Cursor MCP install.',
   },
   {
-    slug: 'provider-wizard-hooks',
+    slug: 'cognee',
     kind: 'doc',
-    source: 'docs/provider-wizard-hooks.md',
+    source: 'docs/cognee.md',
     group: 'Providers',
-    title: 'Provider wizard hooks',
-    description: 'The wizard phase order and the hook module contract a provider implements.',
+    optional: true,
+    title: 'Cognee',
+    description: 'Loopback Cognee container, REST ingest, and read-only MCP tools.',
+  },
+  {
+    slug: 'memory-portability',
+    kind: 'doc',
+    source: 'docs/memory-portability.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Memory portability',
+    description: 'PMM export/import format and unified MCP memory_export / memory_import behavior.',
   },
   {
     slug: 'personal-memory-config',

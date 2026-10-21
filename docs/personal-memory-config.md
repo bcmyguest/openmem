@@ -1,6 +1,6 @@
 # Mise-like config (`config.toml`)
 
-personal-memory is a **meta** orchestrator (see [memory-providers.md](memory-providers.md)). Its
+personal-memory is a **meta** orchestrator (see [architecture.md](architecture.md) on the site; [memory-providers.md](memory-providers.md) in the repo for contributors). Its
 declarative config is intentionally similar to **[mise](https://mise.jdx.dev/)**:
 
 | mise | personal-memory |
@@ -138,8 +138,8 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 - **`[tasks.*]`** — descriptions for `npx personal-memory` / `./pm` (see `wizard/bin/pm.mjs` and
   `cli/personal-memory.mjs`). Built-in tasks:
   - `configure` / `up` / `down` / `doctor` — map to the setup wizard with the matching flags
-  - `install-mcp` — runs `cli/install-memory-mcp.mjs` (merge memory MCP entries into
-    `~/.cursor/mcp.json`)
+  - `install-mcp` — runs `cli/install-memory-mcp.mjs` (NotebookLM MCP on Hindsight; mem0/Cognee
+    with `--provider-only`; merges into `~/.cursor/mcp.json`)
   - `switch <provider>` — runs `cli/switch-memory-provider.mjs`: sets `MEMORY_PROVIDER` in
     `wizard.conf`, updates `[memory].provider` in `config.toml` when present
     (`updatePmConfigProvider`), optionally restarts the stack and re-points provider MCP.

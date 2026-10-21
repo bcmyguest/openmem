@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "Run the wizard once (npx or git checkout), verify health, optional MCP install."
 ---
 
-Get from zero to a running memory stack in one wizard run. Cloning the repo is optional — **`npx personal-memory`** is the usual path.
+Get from zero to a running stack in one wizard run. **Choose your memory provider** in the wizard (Hindsight by default; mem0 or Cognee if you prefer) — same CLI either way. Cloning the repo is optional; **`npx personal-memory`** is the usual path.
 
 ## Before you start
 
@@ -14,7 +14,7 @@ Get from zero to a running memory stack in one wizard run. Cloning the repo is o
 | LLM for Hindsight (default provider) | lemond, Ollama, or OpenAI-compatible — wizard wires LiteLLM |
 | git, curl | Wizard preflight |
 
-If you are not using Hindsight, pick a provider in the wizard or run `npx personal-memory providers` first ([memory providers](../memory-providers/)).
+If you are not using Hindsight, pick a provider in the wizard or run `npx personal-memory providers` first ([provider status](https://bcmyguest.github.io/personal-memory/docs/provider-status/)).
 
 ## 1. Run the wizard
 
@@ -42,6 +42,8 @@ npx personal-memory setup --dry-run     # plan only, no writes
 npx personal-memory configure --yes       # defaults + start, no prompts
 ```
 
+![Wizard dry-run](https://bcmyguest.github.io/personal-memory/setup-demo.gif)
+
 ## 2. Confirm it is up
 
 ```sh
@@ -51,11 +53,18 @@ curl -fsS http://127.0.0.1:8888/health   # Hindsight default; see wizard output 
 
 ## 3. Wire your coding agent (optional)
 
+**Hindsight session memory** uses the [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) plugin from the wizard — not `install-mcp`.
+
+**`install-mcp`** merges the **`personal-memory` unified MCP** (`memory_add`, `memory_search`, `memory_recall`, `memory_forget` on whichever provider you picked) and, when NotebookLM sync is on, the **NotebookLM MCP**:
+
 ```sh
 npx personal-memory install-mcp --yes
+npx personal-memory install-mcp --yes --notebooklm   # force NotebookLM entry
 ```
 
-Accept the wizard’s coding-agent step on first setup, or install the Hindsight plugin when prompted. Restart Cursor Agent (or your agent) after MCP changes.
+Hindsight **in-editor** session memory still uses the coding-agent **plugin** from the wizard. Optional native mem0/Cognee MCP: `--provider-only`. See [Architecture](../architecture/).
+
+Restart Cursor Agent after MCP changes.
 
 ## Day-2
 
@@ -78,7 +87,7 @@ Secrets and index config: `~/.config/hindsight/` (and optional `~/.config/person
 
 ## Next
 
-- [Setup wizard](../setup-wizard/) — phases, flags, file paths
+- [Architecture](../architecture/) — data flow, indexing, MCP by provider
 - [Install with npx](../npx-install/) — upgrades, troubleshooting
 - [Configuration file](../personal-memory-config/) — declarative `config.toml`
 
