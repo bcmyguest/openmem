@@ -13,4 +13,11 @@ notes:
 
 3. Re-run indexing; chunks retain with bank `notes::full-sync` (slug from folder name).
 
+Optional stable bank id:
+
+```yaml
+banks:
+  ~/Readwise/Full-Sync: readwise::full-sync
+```
+
 For automatic sync, use Readwise’s scheduled export + the same path (filesystem watcher picks up changes).

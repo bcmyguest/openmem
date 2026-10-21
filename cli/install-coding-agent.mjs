@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./coding-agent/agents.mjs";
-import { PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
+import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -53,6 +53,11 @@ export async function runInstallCodingAgent(opts) {
   const home = opts.home;
   const env = opts.env || process.env;
   const flags = opts.flags;
+  for (const agentId of flags.agents) {
+    if (!AGENT_IDS.includes(agentId)) {
+      opts.h?.warn(`Unknown agent "${agentId}" (known: ${AGENT_IDS.join(", ")})`);
+    }
+  }
   const provider = resolveMemoryProvider(home, env);
   const caps = PROVIDER_CAPABILITIES[provider] || {};
   if (provider === "hindsight") {

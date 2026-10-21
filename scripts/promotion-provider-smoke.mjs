@@ -12,6 +12,9 @@ const tests = [
   "scripts/tests/test_memory_facade.mjs",
   "scripts/tests/test_memory_portability.mjs",
   "scripts/tests/test_compose_profiles.mjs",
+  "scripts/tests/test_coding_agents.mjs",
+  "scripts/tests/test_wiring_report.mjs",
+  "scripts/tests/test_install_coding_agent.mjs",
 ];
 
 let failed = 0;
