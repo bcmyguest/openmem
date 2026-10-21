@@ -1,6 +1,6 @@
 # Index sources — roadmap
 
-Today the indexer **ships** git repos, Obsidian vaults, and markdown directory trees (`notes`, `papers`, `bookmarks` in `index.yml`). Everything else below is **planned** or **bring-your-own-export** (point a folder at an export until a native connector exists).
+Today the indexer **ships** git repos, Obsidian vaults, markdown directory trees (`notes`, `papers`, `bookmarks` in `index.yml`), and a **feed cache** (`feeds` + `feed-sync`). Everything else below is **planned** or **bring-your-own-export** (point a folder at an export until a native connector exists).
 
 ## Shipped (filesystem)
 
@@ -11,6 +11,7 @@ Today the indexer **ships** git repos, Obsidian vaults, and markdown directory t
 | Notes | `notes.paths` | Plain markdown trees |
 | Papers | `papers.paths` | Paper notes, Zotero md export, reading notes |
 | Bookmarks | `bookmarks.paths` | Saved links as markdown/HTML exports |
+| Feed cache | `feeds.out_dir` + `feed-sync` | RSS / OpenAlex markdown under a watched dir |
 
 ## Planned connectors (API / sync jobs)
 
