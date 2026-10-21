@@ -21,6 +21,10 @@ const KIND = {
 // skip only the email rule; every other rule still applies to them.
 const EMAIL_EXEMPT = /(^|\/)(pagefind\/[^/]+\.js|_astro\/ui-core\.[^/]+\.js)$/;
 
+// Minified client bundles (e.g. mermaid) often contain ".local" substrings that
+// are not operator hostnames; prose lives in HTML, not _astro/*.js.
+const LAN_HOSTNAME_JS_EXEMPT = /(^|\/)_astro\/[^/]+\.js$/;
+
 /** @param {string} dir */
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -41,7 +45,9 @@ export function scanDir(dir, { deny = [] } = {}) {
   for (const path of walk(dir)) {
     files++;
     const rel = relative(dir, path).split('\\').join('/');
-    const rules = EMAIL_EXEMPT.test(rel) ? RULES.filter((r) => r.id !== 'email') : RULES;
+    let rules = RULES;
+    if (EMAIL_EXEMPT.test(rel)) rules = rules.filter((r) => r.id !== 'email');
+    if (LAN_HOSTNAME_JS_EXEMPT.test(rel)) rules = rules.filter((r) => r.id !== 'lan-hostname');
     const kind = KIND[extname(path).toLowerCase()];
     findings.push(...scanText(readFileSync(path, 'utf8'), { kind, file: `dist/${rel}`, deny, rules }));
   }

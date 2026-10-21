@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import mermaid from 'astro-mermaid';
 import tailwindcss from '@tailwindcss/vite';
 import { site as brand } from './src/site.config.mjs';
 
@@ -29,6 +30,7 @@ export default defineConfig({
   base: basePath,
   trailingSlash: 'ignore',
   integrations: [
+    mermaid({ autoTheme: true, enableLog: false }),
     starlight({
       title: brand.name,
       description: brand.description,

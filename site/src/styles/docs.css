@@ -5,6 +5,11 @@
 }
 
 /* Wide tables (provider status, config precedence) scroll instead of squeezing. */
+.mermaid {
+  margin: 1.25rem 0;
+  overflow-x: auto;
+}
+
 .sl-markdown-content table {
   display: block;
   overflow-x: auto;
