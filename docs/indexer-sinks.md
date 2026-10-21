@@ -18,8 +18,8 @@ Registered providers today:
 | Provider | `sink` (module) | `sinkDriver` | `apiUrlEnv` |
 | --- | --- | --- | --- |
 | Hindsight (`supported`) | `hindsight` | `hindsight-rest-v1` | `HINDSIGHT_URL` |
-| mem0 (`experimental`) | `mem0` | `mem0-rest` | `MEM0_API_URL` |
-| Cognee (`experimental`) | `cognee` | `cognee-rest` | `COGNEE_API_URL` |
+| mem0 | `mem0` | `mem0-rest` | `MEM0_API_URL` |
+| Cognee | `cognee` | `cognee-rest` | `COGNEE_API_URL` |
 
 Contract tests: `indexer/tests/sink_contract.py`, provider-specific tests under `indexer/tests/`.
 

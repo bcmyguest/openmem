@@ -4,7 +4,7 @@
 
 **npm:** [personal-memory](https://www.npmjs.com/package/personal-memory) · **Docs:** [bcmyguest.github.io/personal-memory](https://bcmyguest.github.io/personal-memory/)
 
-**Pick your memory backend** — Hindsight (supported), mem0 or Cognee (experimental), or the next manifest. One wizard and indexer on your machine; switch with `npx personal-memory switch`. Architecture: [docs/architecture.md](docs/architecture.md) · contributors: [memory providers](docs/memory-providers.md).
+**Pick your memory backend** — Hindsight, mem0, or Cognee (all supported today), or the next manifest. One wizard and indexer on your machine; switch with `npx personal-memory switch`. Architecture: [docs/architecture.md](docs/architecture.md) · contributors: [memory providers](docs/memory-providers.md).
 
 ## Quickstart
 

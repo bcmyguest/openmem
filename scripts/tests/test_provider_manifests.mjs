@@ -40,12 +40,12 @@ check(
 );
 
 const mem0 = listAllProviders().find((m) => m.id === "mem0");
-check("mem0 manifest is experimental", mem0?.status === "experimental");
-check("mem0 experimental manifest validates", mem0 ? validateManifest(mem0).length === 0 : false);
+check("mem0 manifest is supported", mem0?.status === "supported");
+check("mem0 supported manifest validates", mem0 ? validateManifest(mem0).length === 0 : false);
 
 const cognee = listAllProviders().find((m) => m.id === "cognee");
-check("cognee manifest is experimental", cognee?.status === "experimental");
-check("cognee experimental manifest validates", cognee ? validateManifest(cognee).length === 0 : false);
+check("cognee manifest is supported", cognee?.status === "supported");
+check("cognee supported manifest validates", cognee ? validateManifest(cognee).length === 0 : false);
 
 // indexer.sink: the MEMORY_SINK value, required once a provider is experimental or supported.
 check("hindsight declares indexer.sink 'hindsight'", hindsight?.indexer?.sink === "hindsight");
