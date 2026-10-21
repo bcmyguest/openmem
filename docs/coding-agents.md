@@ -1,13 +1,16 @@
 # Coding agents and MCP
 
-The Hindsight client plugin is installed separately, not by this repository:
+One entry point for session wiring (Hindsight plugin vs mem0/Cognee MCP path):
 
 ```sh
-npx @vectorize-io/hindsight-coding-agents install claude-code codex opencode cursor-cli \
-  --server self-hosted --api-url http://127.0.0.1:8888
+npx personal-memory install-coding-agent --yes
+# same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli
 ```
 
-Or accept the coding-agent step in `personal-memory setup` / `./setup`.
+**Hindsight** runs `@vectorize-io/hindsight-coding-agents install` with your loopback API URL.
+**mem0 / Cognee** ensure unified MCP is merged and print MCP session guidance ([hook parity](coding-agent-hooks.md)).
+
+Or accept the coding-agent step in `personal-memory setup` / `./setup` (Hindsight path).
 
 Use a **real** `~/.hindsight/coding-agent.json` on disk (seed from `config/coding-agent.json`). Do not symlink into the repo — machine fields such as `optInPaths` and `notebooklmAccess` must not live in the checkout. The indexer reads this file through the `$HOME` mount. If it is missing, the indexer logs a warning and still indexes everything under `$HOME`.
 
