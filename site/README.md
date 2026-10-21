@@ -26,7 +26,10 @@ pnpm test            # unit tests for the sync, privacy, and link scripts
 pnpm check:privacy   # re-run the dist/ and doc-source privacy scan
 pnpm check:links     # re-run the dist/ link check
 pnpm check:sources   # advisory scan of the wider repo docs (never fails)
+pnpm render-diagrams # refresh public/diagrams/*.svg after editing mermaid in docs/
 ```
+
+Before merging changes under `docs/` that contain ` ```mermaid ` blocks, run `pnpm render-diagrams` and commit the updated SVGs under `public/diagrams/`. The normal `pnpm build` only embeds those files; it does not run Puppeteer. CI runs `pnpm test` and `pnpm build` in this directory (see `.github/workflows/ci.yml` and `pages.yml`).
 
 Build for the production location, then smoke it:
 

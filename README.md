@@ -4,7 +4,7 @@
 
 **npm:** [personal-memory](https://www.npmjs.com/package/personal-memory) · **Docs:** [bcmyguest.github.io/personal-memory](https://bcmyguest.github.io/personal-memory/)
 
-**Use the memory system you want** — not a single vendor lock-in. One wizard and shared indexer for coding agents; pick **Hindsight**, **mem0**, or **Cognee** (and add more via manifests). Hindsight is supported today; mem0 and Cognee are experimental. Architecture: [docs/architecture.md](docs/architecture.md) · contributor guide: [memory providers](docs/memory-providers.md).
+**Pick your memory backend** — Hindsight (supported), mem0 or Cognee (experimental), or the next manifest. One wizard and indexer on your machine; switch with `npx personal-memory switch`. Architecture: [docs/architecture.md](docs/architecture.md) · contributors: [memory providers](docs/memory-providers.md).
 
 ## Quickstart
 
@@ -54,7 +54,7 @@ flowchart TB
     LIT[LiteLLM]
     NLM[NotebookLM sync]
     LIT -.->|Hindsight only| PROV
-    NLM -.->|Hindsight profile| PROV
+    NLM -.->|opt-in profile| PROV
   end
 
   LIT --> LLM[(lemond · Ollama · OpenAI-compatible)]
@@ -63,14 +63,20 @@ flowchart TB
     AG[Claude Code · Codex · Cursor …]
     UMCP["personal-memory MCP\n(memory_*)"]
     PLG["Hindsight plugin\n(Hindsight only)"]
+    PMCP[Provider MCP optional]
+    NLMCP[NotebookLM MCP optional]
   end
 
   GIT --> IDX
   OBS --> IDX
   AG <-->|stdio| UMCP
   AG <-->|session| PLG
+  AG <-->|stdio| PMCP
+  AG <-->|stdio| NLMCP
   UMCP -->|loopback HTTP| PROV
   PLG -->|loopback HTTP| PROV
+  PMCP -->|loopback HTTP| PROV
+  NLMCP -->|loopback HTTP| PROV
 
   W["npx personal-memory\nsetup · install-mcp"] -.->|configure| compose
   W -.->|mcp.json| UMCP

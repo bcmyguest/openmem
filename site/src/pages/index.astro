@@ -12,7 +12,7 @@ const supportedNames = providers.filter((p) => p.status === 'supported').map((p)
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
-  'Choose your memory backend — Hindsight, mem0, Cognee, or more as manifests land. One wizard and indexer on your machine; switch providers without rebuilding your workflow from scratch.';
+  'Run Hindsight, mem0, or Cognee locally for coding agents. One wizard and indexer; switch backends with the CLI.';
 
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
@@ -45,10 +45,10 @@ npx ${site.npm.package} switch mem0 --yes`;
   <main id="main">
     <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
       <div class="max-w-3xl">
-        <Badge variant="outline">Your backend · Local-first · Docker Compose</Badge>
+        <Badge variant="outline">Local · Docker Compose · Manifest-driven</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          Most agent-memory tools pick a stack for you. personal-memory is the opposite: one installer and indexer, and you choose the memory system — Hindsight today, mem0 or Cognee if that fits better, another provider when a manifest lands. Agents talk to that backend’s native plugin or MCP; we do not replace it. {supportedNames ? `Supported now: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
+          personal-memory wires up indexing and compose for the memory API you pick. Agents use that provider’s plugin or MCP; this repo is plumbing, not a replacement memory product. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <Button href="#install" size="lg">Install</Button>
@@ -63,7 +63,7 @@ npx ${site.npm.package} switch mem0 --yes`;
     <section class="border-y border-line bg-panel py-16" aria-labelledby="features-h">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 id="features-h" class="text-3xl font-bold tracking-tight">What it does</h2>
-        <p class="mt-3 max-w-2xl text-muted">Shared plumbing only — indexing, compose, smoke tests. Your provider keeps its API, models, and agent integration; you are not locked in.</p>
+        <p class="mt-3 max-w-2xl text-muted">Indexer, wizard, smoke tests, and MCP registration. Models and memory semantics stay with the provider you chose.</p>
         <ul class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <Card as="li" class="bg-panel-raised">

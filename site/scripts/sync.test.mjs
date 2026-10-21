@@ -79,6 +79,16 @@ test('an allowlist entry admits a code match but not the same string in prose', 
   assert.throws(() => runSync(opts(f)), /docker-host/);
 });
 
+test('mermaid in a doc requires committed SVGs under public/diagrams', () => {
+  const f = fixture({
+    docs: { ...DOCS, 'docs/architecture.md': '# Architecture\n\n```mermaid\nflowchart LR\n  A-->B\n```\n' },
+  });
+  mkdirSync(join(f.site, 'public', 'diagrams'), { recursive: true });
+  assert.throws(() => runSync(opts(f)), /pnpm render-diagrams/);
+  writeFileSync(join(f.site, 'public', 'diagrams', 'architecture-1.svg'), '<svg></svg>');
+  assert.doesNotThrow(() => runSync(opts(f)));
+});
+
 test('a broken relative link fails the build', () => {
   const f = fixture({ docs: { ...DOCS, 'docs/architecture.md': '# Architecture\n\n[x](gone.md)\n' } });
   assert.throws(() => runSync(opts(f)), /docs\/gone\.md/);

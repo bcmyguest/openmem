@@ -37,48 +37,44 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 
 export const features = [
   {
-    title: 'Any memory system you choose',
-    body: 'Not one vendor’s stack. Pick Hindsight, self-hosted mem0, Cognee, or the next manifest — same wizard and indexer. Switch with npx personal-memory switch; memories stay on the old backend until you migrate yourself.',
+    title: 'Pluggable providers',
+    body: 'Hindsight, mem0, Cognee, or the next manifest entry. One wizard and indexer; `npx personal-memory switch` rewires compose and MCP. Data stays on each backend until you export/import yourself.',
   },
   {
-    title: 'One wizard, per-provider steps',
-    body: 'npx personal-memory asks for a stack action and a provider, then runs shared steps: preflight, ports, index sources, start, health, smoke test. Provider hooks add only what that backend needs.',
+    title: 'Setup wizard',
+    body: 'Preflight, ports, index sources, compose up, health check, smoke retain/recall. Provider hooks in `providers/*/wizard.mjs` add only backend-specific steps.',
   },
   {
-    title: 'A Compose stack, loopback only',
-    body: 'The Hindsight stack is a LiteLLM proxy on the internal Docker network, the Hindsight API, and the indexer. The API and control plane publish on 127.0.0.1 only.',
+    title: 'Compose on loopback',
+    body: 'Hindsight publishes API and control on 127.0.0.1. LiteLLM stays on the Docker network as Hindsight’s model proxy.',
   },
   {
-    title: 'Project and vault indexer',
-    body: 'Indexes git repositories and Obsidian vaults, then keeps them current: repositories are polled, vaults are watched. Code files get tree-sitter outlines for 14 languages, with no network needed.',
+    title: 'Git and Obsidian indexer',
+    body: 'Polls repos, watches vaults, tree-sitter outlines for code. Sends retains to whichever sink the active manifest declares.',
   },
   {
-    title: 'Secret paths masked',
-    body: 'The indexer mounts your home directory read-only and a generated override hides ~/.ssh, ~/.gnupg, ~/.config/hindsight, and the Codex and Claude credential files. Its one writable path is a named volume.',
+    title: 'Indexer secret masking',
+    body: 'Home is mounted read-only; generated compose overrides hide common credential paths. Writable storage is a named volume.',
   },
   {
-    title: 'Smoke test on every start',
-    body: 'After the stack is healthy the wizard retains a fact in a temporary bank, recalls it, and deletes the bank. A rerun on an unchanged setup reports changed=0.',
+    title: 'Smoke test',
+    body: 'Temporary bank retain/recall/delete after health passes. Idempotent reruns report changed=0 when nothing moved.',
   },
   {
-    title: 'Declarative config',
-    body: 'A mise-like ~/.config/personal-memory/config.toml holds provider, ports, and model routing. Day-2 commands are npx personal-memory up, down, doctor, install-mcp, and switch.',
+    title: 'config.toml',
+    body: '`~/.config/personal-memory/config.toml` for provider and ports. Day-2: up, down, doctor, install-mcp, switch.',
   },
   {
-    title: 'Switch providers later',
-    body: 'Try mem0 without abandoning Hindsight config: npx personal-memory switch <provider> --yes rewires compose, env, and MCP. No forced migration — your data stays where you left it on each backend.',
+    title: 'Unified MCP',
+    body: '`install-mcp` registers `personal-memory` with stable `memory_*` tools against the active API. Provider-native MCP (`--provider-only`) and NotebookLM MCP are separate servers.',
   },
   {
-    title: 'Local models by default',
-    body: 'For Hindsight, three LiteLLM aliases map retain, reflect, and consolidate to lemond, Ollama, or any OpenAI-compatible server. No cloud account is involved unless you point a route at one.',
+    title: 'Manifest-driven site',
+    body: 'Provider status badges and copy on this site are generated from `providers/*/manifest.json` at build time.',
   },
   {
-    title: 'Manifests, not guesses',
-    body: 'Each provider declares its status, compose services, health check, and native docs in a manifest. This site reads those files at build time, so a provider only shows as supported when its manifest says so.',
-  },
-  {
-    title: 'Optional NotebookLM sync + MCP',
-    body: 'An opt-in compose profile syncs Google NotebookLM into notebooklm::* banks. Agents can list/search those banks via an opt-in stdio MCP (fast full-text by default). Off until you enable sync and notebooklmAccess.',
+    title: 'NotebookLM (opt-in)',
+    body: 'Compose profile syncs into Hindsight; optional MCP for list/search. Off until you enable sync.',
     tag: 'Opt-in',
   },
 ];

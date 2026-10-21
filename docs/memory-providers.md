@@ -214,6 +214,10 @@ mem0’s API and deployment model differ from Hindsight banks and retain/reflect
 - Possibly **no** LiteLLM sidecar in this repo (mem0 cloud or separate compose).
 - Coding-agent integration likely **not** the Hindsight npx package; manifest should name the real install path when known.
 
+## Site and docs
+
+Published pages sync from `docs/*.md` at build time. If you change mermaid in a synced doc (for example `docs/architecture.md`), run `cd site && pnpm render-diagrams` and commit `site/public/diagrams/*.svg`. Then run `SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/ pnpm build` in `site/` — the same check as CI and GitHub Pages.
+
 ## Adding a provider (checklist)
 
 1. Add `providers/<id>/manifest.json` with accurate `status`.
