@@ -44,6 +44,21 @@ def test_vault_documents_skips_obsidian_and_trash(indexer, tmp_path):
     assert doc["content"].startswith("Vault: My Vault\nSource: projects/plan.md")
 
 
+def test_vault_documents_strips_html_for_bookmarks_kind(indexer, tmp_path):
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    (folder / "link.html").write_text(
+        "<html><head><title>T</title><style>.x{}</style></head>"
+        "<body><h1>Save</h1><p>Hello <b>world</b></p><script>bad()</script></body></html>"
+    )
+    documents = indexer.vault_documents(folder, kind="bookmarks")
+    assert len(documents) == 1
+    content = next(iter(documents.values()))["content"]
+    assert "Hello" in content and "world" in content
+    assert "bad()" not in content
+    assert "<h1>" not in content
+
+
 def test_vault_documents_collects_frontmatter_and_inline_tags(indexer, tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir()
