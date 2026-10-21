@@ -47,7 +47,21 @@ function check(name, cond, detail = "") {
 {
   /** @type {typeof fetch} */
   const fetchFn = async (url, init) => {
-    if (String(url).includes("/memories/recall") || String(url).includes("/search") || String(url).includes("/memories?")) {
+    if (String(url).includes("/search")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ provider: "mem0", query: "hi", result: { results: [{ memory: "context hit" }] } }),
+      };
+    }
+    if (String(url).includes("/chat/completions")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ choices: [{ message: { content: "context hit synthesized" } }] }),
+      };
+    }
+    if (String(url).includes("/memories/recall") || String(url).includes("/memories?")) {
       return {
         ok: true,
         status: 200,

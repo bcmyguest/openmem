@@ -10,8 +10,8 @@ export { DEFAULT_AGENT_IDS };
 /** @type {Record<string, Partial<Record<Feature, boolean>>>} */
 export const PROVIDER_CAPABILITIES = {
   hindsight: { retain: true, recall: true, reflect: true, consolidate: true, bank_scope: true },
-  mem0: { retain: true, recall: true, reflect: false, consolidate: false, bank_scope: true },
-  cognee: { retain: true, recall: true, reflect: false, consolidate: false, bank_scope: true },
+  mem0: { retain: true, recall: true, reflect: true, consolidate: false, bank_scope: true },
+  cognee: { retain: true, recall: true, reflect: true, consolidate: true, bank_scope: true },
 };
 
 /**

@@ -16,7 +16,7 @@ for (const id of ["claude-code", "hermes", "amp", "cline"]) {
   check(`registry includes ${id}`, AGENT_IDS.includes(id));
 }
 check("DEFAULT_AGENT_IDS are hindsight-installable", DEFAULT_AGENT_IDS.every((id) => CODING_AGENTS.find((a) => a.id === id)?.hindsightInstall));
-check("mem0 lacks reflect", PROVIDER_CAPABILITIES.mem0.reflect === false);
+check("mem0 has reflect via unified MCP", PROVIDER_CAPABILITIES.mem0.reflect === true);
 check("hindsight has reflect", PROVIDER_CAPABILITIES.hindsight.reflect === true);
 
 if (failed) process.exit(1);

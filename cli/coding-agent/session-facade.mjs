@@ -1,5 +1,4 @@
 import { callUnifiedTool } from "../mcp/memory-facade.mjs";
-import { providerSupports } from "./capabilities.mjs";
 
 function toolText(result) {
   const t = result?.content?.[0]?.text;
@@ -29,13 +28,18 @@ export async function sessionRetain(ctx, { content, bank }, fetchFn = fetch) {
   if (out.isError) throw new Error(toolText(out));
 }
 
-/** Reflect when supported; otherwise search-backed preamble (explicit, not LLM reflect). */
+/** SessionStart context via unified memory_reflect (all providers). */
 export async function sessionReflectOrSearch(ctx, { query, bank, limit = 12 }, fetchFn = fetch) {
-  if (providerSupports(ctx.provider, "reflect")) {
-    return sessionRecall(ctx, { query, bank, limit }, fetchFn);
-  }
-  const out = await callUnifiedTool(ctx, "memory_search", { query, bank, limit }, fetchFn);
+  const out = await callUnifiedTool(ctx, "memory_reflect", { query, bank, limit }, fetchFn);
   if (out.isError) throw new Error(toolText(out));
   const body = toolText(out);
-  return body ? `[Memory search — ${ctx.provider} has no LLM reflect; showing search hits]\n${body}` : "";
+  try {
+    const j = JSON.parse(body);
+    if (j.answer) return String(j.answer);
+    if (j.result) return typeof j.result === "string" ? j.result : JSON.stringify(j.result, null, 2);
+    if (j.hits) return String(j.hits);
+  } catch {
+    /* plain text */
+  }
+  return body;
 }

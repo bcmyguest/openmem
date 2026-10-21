@@ -27,7 +27,7 @@ const report = buildWiringReport({ home, stackRoot: stack, repoRoot, env: { MEMO
 check("provider mem0", report.memory_provider === "mem0");
 check("flags missing native mcp", report.issues.some((i) => i.includes("mem0")));
 check("ok false when issues", report.ok === false);
-check("mem0 session caps omit reflect", report.coding_agent.session_capabilities?.reflect === false);
+check("mem0 session caps include reflect", report.coding_agent.session_capabilities?.reflect === true);
 
 if (failed) process.exit(1);
 console.log("all wiring report tests passed");

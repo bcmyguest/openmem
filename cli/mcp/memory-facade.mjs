@@ -1,4 +1,5 @@
 import { search as cogneeSearch } from "../cognee-mcp.mjs";
+import { callMemoryConsolidate, callMemoryReflect } from "./memory-reflect-consolidate.mjs";
 import { memoryExport, memoryImport } from "./portability.mjs";
 
 export const UNIFIED_MCP_TOOLS = [
@@ -92,6 +93,30 @@ export const UNIFIED_MCP_TOOLS = [
     description: "Report active MEMORY_PROVIDER and resolved backend URL (no secrets).",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
+  {
+    name: "memory_reflect",
+    description:
+      "Synthesize session context for a question. Hindsight uses recall; mem0/Cognee search then optional LiteLLM synthesis (PM_LLM_URL / stack LiteLLM).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        bank: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_consolidate",
+    description: "Provider maintenance: Cognee cognify for a bank/dataset; Hindsight notes LiteLLM route; mem0 skips.",
+    inputSchema: {
+      type: "object",
+      properties: { bank: { type: "string" } },
+      additionalProperties: false,
+    },
+  },
 ];
 
 export function textResult(value, isError = false) {
@@ -146,6 +171,21 @@ export async function callUnifiedTool(ctx, name, args = {}, fetchFn = fetch) {
       mem0BaseUrl: ctx.mem0?.baseUrl,
       cogneeBaseUrl: ctx.cognee?.baseUrl,
     });
+  }
+  if (name === "memory_reflect") {
+    try {
+      const payload = await callMemoryReflect(ctx, args, (n, a, f) => callUnifiedTool(ctx, n, a, f), fetchFn);
+      return textResult(payload);
+    } catch (err) {
+      return textResult(err instanceof Error ? err.message : String(err), true);
+    }
+  }
+  if (name === "memory_consolidate") {
+    try {
+      return textResult(await callMemoryConsolidate(ctx, args, fetchFn));
+    } catch (err) {
+      return textResult(err instanceof Error ? err.message : String(err), true);
+    }
   }
 
   if (ctx.provider === "hindsight") {
