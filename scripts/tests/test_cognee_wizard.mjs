@@ -1115,7 +1115,7 @@ async function validation(arrange) {
 // ---------------------------------------------------------------------------
 console.log("--- manifest");
 {
-  check("manifest: the shipped status is experimental", shippedManifest.status === "experimental");
+  check("manifest: the shipped status is supported", shippedManifest.status === "supported");
   const errors = validateManifest(shippedManifest);
   check("manifest: valid at experimental", errors.length === 0, errors.join("\n"));
   check("manifest: sink and driver", shippedManifest.indexer.sink === "cognee" && shippedManifest.indexer.sinkDriver === "cognee-rest" && shippedManifest.indexer.apiUrlEnv === "COGNEE_API_URL");

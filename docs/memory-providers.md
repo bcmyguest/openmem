@@ -159,7 +159,7 @@ Switching does **not** migrate memories between backends. The NotebookLM compose
 
 ### Phase A — Registry and docs (this commitset)
 
-- Manifests for `hindsight` (supported), `mem0` and `cognee` (`experimental` after Wave 2).
+- Manifests for `hindsight`, `mem0`, and `cognee` (`supported`).
 - Wizard reads manifest for health/smoke URLs; behavior unchanged for Hindsight.
 - Document extension points (this file).
 
@@ -194,10 +194,10 @@ Switching does **not** migrate memories between backends. The NotebookLM compose
   `MEMORY_OLLAMA_IN_COMPOSE=1` in `wizard.conf`) so defaults become `http://ollama:11434` and attach
   Cognee to the same Docker network as the `ollama` service. Cognify still needs a model that can
   emit Cognee’s structured extraction schemas; small local models (for example `gemma4:e2b`) may
-  pass HTTP add/cognify start but never finish the graph — stay `experimental` until a recorded
-  cognify+search live E2E.
-- `providers/<id>/manifest.json` stays `experimental` until that live E2E; Wave 2 only moved them
-  off `planned`.
+  pass HTTP add/cognify start but never finish the graph — treat as an operator/LLM tuning issue,
+  not a provider status gate.
+- `hindsight`, `mem0`, and `cognee` manifests are **`supported`**; new backends still land as
+  `experimental` until wizard + indexer + smoke are wired.
 - `indexer/sinks/mem0.py` and `indexer/sinks/cognee.py` implementing the sink protocol (Cognee also
   implements the optional `flush()`).
 - Wizard branch: provider select (Clack) before model backend when multiple providers are supported.

@@ -1060,7 +1060,7 @@ function runSetup(stack, home, stubBin, log, args, env) {
   const stack = path.join(tmp, "e2e-stack");
   copyTree(stack);
   const shipped = JSON.parse(fs.readFileSync(path.join(root, "providers/mem0/manifest.json"), "utf8"));
-  check("the shipped mem0 manifest is experimental", shipped.status === "experimental");
+  check("the shipped mem0 manifest is supported", shipped.status === "supported");
 
   const stub = await startMem0();
   const env = { MEM0_API_URL: stub.url, MEM0_API_KEY: KEY };
