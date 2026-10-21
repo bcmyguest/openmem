@@ -15,6 +15,7 @@ const tests = [
   "scripts/tests/test_coding_agents.mjs",
   "scripts/tests/test_wiring_report.mjs",
   "scripts/tests/test_install_coding_agent.mjs",
+  "scripts/tests/test_session_shim.mjs",
 ];
 
 let failed = 0;

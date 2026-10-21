@@ -7,11 +7,11 @@ session-style work through the **unified MCP** (`memory_*`) until a dedicated pl
 
 ## Capability matrix
 
-| Capability | Hindsight plugin | mem0 (MCP shim) | Cognee (MCP shim) |
+| Capability | Hindsight plugin | mem0 (session shim) | Cognee (session shim) |
 | --- | --- | --- | --- |
-| retain | yes | yes (`memory_add`) | yes (`memory_add`) |
-| recall / search | yes | yes (`memory_recall`) | yes (`memory_search`) |
-| reflect | yes | no | no |
+| retain | yes | yes (Stop hook → `memory_add`) | yes |
+| recall / search | yes | yes (prompt hook → `memory_recall`) | yes |
+| reflect | yes (LLM) | search-backed session start (labeled, not LLM reflect) | search-backed |
 | consolidate | yes (via LiteLLM routes) | no | no |
 | bank / scope | Hindsight banks | mem0 `user_id` | Cognee dataset |
 
@@ -26,7 +26,7 @@ npx personal-memory install-coding-agent --yes
 ```
 
 - **Hindsight:** runs the upstream `hindsight-coding-agents install` plan for Claude Code, Codex, OpenCode, and Cursor CLI.
-- **mem0 / Cognee:** prints MCP-first session guidance and ensures `install-mcp` merged the unified server.
+- **mem0 / Cognee:** runs `install-mcp`, then installs **in-repo session hooks** (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor CLI, and an OpenCode plugin — same three events as Hindsight (SessionStart, prompt, Stop).
 
 See [MCP install guide](mcp-install-guide.md) and [coding agents](coding-agents.md).
 
