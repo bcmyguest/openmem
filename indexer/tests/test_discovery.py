@@ -39,7 +39,7 @@ def config_for(home: Path, **overrides) -> index_config.Config:
 def test_vault_auto_discovery_finds_vaults_within_depth(indexer, tmp_path):
     home = make_home(tmp_path)
 
-    _repos, vaults, _notes = indexer.discover(config_for(home))
+    _repos, vaults, _md = indexer.discover(config_for(home))
 
     assert vaults == [home / "Documents/Acme Notes", home / "Documents/Personal", home / "Documents/Work"]
 
@@ -60,17 +60,21 @@ def test_repos_discovered_under_roots_and_explicit_repos_added(indexer, tmp_path
     nvim.mkdir(parents=True)
     subprocess.run(["git", "init", "-q"], cwd=nvim, check=True)
 
-    repos, _vaults, _notes = indexer.discover(config_for(home, repos=[str(nvim)]))
+    repos, _vaults, _md = indexer.discover(config_for(home, repos=[str(nvim)]))
 
     assert repos == sorted([home / "proj", nvim])
 
 
-def test_notes_paths_discovered(indexer, tmp_path):
+def test_markdown_paths_discovered(indexer, tmp_path):
     notes = tmp_path / "my-notes"
     notes.mkdir()
     (notes / "readme.md").write_text("# Hi\n")
-    _repos, _vaults, found = indexer.discover(config_for(tmp_path, notes={"paths": [str(notes)]}))
-    assert found == [notes]
+    papers = tmp_path / "papers-lib"
+    papers.mkdir()
+    _repos, _vaults, found = indexer.discover(
+        config_for(tmp_path, notes={"paths": [str(notes)]}, papers={"paths": [str(papers)]}),
+    )
+    assert found == [("notes", notes), ("papers", papers)]
 
 
 def test_exclude_skips_listed_source(indexer, tmp_path, monkeypatch, capsys):

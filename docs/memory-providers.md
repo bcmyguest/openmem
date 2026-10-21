@@ -224,7 +224,7 @@ only user-facing guides like [Architecture](architecture.md) are listed in `PAGE
 
 ## Index sources
 
-See [index-sources.md](index-sources.md) (git repos, Obsidian vaults, plain `notes.paths`).
+See [index-sources.md](index-sources.md) and [index-sources-roadmap.md](index-sources-roadmap.md) (git, Obsidian, notes/papers/bookmarks, future connectors).
 
 ## Coding-agent session hooks
 

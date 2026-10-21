@@ -21,6 +21,8 @@ TOP_LEVEL_KEYS = (
     "repos",
     "vaults",
     "notes",
+    "papers",
+    "bookmarks",
     "exclude",
     "banks",
     "max_file_kb",
@@ -30,7 +32,7 @@ TOP_LEVEL_KEYS = (
     "relist_seconds",
 )
 VAULT_KEYS = ("auto", "paths")
-NOTES_KEYS = ("paths",)
+PATH_LIST_KEYS = ("paths",)
 ROOT_KEYS = ("path", "depth")
 DEFAULT_SKIP_DIRS = [".cache", ".codegraph", ".decision", ".git", ".next", ".tasks", ".venv", "build", "dist", "node_modules", "target", "vendor"]
 DEFAULT_DATA = {
@@ -38,6 +40,8 @@ DEFAULT_DATA = {
     "repos": ["~/.config/nvim"],
     "vaults": {"auto": True, "paths": []},
     "notes": {"paths": []},
+    "papers": {"paths": []},
+    "bookmarks": {"paths": []},
     "exclude": [],
     "banks": {"~/Documents/sample-project": "coding-agent::documents-sample-project"},
     "max_file_kb": 128,
@@ -65,6 +69,8 @@ class Config:
     vault_auto: bool
     vault_paths: tuple[Path, ...]
     notes_paths: tuple[Path, ...]
+    papers_paths: tuple[Path, ...]
+    bookmarks_paths: tuple[Path, ...]
     exclude: tuple[str, ...]
     banks: tuple[tuple[Path, str], ...]  # longest prefix first
     max_file_kb: int
@@ -86,6 +92,18 @@ class Config:
 
     def is_excluded(self, path: Path) -> bool:
         return any(fnmatch.fnmatchcase(str(path), pattern) for pattern in self.exclude)
+
+    def markdown_sources(self) -> tuple[tuple[str, Path], ...]:
+        """(kind, path) for watched markdown trees: notes, papers, bookmarks."""
+        out: list[tuple[str, Path]] = []
+        for kind, paths in (
+            ("notes", self.notes_paths),
+            ("papers", self.papers_paths),
+            ("bookmarks", self.bookmarks_paths),
+        ):
+            for path in paths:
+                out.append((kind, path))
+        return tuple(out)
 
 
 def _kind(value: object) -> str:
@@ -201,7 +219,9 @@ def parse(data: object, source: str = "built-in") -> Config:
     top = _mapping(source, "top level", DEFAULT_DATA if data is None else data, TOP_LEVEL_KEYS)
     merged = {**DEFAULT_DATA, **top}
     vaults = _mapping(source, "vaults", merged["vaults"], VAULT_KEYS)
-    notes = _mapping(source, "notes", merged["notes"], NOTES_KEYS)
+    notes = _mapping(source, "notes", merged["notes"], PATH_LIST_KEYS)
+    papers = _mapping(source, "papers", merged["papers"], PATH_LIST_KEYS)
+    bookmarks = _mapping(source, "bookmarks", merged["bookmarks"], PATH_LIST_KEYS)
     banks = merged["banks"]
     return Config(
         roots=_roots(source, merged["roots"]),
@@ -209,6 +229,8 @@ def parse(data: object, source: str = "built-in") -> Config:
         vault_auto=_bool(source, "vaults.auto", vaults.get("auto", True)),
         vault_paths=_paths(source, "vaults.paths", vaults.get("paths", [])),
         notes_paths=_paths(source, "notes.paths", notes.get("paths", [])),
+        papers_paths=_paths(source, "papers.paths", papers.get("paths", [])),
+        bookmarks_paths=_paths(source, "bookmarks.paths", bookmarks.get("paths", [])),
         exclude=_exclude(source, merged["exclude"]),
         banks=_banks(source, banks),
         max_file_kb=_int(source, "max_file_kb", merged["max_file_kb"], 1),
