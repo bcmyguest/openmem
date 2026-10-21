@@ -22,6 +22,10 @@ const TASKS = {
     script: "cli/install-memory-mcp.mjs",
     help: "Install memory MCP servers into ~/.cursor/mcp.json",
   },
+  "install-coding-agent": {
+    script: "cli/install-coding-agent.mjs",
+    help: "Wire session memory for Claude Code, Codex, OpenCode, Cursor CLI",
+  },
   switch: {
     script: "cli/switch-memory-provider.mjs",
     help: "Switch MEMORY_PROVIDER (wizard.conf + optional stack/MCP)",
@@ -78,4 +82,12 @@ const r = spawnSync(process.execPath, [SETUP, ...spec.args, ...extra], {
   stdio: "inherit",
   env: process.env,
 });
+if (task === "doctor" && (r.status ?? 1) === 0) {
+  const wiring = spawnSync(process.execPath, [path.join(pkgRoot, "cli/wiring-report.mjs")], {
+    cwd: REPO,
+    stdio: "inherit",
+    env: process.env,
+  });
+  process.exit(wiring.status ?? 0);
+}
 process.exit(r.status ?? 1);
