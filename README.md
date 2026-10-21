@@ -42,51 +42,49 @@ Full guide: [docs/quickstart.md](docs/quickstart.md) · [docs site](https://bcmy
 
 ```mermaid
 flowchart TB
-  subgraph setup["personal-memory (npm CLI)"]
-    W[setup wizard]
-    W --> ENV["~/.config/hindsight/*\nstack .env · index.yml"]
-    W --> MCP["install-mcp\n(unified + NotebookLM)"]
-  end
-
-  subgraph sources["Sources on disk"]
+  subgraph disk["Sources on disk"]
     GIT[Git repos]
     OBS[Obsidian vaults]
-    NLM[NotebookLM sync]
   end
 
-  subgraph stack["Docker Compose (stack root)"]
+  subgraph compose["Docker Compose — one active provider"]
     IDX[indexer]
-    PROV["Memory provider API\nHindsight · mem0 · Cognee"]
+    PROV[(Provider API)]
     IDX -->|retain / update| PROV
     LIT[LiteLLM]
-    PROV -->|Hindsight LLM| LIT
+    NLM[NotebookLM sync]
+    LIT -.->|Hindsight only| PROV
+    NLM -.->|Hindsight profile| PROV
   end
 
   LIT --> LLM[(lemond · Ollama · OpenAI-compatible)]
 
-  GIT --> IDX
-  OBS --> IDX
-  NLM -.->|opt-in profile| PROV
-
-  subgraph agents["Coding agents"]
+  subgraph host["Host — coding agents"]
     AG[Claude Code · Codex · Cursor …]
-    PLG["Provider plugin\n(e.g. hindsight-coding-agents)"]
-    MCP -->|stdio MCP| AG
+    UMCP["personal-memory MCP\n(memory_*)"]
+    PLG["Hindsight plugin\n(Hindsight only)"]
   end
 
-  AG <-->|retain · recall · reflect| PLG
-  PLG --> PROV
+  GIT --> IDX
+  OBS --> IDX
+  AG <-->|stdio| UMCP
+  AG <-->|session| PLG
+  UMCP -->|loopback HTTP| PROV
+  PLG -->|loopback HTTP| PROV
 
-  W -->|up · configure| stack
+  W["npx personal-memory\nsetup · install-mcp"] -.->|configure| compose
+  W -.->|mcp.json| UMCP
 ```
 
 | Connection | What it is |
 | --- | --- |
-| Wizard → stack | Provider, env, indexer image, compose up, smoke test |
-| Sources → indexer | Shared watcher; sink from active provider manifest |
-| Agents → provider | Hindsight plugin; `install-mcp` for unified `memory_*` MCP (+ NotebookLM / native provider MCP) |
+| Sources → indexer → provider | Shared watcher; sink from active manifest (`MEMORY_SINK`) |
+| Agents → MCP / plugin → provider | `install-mcp` adds unified **`personal-memory`** MCP; Hindsight session memory uses the coding-agent **plugin** |
+| Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
 
-Default Hindsight compose services: `litellm`, `hindsight` (API `127.0.0.1:8888`), `indexer`.
+Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.
+
+Full detail: [docs/architecture.md](docs/architecture.md).
 
 ## Documentation
 

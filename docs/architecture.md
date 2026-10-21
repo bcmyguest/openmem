@@ -4,35 +4,48 @@ personal-memory’s job is **not** to be the memory — it is to let you run **w
 
 ## Runtime data flow
 
+Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx personal-memory`) is not on this diagram; see [How personal-memory interfaces with providers](#how-personal-memory-interfaces-with-providers).
+
 ```mermaid
-flowchart LR
-  subgraph sources["Sources"]
+flowchart TB
+  subgraph disk["Sources on disk"]
     GIT[Git repos]
     OBS[Obsidian vaults]
-    NLM[NotebookLM sync]
   end
 
-  subgraph stack["Docker Compose"]
+  subgraph compose["Docker Compose"]
     IDX[indexer]
-    PROV[(Provider API)]
-    IDX -->|retain / update| PROV
+    PROV[(Active provider API)]
+    IDX -->|retain / update via sink| PROV
+    LIT[LiteLLM proxy]
+    NLM[NotebookLM sync]
+    LIT -.->|Hindsight only| PROV
+    NLM -.->|optional profile; Hindsight banks| PROV
   end
 
-  subgraph bridge["Agent bridge"]
-    PLG[Hindsight plugin]
-    MCP[Provider MCP servers]
+  subgraph host["Host — IDE / coding agents"]
+    AG[Coding agents]
+    UMCP["personal-memory MCP\n(memory_*)"]
+    PLG["Hindsight plugin\n(Hindsight only)"]
+    NAT["Optional MCP\nnotebooklm · mem0 · cognee"]
   end
-
-  AG[Coding agents]
 
   GIT --> IDX
   OBS --> IDX
-  NLM -.-> PROV
-  AG --> PLG
-  AG --> MCP
-  PLG --> PROV
-  MCP --> PROV
+  AG <-->|stdio| UMCP
+  AG <-->|in-IDE session| PLG
+  AG <-->|stdio| NAT
+  UMCP -->|loopback HTTP| PROV
+  PLG -->|loopback HTTP| PROV
+  NAT -->|loopback HTTP| PROV
 ```
+
+| Path | What moves |
+| --- | --- |
+| **Indexing** | Git/Obsidian → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
+| **Agents** | Cursor/Claude/Codex → stdio MCP or plugin → same provider API |
+| **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
+| **LiteLLM / NotebookLM** | Only on the default **Hindsight** compose profile; other providers use their own LLM/env |
 
 Only **one provider** is active at a time (`MEMORY_PROVIDER`). The indexer uses that provider’s HTTP sink (`MEMORY_SINK` / manifest).
 
@@ -42,26 +55,34 @@ personal-memory is a **meta layer**: it does not replace provider APIs. It wires
 
 ```mermaid
 flowchart TB
-  subgraph meta["personal-memory"]
-    W[setup / switch wizard]
-    IDX[indexer container]
-    UMCP[unified MCP facade]
-  end
-
-  subgraph prov["Active provider (one at a time)"]
-    API[(Provider HTTP API)]
-  end
-
   MAN["providers/*/manifest.json"]
   HOOK["providers/*/wizard.mjs"]
-  SINK["indexer sink driver"]
+
+  subgraph cli["personal-memory CLI"]
+    W[setup / switch / doctor]
+    IM[install-mcp]
+  end
+
+  subgraph compose["Compose runtime"]
+    IDX[indexer container]
+    API[(Active provider HTTP API)]
+    IDX -->|sink driver| API
+  end
+
+  subgraph host["Host runtime"]
+    MCPJ["~/.cursor/mcp.json"]
+    UMCP[personal-memory-mcp\nmemory-facade]
+    AG[Agents]
+  end
 
   MAN --> W
   MAN --> IDX
   HOOK --> W
-  W --> API
-  IDX --> SINK --> API
-  UMCP --> API
+  W -->|env · compose up| compose
+  IM -->|merge server entry| MCPJ
+  MCPJ --> UMCP
+  AG <-->|stdio| UMCP
+  UMCP -->|fetch active provider| API
 ```
 
 ### Integration layers
