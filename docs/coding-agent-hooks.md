@@ -16,7 +16,8 @@ session-style work through the **unified MCP** (`memory_*`) until a dedicated pl
 | bank / scope | Hindsight banks | mem0 `user_id` | Cognee dataset |
 
 Flags live in `cli/coding-agent/capabilities.mjs`; `doctor wiring` and
-`install-coding-agent` read the same table.
+`install-coding-agent` read the same table. `npx personal-memory wiring` prints
+which session features work for the active provider (reflect/consolidate are Hindsight-only today).
 
 ## Install per agent
 
