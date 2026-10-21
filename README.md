@@ -53,7 +53,7 @@ flowchart TB
     IDX -->|retain / update| PROV
     LIT[LiteLLM]
     NLM[NotebookLM sync]
-    LIT -.->|Hindsight only| PROV
+    LIT -.->|Hindsight stack + optional reflect synth| PROV
     NLM -.->|opt-in profile| PROV
   end
 
@@ -62,7 +62,8 @@ flowchart TB
   subgraph host["Host — coding agents"]
     AG[Claude Code · Codex · Cursor …]
     UMCP["personal-memory MCP\n(memory_*)"]
-    PLG["Hindsight plugin\n(Hindsight only)"]
+    SHIM["Session hooks"]
+    PLG["Hindsight plugin\n(optional)"]
     PMCP[Provider MCP optional]
     NLMCP[NotebookLM MCP optional]
   end
@@ -70,7 +71,9 @@ flowchart TB
   GIT --> IDX
   OBS --> IDX
   AG <-->|stdio| UMCP
-  AG <-->|session| PLG
+  AG <-->|hooks| SHIM
+  AG <-->|optional| PLG
+  SHIM --> UMCP
   AG <-->|stdio| PMCP
   AG <-->|stdio| NLMCP
   UMCP -->|loopback HTTP| PROV

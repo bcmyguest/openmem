@@ -9,7 +9,7 @@ to pick the right combination; day-to-day defaults are covered in [Quickstart](q
 
 | Server key (typical) | Install path | Tools (examples) | Backend |
 | --- | --- | --- | --- |
-| **`personal-memory`** | Default `install-mcp` | `memory_add`, `memory_search`, `memory_recall`, `memory_forget`, `memory_provider_status`, export/import | Active provider (`MEMORY_PROVIDER` / `wizard.conf`): Hindsight, mem0, or Cognee HTTP |
+| **`personal-memory`** | Default `install-mcp` | `memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget`, `memory_provider_status`, export/import | Active provider (`MEMORY_PROVIDER` / `wizard.conf`): Hindsight, mem0, or Cognee HTTP |
 | **Provider-native** (`mem0`, `cognee`) | `install-mcp --provider-only` | mem0: upstream `@yeyuan98/mem0-mcp` names; Cognee: `cognee_health`, `cognee_search` | Same API as the stack, **different** tool surface |
 | **`notebooklm`** | `install-mcp` when sync on, or `--notebooklm` / `--notebooklm-only` | `notebooklm_list_banks`, `notebooklm_search` | `notebooklm::*` scope on the **active** provider (sync + MCP follow `MEMORY_PROVIDER`) — **not** a memory provider |
 

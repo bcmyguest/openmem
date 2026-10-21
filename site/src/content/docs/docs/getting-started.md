@@ -55,16 +55,16 @@ curl -fsS http://127.0.0.1:8888/health   # Hindsight default; see wizard output 
 
 ## 3. Wire your coding agent (optional)
 
-**Hindsight session memory** uses the [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) plugin from the wizard — not `install-mcp`.
+**Session memory:** `npx personal-memory install-coding-agent --yes` — unified MCP **plus** session hooks for Claude Code, Codex, OpenCode, Cursor CLI (any active provider). Optional `--hindsight-plugin` adds the upstream Hindsight plugin. Not the same as `install-mcp` alone.
 
-**`install-mcp`** merges the **`personal-memory` unified MCP** (`memory_add`, `memory_search`, `memory_recall`, `memory_forget` on whichever provider you picked) and, when NotebookLM sync is on, the **NotebookLM MCP**:
+**`install-mcp`** merges the **`personal-memory` unified MCP** (`memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget` on whichever provider you picked) and, when NotebookLM sync is on, the **NotebookLM MCP**:
 
 ```sh
 npx personal-memory install-mcp --yes
 npx personal-memory install-mcp --yes --notebooklm   # force NotebookLM entry
 ```
 
-Hindsight **in-editor** session memory still uses the coding-agent **plugin** from the wizard. Optional native mem0/Cognee MCP: `--provider-only`. See [Architecture](../architecture/).
+Session hooks use the in-repo shim by default; add `--hindsight-plugin` if you also want the upstream Hindsight plugin. Optional native mem0/Cognee MCP: `install-mcp --provider-only`. See [Architecture](../architecture/).
 
 Restart Cursor Agent after MCP changes.
 

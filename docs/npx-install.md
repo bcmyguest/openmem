@@ -38,7 +38,7 @@ exist only inside a checkout; prefer `npx personal-memory …` (or `npx . …` i
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
 | `install-mcp` | merge **personal-memory** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
-| `install-coding-agent` | Hindsight: `@vectorize-io/hindsight-coding-agents` for Claude Code, Codex, OpenCode, Cursor CLI; mem0/Cognee: MCP session path |
+| `install-coding-agent` | `install-mcp` + session hooks for all providers; optional `--hindsight-plugin` runs `@vectorize-io/hindsight-coding-agents` on Hindsight stacks |
 | `wiring` | report `MEMORY_PROVIDER`, API URLs, and `mcp.json` alignment (`--json`) |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |
