@@ -1,0 +1,12 @@
+{
+  "name": "personal-memory-session",
+  "version": "0.1.0",
+  "description": "Session retain/recall via personal-memory unified facade (mem0/Cognee/Hindsight)",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": {
+    "personal-memory": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/../../personal-memory-mcp.mjs"]
+    }
+  }
+}

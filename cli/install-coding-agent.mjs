@@ -12,6 +12,8 @@ import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mj
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
 import { resolveStackRoot } from "./stack.mjs";
+import { installSessionShim } from "./coding-agent/install-shim.mjs";
+import { SHIM_AGENT_IDS } from "./coding-agent/hook-harnesses.mjs";
 import { runInstallMemoryMcp } from "./install-memory-mcp.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,7 +27,7 @@ Usage:
 Default agents (Hindsight plugin): ${DEFAULT_AGENT_IDS.join(", ")}
 All known agents: ${CODING_AGENTS.map((a) => a.id).join(", ")}
 
-Hindsight runs hindsight-coding-agents install. mem0/Cognee ensure unified MCP and print MCP session steps.
+Hindsight runs hindsight-coding-agents install. mem0/Cognee install unified MCP plus in-repo session hooks (retain/recall/stop).
 `;
 
 function parseArgs(argv) {
@@ -78,6 +80,7 @@ export async function runInstallCodingAgent(opts) {
   }
   opts.h?.info(`Provider ${provider}: session hooks use unified MCP (memory_*). Capabilities: ${JSON.stringify(caps)}`);
   opts.h?.info("Run: npx personal-memory install-mcp --yes");
+  const shimAgents = flags.agents.filter((id) => SHIM_AGENT_IDS.includes(id) || id === "opencode");
   if (!flags.dry && flags.yes) {
     await runInstallMemoryMcp({
       home,
@@ -87,10 +90,29 @@ export async function runInstallCodingAgent(opts) {
       env,
       h: opts.h || h(),
     });
+    installSessionShim({
+      home,
+      repoRoot: opts.repoRoot,
+      agents: shimAgents,
+      dry: false,
+      h: opts.h || h(),
+    });
+  } else if (flags.dry) {
+    installSessionShim({
+      home,
+      repoRoot: opts.repoRoot,
+      agents: shimAgents,
+      dry: true,
+      h: opts.h || h(),
+    });
   }
   for (const agentId of flags.agents) {
     const row = CODING_AGENTS.find((a) => a.id === agentId);
-    opts.h?.info(`  ${agentId}: ${row?.sessionPath || "use personal-memory MCP memory_* after install-mcp"}`);
+    if (shimAgents.includes(agentId)) {
+      opts.h?.info(`  ${agentId}: personal-memory session hooks (SessionStart / prompt / Stop)`);
+    } else {
+      opts.h?.info(`  ${agentId}: ${row?.sessionPath || "use personal-memory MCP memory_* after install-mcp"}`);
+    }
   }
   return { provider, ran: !flags.dry && flags.yes };
 }

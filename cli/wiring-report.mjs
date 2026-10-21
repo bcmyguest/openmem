@@ -74,7 +74,8 @@ export function buildWiringReport(opts) {
     },
     coding_agent: {
       hindsight_plugin: provider === "hindsight" ? "@vectorize-io/hindsight-coding-agents" : null,
-      non_hindsight_session: provider !== "hindsight" ? "use personal-memory MCP memory_* (install-mcp)" : null,
+      non_hindsight_session:
+        provider !== "hindsight" ? "personal-memory session shim (install-coding-agent) + memory_* MCP" : null,
       session_capabilities: PROVIDER_CAPABILITIES[provider] ?? {},
     },
     issues,
