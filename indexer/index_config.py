@@ -16,14 +16,28 @@ import yaml
 ENV_VAR = "HINDSIGHT_INDEX_CONFIG"
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "config" / "index.yml"
 USER_PATH = "~/.config/hindsight/index.yml"
-TOP_LEVEL_KEYS = ("roots", "repos", "vaults", "exclude", "banks", "max_file_kb", "skip_dirs", "poll_seconds", "vault_quiet_seconds", "relist_seconds")
+TOP_LEVEL_KEYS = (
+    "roots",
+    "repos",
+    "vaults",
+    "notes",
+    "exclude",
+    "banks",
+    "max_file_kb",
+    "skip_dirs",
+    "poll_seconds",
+    "vault_quiet_seconds",
+    "relist_seconds",
+)
 VAULT_KEYS = ("auto", "paths")
+NOTES_KEYS = ("paths",)
 ROOT_KEYS = ("path", "depth")
 DEFAULT_SKIP_DIRS = [".cache", ".codegraph", ".decision", ".git", ".next", ".tasks", ".venv", "build", "dist", "node_modules", "target", "vendor"]
 DEFAULT_DATA = {
     "roots": [{"path": "~", "depth": 3}],
     "repos": ["~/.config/nvim"],
     "vaults": {"auto": True, "paths": []},
+    "notes": {"paths": []},
     "exclude": [],
     "banks": {"~/Documents/sample-project": "coding-agent::documents-sample-project"},
     "max_file_kb": 128,
@@ -50,6 +64,7 @@ class Config:
     repos: tuple[Path, ...]
     vault_auto: bool
     vault_paths: tuple[Path, ...]
+    notes_paths: tuple[Path, ...]
     exclude: tuple[str, ...]
     banks: tuple[tuple[Path, str], ...]  # longest prefix first
     max_file_kb: int
@@ -186,12 +201,14 @@ def parse(data: object, source: str = "built-in") -> Config:
     top = _mapping(source, "top level", DEFAULT_DATA if data is None else data, TOP_LEVEL_KEYS)
     merged = {**DEFAULT_DATA, **top}
     vaults = _mapping(source, "vaults", merged["vaults"], VAULT_KEYS)
+    notes = _mapping(source, "notes", merged["notes"], NOTES_KEYS)
     banks = merged["banks"]
     return Config(
         roots=_roots(source, merged["roots"]),
         repos=_paths(source, "repos", merged["repos"]),
         vault_auto=_bool(source, "vaults.auto", vaults.get("auto", True)),
         vault_paths=_paths(source, "vaults.paths", vaults.get("paths", [])),
+        notes_paths=_paths(source, "notes.paths", notes.get("paths", [])),
         exclude=_exclude(source, merged["exclude"]),
         banks=_banks(source, banks),
         max_file_kb=_int(source, "max_file_kb", merged["max_file_kb"], 1),

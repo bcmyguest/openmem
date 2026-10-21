@@ -98,7 +98,8 @@ def make_filter(roots: list[Path]):
 
 
 def run_indexer(kind: str, path: Path) -> int:
-    command = [INDEXER, "--apply", "--vault" if kind == "vault" else "--repo", str(path)]
+    flag = {"repo": "--repo", "vault": "--vault", "notes": "--notes"}[kind]
+    command = [INDEXER, "--apply", flag, str(path)]
     log(f"index {kind} {path}")
     if DRY_RUN:
         log(f"dry run, not executed: {' '.join(command)}")
@@ -188,18 +189,18 @@ def refresh(kinds: dict[Path, str], repos: dict[Path, RepoWatch], watcher: Vault
     for path in set(kinds) - set(found):
         log(f"source removed: {path}")
         repos.pop(path, None)
-    vaults = sorted(path for path, kind in found.items() if kind == "vault")
-    if vaults != sorted(path for path, kind in kinds.items() if kind == "vault"):
+    watched = sorted(path for path, kind in found.items() if kind in ("vault", "notes"))
+    if watched != sorted(path for path, kind in kinds.items() if kind in ("vault", "notes")):
         # Restart the watcher before indexing new vaults, so edits made meanwhile are queued, not lost.
         if watcher is not None:
             watcher.close()
-        watcher = VaultWatcher(vaults).start() if vaults else None
+        watcher = VaultWatcher(watched).start() if watched else None
     for path, kind in found.items():
         if path in kinds:
             continue
         log(f"new {kind} source: {path}")
-        if kind == "vault":
-            run_indexer("vault", path)
+        if kind in ("vault", "notes"):
+            run_indexer(kind, path)
         else:
             index_repo(path, repos)
     return found, watcher
