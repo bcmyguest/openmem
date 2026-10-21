@@ -109,7 +109,12 @@ process.on("exit", () => {
       text: async () => JSON.stringify(sample),
     };
   };
-  const access = { enabled: true, banks: ["keep-me"], apiUrl: "http://127.0.0.1:8888" };
+  const access = {
+    enabled: true,
+    banks: ["keep-me"],
+    apiUrl: "http://127.0.0.1:8888",
+    ctx: { provider: "hindsight", hindsightUrl: "http://127.0.0.1:8888" },
+  };
   const listed = await callTool(access, "notebooklm_list_banks", {}, fetchList);
   const listedBody = JSON.parse(listed.content[0].text);
   check("list_banks filters allowlist", listedBody.count === 1 && listedBody.banks[0].bank_id === "notebooklm::keep-me");

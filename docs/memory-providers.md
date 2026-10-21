@@ -63,7 +63,7 @@ after meta steps — like asdf plugin install scripts, not reimplemented npm/mem
 | **Setup wizard** | Node wizard: preflight, env, smoke retain/recall | Provider manifest: health URL, smoke steps, env file names |
 | **Coding-agent UX** | `@vectorize-io/hindsight-coding-agents` + `coding-agent.json` | Per-provider plugin package or generic adapter |
 
-NotebookLM sync is **orthogonal**: it can stay a profile regardless of memory provider.
+NotebookLM sync is **orthogonal** to which provider you picked: enable the `notebooklm` profile and the sync container uses the same `MEMORY_SINK` as the indexer (Hindsight, mem0, or Cognee).
 
 ## Provider manifest
 

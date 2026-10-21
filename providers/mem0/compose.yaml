@@ -45,3 +45,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # No depends_on: the server is external, and the indexer's watcher retries until it answers.
+
+  notebooklm:
+    environment:
+      MEMORY_SINK: mem0
+      MEMORY_API_URL: ${MEM0_INDEXER_URL:?run ./setup (mem0 API URL)}
+    env_file:
+      - path: ${MEM0_ENV_FILE:-${HOME}/.config/personal-memory/mem0.env}
+        required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

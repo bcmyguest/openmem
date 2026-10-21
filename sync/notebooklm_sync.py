@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync NotebookLM notebooks into Hindsight banks, one bank per notebook.
+"""Sync NotebookLM notebooks into memory banks (Hindsight, mem0, Cognee, …), one bank per notebook.
 
 Backends:
   client      unofficial notebooklm-py client, using the browser login stored in NOTEBOOKLM_HOME
@@ -389,7 +389,7 @@ class Hindsight:
 # ---------- sync core ----------
 
 
-def sync_snapshots(fetch: FetchResult, bank_prefix: str, hindsight: Hindsight, state: dict[str, dict], state_path: Path) -> SyncReport:
+def sync_snapshots(fetch: FetchResult, bank_prefix: str, backend, state: dict[str, dict], state_path: Path) -> SyncReport:
     """Retain changed documents, delete removed ones, and persist state after each successful write."""
     report = SyncReport()
     complete = [snap for snap in fetch.snapshots if snap.complete]
@@ -410,9 +410,9 @@ def sync_snapshots(fetch: FetchResult, bank_prefix: str, hindsight: Hindsight, s
             continue
         try:
             if document["bank"] not in ensured:
-                hindsight.ensure_bank(document["bank"])
+                backend.ensure_bank(document["bank"])
                 ensured.add(document["bank"])
-            hindsight.retain(document["bank"], doc_id, document)
+            backend.retain(document["bank"], doc_id, document)
         except HttpError as error:
             report.failed += 1
             log.error("retain failed for %s: %s", doc_id, error)
@@ -420,8 +420,13 @@ def sync_snapshots(fetch: FetchResult, bank_prefix: str, hindsight: Hindsight, s
         report.retained += 1
         state[doc_id] = {"bank": document["bank"], "notebook": document["notebook"], "digest": document["digest"]}
         if recorded and recorded["bank"] != document["bank"]:
-            _delete_remote(hindsight, doc_id, recorded["bank"], report)
+            _delete_remote(backend, doc_id, recorded["bank"], report)
         save_state(state_path, state)
+
+    for bank in ensured:
+        after = getattr(backend, "after_bank_batch", None)
+        if callable(after):
+            after(bank)
 
     complete_ids = {snap.id for snap in complete}
     listed_ids = {snap.id for snap in fetch.snapshots}
@@ -430,16 +435,16 @@ def sync_snapshots(fetch: FetchResult, bank_prefix: str, hindsight: Hindsight, s
             continue
         notebook = recorded["notebook"]
         if notebook in complete_ids or (fetch.listing_complete and notebook not in listed_ids):
-            if _delete_remote(hindsight, doc_id, recorded["bank"], report):
+            if _delete_remote(backend, doc_id, recorded["bank"], report):
                 state.pop(doc_id, None)
             save_state(state_path, state)
     return report
 
 
-def _delete_remote(hindsight: Hindsight, doc_id: str, bank: str, report: SyncReport) -> bool:
-    """Delete a document from Hindsight only; the caller owns the state entry."""
+def _delete_remote(backend, doc_id: str, bank: str, report: SyncReport) -> bool:
+    """Delete a document from the active memory backend; the caller owns the state entry."""
     try:
-        hindsight.delete(bank, doc_id)
+        backend.delete(bank, doc_id)
     except HttpError as error:
         report.failed += 1
         log.error("delete failed for %s: %s", doc_id, error)
@@ -583,14 +588,14 @@ def fetch_enterprise(cfg: Config) -> FetchResult:
 # ---------- entry points ----------
 
 
-def run_cycle(cfg: Config, hindsight: Hindsight, state_path: Path) -> SyncReport:
+def run_cycle(cfg: Config, backend, state_path: Path) -> SyncReport:
     if cfg.backend == "client":
         refresh_client_auth()
         fetch = fetch_client_sync(cfg)
     else:
         fetch = fetch_enterprise(cfg)
     state = load_state(state_path)
-    report = sync_snapshots(fetch, cfg.bank_prefix, hindsight, state, state_path)
+    report = sync_snapshots(fetch, cfg.bank_prefix, backend, state, state_path)
     log.info("sync done: %d notebook(s); %s", len(fetch.snapshots), report.summary())
     return report
 
@@ -615,7 +620,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"config ok: enabled={cfg.enabled} backend={cfg.backend} interval_minutes={cfg.interval_minutes}")
         return 0
 
-    hindsight = Hindsight(args.hindsight_url)
+    from memory_backend import create_backend
+
+    try:
+        backend = create_backend(args.hindsight_url)
+    except Exception as error:
+        log.error("memory backend: %s", error)
+        return 2
     while True:
         try:
             cfg = load_config(args.config, args.override)
@@ -632,7 +643,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(DISABLED_SLEEP_SECONDS)
             continue
         try:
-            run_cycle(cfg, hindsight, args.state)
+            run_cycle(cfg, backend, args.state)
             delay = cfg.interval_minutes * 60
         except AuthProblem as error:
             log.error("%s", error)

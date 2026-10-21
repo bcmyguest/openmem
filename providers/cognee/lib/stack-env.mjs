@@ -50,14 +50,21 @@ export function prepareStackEnv({ repo, home = process.env.HOME || "", env }) {
     throw new Error(`COGNEE_PORT must be a number from 1 to 65535 (got: ${port})`);
   }
 
+  const profiles = ["cognee"];
+  const notebookYml = path.join(home, ".config/hindsight/notebooklm.yml");
+  if (fs.existsSync(notebookYml) && /^enabled:\s*true\b/m.test(fs.readFileSync(notebookYml, "utf8"))) {
+    profiles.push("notebooklm");
+  }
+
   /** @type {[string, string][]} */
   const entries = [
     ["COGNEE_PORT", String(Number(port))],
-    // Plain `docker compose up -d` reads this; a stale COMPOSE_PROFILES=hindsight would start the wrong stack.
-    ["COMPOSE_PROFILES", "cognee"],
+    ["MEMORY_SINK", "cognee"],
+    ["MEMORY_API_URL", "http://cognee:8000"],
+    ["COMPOSE_PROFILES", profiles.join(",")],
   ];
-  const drop = ["COGNEE_PORT", "COMPOSE_PROFILES"];
-  const report = [`COGNEE_PORT=${entries[0][1]}`, "COMPOSE_PROFILES=cognee"];
+  const drop = ["COGNEE_PORT", "COMPOSE_PROFILES", "MEMORY_SINK", "MEMORY_API_URL"];
+  const report = [`COGNEE_PORT=${entries[0][1]}`, `COMPOSE_PROFILES=${profiles.join(",")}`];
 
   // Env files at a non-default location: persist the PATH (not its contents) so a hand-run
   // `docker compose` finds the same files. Absent from the environment, nothing is written and

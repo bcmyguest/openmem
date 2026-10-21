@@ -120,7 +120,7 @@ services:
       retries: 10
       start_period: 20s
 
-  # Opt-in: docker compose --profile notebooklm up -d notebooklm. Syncs NotebookLM notebooks into Hindsight banks.
+  # Opt-in: docker compose --profile notebooklm up -d notebooklm. Syncs into notebooklm::* banks on the active MEMORY_SINK.
   # Login is on the host (README "NotebookLM"); the storage under ~/.config/notebooklm is bind-mounted read-write.
   notebooklm:
     profiles: ["notebooklm"]
@@ -132,7 +132,10 @@ services:
     user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
     environment:
       HINDSIGHT_URL: http://hindsight:8888
+      MEMORY_SINK: ${MEMORY_SINK:-hindsight}
+      MEMORY_API_URL: ${MEMORY_API_URL:-}
       NOTEBOOKLM_HOME: /data/notebooklm
+      NOTEBOOKLM_STATE: /data/state/state.json
     volumes:
       - type: bind
         source: ${HOME}/.config/notebooklm
@@ -151,6 +154,7 @@ services:
     depends_on:
       hindsight:
         condition: service_healthy
+        required: false
     restart: unless-stopped
 
 volumes:

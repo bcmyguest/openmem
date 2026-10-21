@@ -1,12 +1,12 @@
 # NotebookLM
 
-Opt-in. Syncs notebooks, sources, notes, and (optionally) chats from Google NotebookLM into Hindsight banks named `notebooklm::<notebook slug>`. Each notebook gets one bank; duplicate titles get an ID suffix. The service runs only under the `notebooklm` compose profile, so `docker compose up` never starts it.
+Opt-in. Syncs notebooks, sources, notes, and (optionally) chats from Google NotebookLM into **`notebooklm::<notebook slug>`** banks on whichever memory provider you run (**Hindsight, mem0, or Cognee** — same `MEMORY_SINK` / indexer sinks as the project indexer). Each notebook gets one bank; duplicate titles get an ID suffix. The service runs only under the `notebooklm` compose profile, so a plain `docker compose up` never starts it unless that profile is enabled.
 
 Risks:
 
 - The default `client` backend uses the unofficial `notebooklm-py` library (pinned to 0.8.5 with the `markdown` extra). Google can change or block it at any time, and the sync then fails until the library is updated.
 - The stored login is a Google session cookie set. Anyone who reads `~/.config/notebooklm` can act on that Google account. The directory is bind-mounted read-write into the sync container only, and masked from the indexer.
-- Source text and notes are copied into the Hindsight banks on this machine, where Hindsight's model server processes them.
+- Source text and notes are copied into your active memory backend (`notebooklm::*` scope). With Hindsight, retains may invoke the configured model server; mem0/Cognee store chunks via the indexer sink (Cognee runs cognify after each sync batch).
 
 Login happens in **`npm run setup`** when you enable NotebookLM: the wizard installs
 `notebooklm-py` (via `uv`) if needed, opens the Google sign-in browser, then writes
