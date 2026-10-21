@@ -37,6 +37,9 @@ exclude: []
 # Unmatched repositories fall back to ~/.hindsight/coding-agent.json mapPathToBank, then coding-agent::<name>.
 banks:
   ~/Documents/sample-project: coding-agent::documents-sample-project
+  # ~/Zotero/export-md: papers::zotero
+  # ~/Readwise/Full-Sync: readwise::full-sync
+  # ~/.local/share/personal-memory/feeds: feed::cache
 
 # Largest file indexed, in kilobytes (1 KB = 1000 bytes).
 max_file_kb: 128

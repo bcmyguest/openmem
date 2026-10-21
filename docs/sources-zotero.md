@@ -14,4 +14,9 @@ papers:
 
 4. Restart the indexer container or run `bin/hindsight-project-index --apply --papers ~/Zotero/export-md`.
 
-Banks default to `papers::<folder-name>` unless overridden under `banks:`.
+Banks default to `papers::<folder-name>` unless overridden under `banks:`:
+
+```yaml
+banks:
+  ~/Zotero/export-md: papers::zotero
+```

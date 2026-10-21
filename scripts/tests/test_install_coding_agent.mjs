@@ -33,5 +33,19 @@ const h = { info: (m) => logs.push(m), ok: (m) => logs.push(m), warn: (m) => log
   check("mem0 mentions MCP", logs.some((l) => /install-mcp|MCP/i.test(l)));
 }
 
+{
+  const logs2 = [];
+  const h2 = { info: (m) => logs2.push(m), ok: (m) => logs2.push(m), warn: (m) => logs2.push(m) };
+  await runInstallCodingAgent({
+    home,
+    repoRoot: ROOT,
+    stackRoot: home,
+    flags: { yes: false, dry: true, help: false, agents: ["not-a-real-agent", "amp"], unknown: [] },
+    env: { MEMORY_PROVIDER: "mem0" },
+    h: h2,
+  });
+  check("unknown agent warns", logs2.some((l) => /Unknown agent "not-a-real-agent"/.test(l)));
+}
+
 if (failed) process.exit(1);
 console.log("all install-coding-agent tests passed");

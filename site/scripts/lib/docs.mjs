@@ -99,6 +99,24 @@ export const PAGES = [
     title: 'Feed sync',
     description: 'RSS and OpenAlex queries into a watched markdown cache for feed::* banks.',
   },
+  {
+    slug: 'sources-zotero',
+    kind: 'doc',
+    source: 'docs/sources-zotero.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Zotero exports',
+    description: 'Point papers.paths at Zotero markdown export folders.',
+  },
+  {
+    slug: 'sources-readwise',
+    kind: 'doc',
+    source: 'docs/sources-readwise.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Readwise exports',
+    description: 'Readwise markdown export directories as notes or papers sources.',
+  },
 ];
 
 /**

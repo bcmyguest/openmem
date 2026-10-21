@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { resolveMcpContext } from "./mcp/context.mjs";
 import { resolveMemoryProvider, shouldInstallNotebooklm } from "./install-memory-mcp.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -74,6 +75,7 @@ export function buildWiringReport(opts) {
     coding_agent: {
       hindsight_plugin: provider === "hindsight" ? "@vectorize-io/hindsight-coding-agents" : null,
       non_hindsight_session: provider !== "hindsight" ? "use personal-memory MCP memory_* (install-mcp)" : null,
+      session_capabilities: PROVIDER_CAPABILITIES[provider] ?? {},
     },
     issues,
     ok: issues.length === 0,
@@ -102,6 +104,17 @@ function main() {
     console.log(`Session plugin: ${report.coding_agent.hindsight_plugin}`);
   } else if (report.coding_agent.non_hindsight_session) {
     console.log(`Session memory: ${report.coding_agent.non_hindsight_session}`);
+  }
+  const caps = report.coding_agent.session_capabilities;
+  if (caps && Object.keys(caps).length) {
+    const on = Object.entries(caps)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    const off = Object.entries(caps)
+      .filter(([, v]) => !v)
+      .map(([k]) => k);
+    if (on.length) console.log(`  Session features: ${on.join(", ")}`);
+    if (off.length) console.log(`  Not via MCP shim: ${off.join(", ")} (Hindsight plugin only today)`);
   }
   for (const i of report.issues) console.log(`Issue: ${i}`);
   process.exit(report.ok ? 0 : 1);
