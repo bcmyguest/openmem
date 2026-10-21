@@ -115,7 +115,7 @@ function main() {
       .filter(([, v]) => !v)
       .map(([k]) => k);
     if (on.length) console.log(`  Session features: ${on.join(", ")}`);
-    if (off.length) console.log(`  Not via MCP shim: ${off.join(", ")} (Hindsight plugin only today)`);
+    if (off.length) console.log(`  Unavailable for ${report.memory_provider}: ${off.join(", ")}`);
   }
   for (const i of report.issues) console.log(`Issue: ${i}`);
   process.exit(report.ok ? 0 : 1);

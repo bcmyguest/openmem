@@ -50,7 +50,7 @@ flowchart TB
 | **Indexing** | Git/Obsidian → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
 | **Agents** | Cursor/Claude/Codex → stdio MCP or plugin → same provider API |
 | **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
-| **LiteLLM** | **Hindsight only.** Sidecar that routes Hindsight retain/reflect/consolidate calls to lemond, Ollama, or another OpenAI-compatible endpoint — not used on mem0/Cognee stacks |
+| **LiteLLM** | Optional sidecar on Hindsight stacks; also used for **cross-provider reflect synthesis** when `PM_LLM_URL` / stack LiteLLM is reachable (`memory_reflect` on mem0/Cognee) |
 | **NotebookLM sync** | **Opt-in, any active provider.** Background sync writes into `notebooklm::*` via the same indexer sinks (Hindsight / mem0 / Cognee); not the same as the NotebookLM MCP |
 | **Provider MCP** | Native mem0 or Cognee tool names (`install-mcp --provider-only`); same API as unified MCP, different stdio server |
 | **NotebookLM MCP** | Read-only list/search over synced notebooks; separate entry in `mcp.json`, not a memory provider |

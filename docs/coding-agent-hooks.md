@@ -7,17 +7,17 @@ session-style work through the **unified MCP** (`memory_*`) until a dedicated pl
 
 ## Capability matrix
 
-| Capability | Hindsight plugin | mem0 (session shim) | Cognee (session shim) |
+| Capability | Hindsight (default shim) | mem0 (session shim) | Cognee (session shim) |
 | --- | --- | --- | --- |
 | retain | yes | yes (Stop hook → `memory_add`) | yes |
 | recall / search | yes | yes (prompt hook → `memory_recall`) | yes |
-| reflect | yes (LLM) | search-backed session start (labeled, not LLM reflect) | search-backed |
-| consolidate | yes (via LiteLLM routes) | no | no |
+| reflect | yes (`memory_reflect` → Hindsight recall) | yes (`memory_reflect` → search + optional LiteLLM) | yes (search + LiteLLM or raw hits) |
+| consolidate | yes (Hindsight/LiteLLM routes) | no | yes (`memory_consolidate` → cognify) |
 | bank / scope | Hindsight banks | mem0 `user_id` | Cognee dataset |
 
 Flags live in `cli/coding-agent/capabilities.mjs`; `doctor wiring` and
 `install-coding-agent` read the same table. `npx personal-memory wiring` prints
-which session features work for the active provider (reflect/consolidate are Hindsight-only today).
+which session features work for the active provider.
 
 ## Install per agent
 
@@ -25,8 +25,8 @@ which session features work for the active provider (reflect/consolidate are Hin
 npx personal-memory install-coding-agent --yes
 ```
 
-- **Hindsight:** runs the upstream `hindsight-coding-agents install` plan for Claude Code, Codex, OpenCode, and Cursor CLI.
-- **mem0 / Cognee:** runs `install-mcp`, then installs **in-repo session hooks** (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor CLI, and an OpenCode plugin — same three events as Hindsight (SessionStart, prompt, Stop).
+- **All providers:** `install-mcp` + **in-repo session hooks** (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor CLI, and an OpenCode plugin.
+- **Optional:** `--hindsight-plugin` with `MEMORY_PROVIDER=hindsight` also runs `@vectorize-io/hindsight-coding-agents install` (legacy/alternate hook set).
 
 See [MCP install guide](mcp-install-guide.md) and [coding agents](coding-agents.md).
 
