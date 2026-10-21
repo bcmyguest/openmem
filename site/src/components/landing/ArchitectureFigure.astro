@@ -71,7 +71,7 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
     </div>
   </div>
   <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    Sources flow through the shared indexer into the active provider. Hindsight session memory uses the coding-agent plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)}; <code>install-mcp</code> is the NotebookLM MCP today (mem0/Cognee with <code>--provider-only</code>). See <a href={withBase('docs/architecture/')}>Architecture</a>. Provider badges come from <code>providers/*/manifest.json</code> at build time.
+    Sources flow through the shared indexer into the active provider. Hindsight session memory uses the coding-agent plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)}; <code>install-mcp</code> adds the unified <code>personal-memory</code> MCP (<code>memory_*</code>) plus optional NotebookLM or native provider MCP. See <a href={withBase('docs/architecture/')}>Architecture</a>. Provider badges come from <code>providers/*/manifest.json</code> at build time.
   </figcaption>
 </figure>
 

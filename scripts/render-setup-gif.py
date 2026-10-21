@@ -14,16 +14,33 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "assets" / "setup-demo.gif"
-FONT = ImageFont.load_default()
 BG = (30, 30, 46)
 FG = (205, 214, 244)
 GREEN = (166, 227, 161)
 YELLOW = (249, 226, 175)
 CYAN = (137, 220, 235)
 FRAME_MS = 120
-MAX_LINES = 42
-WIDTH, HEIGHT = 920, 520
-PAD = 16
+MAX_LINES = 36
+WIDTH, HEIGHT = 1100, 620
+PAD = 20
+LINE_HEIGHT = 17
+FONT_SIZE = 14
+CHARS_PER_LINE = 118
+
+
+def load_font() -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    ):
+        path = Path(candidate)
+        if path.is_file():
+            return ImageFont.truetype(str(path), FONT_SIZE)
+    return ImageFont.load_default()
+
+
+FONT = load_font()
 
 
 def capture_log() -> list[str]:
@@ -61,17 +78,19 @@ def capture_log() -> list[str]:
         "HINDSIGHT_CP_PORT": "29999",
     }
     proc = subprocess.run(
-        [node, str(ROOT / "wizard" / "bin" / "setup.mjs"), "--yes", "--dry-run"],
+        [node, str(ROOT / "cli" / "personal-memory.mjs"), "setup", "--yes", "--dry-run"],
         cwd=ROOT,
         env=env,
         capture_output=True,
         text=True,
     )
     raw = (proc.stdout or "") + (proc.stderr or "")
+    raw = re.sub(r"\x1b\[[0-9;]*m", "", raw)
     lines: list[str] = []
     for line in raw.splitlines():
         line = re.sub(r"/home/[^/]+/personal-memory", "~/personal-memory", line)
         line = re.sub(r"/tmp/pm-gif-[^/]+/home", "~", line)
+        line = re.sub(r"^personal-memory:\s*", "", line)
         if line.strip():
             lines.append(line.rstrip())
     return lines[:MAX_LINES]
@@ -94,11 +113,11 @@ def render_frame(lines: list[str], prompt: str) -> Image.Image:
     draw = ImageDraw.Draw(img)
     y = PAD
     draw.text((PAD, y), prompt, font=FONT, fill=CYAN)
-    y += 18
+    y += LINE_HEIGHT + 4
     for line in lines:
         text, color = color_line(line)
-        draw.text((PAD, y), text[:110], font=FONT, fill=color)
-        y += 14
+        draw.text((PAD, y), text[:CHARS_PER_LINE], font=FONT, fill=color)
+        y += LINE_HEIGHT
         if y > HEIGHT - PAD:
             break
     return img
@@ -122,12 +141,13 @@ def main() -> int:
         shown.append(line)
         frames.append(render_frame(shown, prompt))
     # Hold on final frame
-    for _ in range(12):
+    for _ in range(8):
         frames.append(render_frame(shown, prompt))
-    frames[0].save(
+    rgb_frames = [f.convert("RGB") for f in frames]
+    rgb_frames[0].save(
         OUT,
         save_all=True,
-        append_images=frames[1:],
+        append_images=rgb_frames[1:],
         duration=FRAME_MS,
         loop=0,
         optimize=True,

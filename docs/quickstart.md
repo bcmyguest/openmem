@@ -39,7 +39,9 @@ npx personal-memory setup --dry-run     # plan only, no writes
 npx personal-memory configure --yes       # defaults + start, no prompts
 ```
 
-![Wizard dry-run](https://bcmyguest.github.io/personal-memory/setup-demo.gif)
+Wizard dry-run (what first setup plans — no writes):
+
+![Setup dry-run: npx personal-memory setup --dry-run](https://bcmyguest.github.io/personal-memory/setup-demo.gif)
 
 ## 2. Confirm it is up
 
@@ -65,11 +67,18 @@ Restart Cursor Agent after MCP changes.
 
 ## Day-2
 
+```sh
+npx personal-memory up
+npx personal-memory down
+npx personal-memory switch mem0 --yes
+npx personal-memory doctor
+```
+
 | Command | Purpose |
 | --- | --- |
-| `npx personal-memory up` | Start stack |
-| `npx personal-memory down` | Stop stack (keeps data volume) |
-| `npx personal-memory switch <id> --yes` | Change provider (no memory migration) |
+| `up` / `down` | Start or stop the stack (down keeps data volumes) |
+| `switch <id> --yes` | Change provider (no memory migration) |
+| `doctor` | Validate config without the smoke test |
 
 In a checkout, use `npx .` instead of `npx personal-memory`.
 
