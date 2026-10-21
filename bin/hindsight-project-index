@@ -59,11 +59,11 @@ def is_git_repo(path: Path) -> bool:
     return subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
-def discover(config: index_config.Config) -> tuple[list[Path], list[Path], list[Path]]:
-    """Return repositories, Obsidian vaults, and plain notes directories from config."""
+def discover(config: index_config.Config) -> tuple[list[Path], list[Path], list[tuple[str, Path]]]:
+    """Return repositories, Obsidian vaults, and markdown directory sources (kind, path)."""
     repos: set[Path] = set(config.repos)
     vaults: set[Path] = set(config.vault_paths)
-    notes: set[Path] = set(config.notes_paths)
+    markdown: list[tuple[str, Path]] = list(config.markdown_sources())
     for root in config.roots:
         found_repos, found_vaults = scan_root(root.path, root.depth, config.skip_dirs, config.vault_auto)
         repos.update(found_repos)
@@ -80,13 +80,14 @@ def discover(config: index_config.Config) -> tuple[list[Path], list[Path], list[
             selected_vaults.append(vault)
         else:
             print(f"{vault}: vault not found, skipped", file=sys.stderr)
-    selected_notes = []
-    for note in sorted(notes):
-        if note.is_dir():
-            selected_notes.append(note)
+    selected_markdown: list[tuple[str, Path]] = []
+    for kind, path in markdown:
+        if path.is_dir():
+            selected_markdown.append((kind, path))
         else:
-            print(f"{note}: notes path not found, skipped", file=sys.stderr)
-    return selected_repos, selected_vaults, selected_notes
+            print(f"{path}: {kind} path not found, skipped", file=sys.stderr)
+    selected_markdown.sort(key=lambda item: (item[0], item[1]))
+    return selected_repos, selected_vaults, selected_markdown
 
 
 def _config(config: index_config.Config | None) -> index_config.Config:
@@ -186,8 +187,13 @@ def vault_bank(vault: Path, config: index_config.Config | None = None) -> str:
     return _config(config).bank_for(vault) or "obsidian::" + slugify(vault.name)
 
 
-def notes_bank(notes_root: Path, config: index_config.Config | None = None) -> str:
-    return _config(config).bank_for(notes_root) or "notes::" + slugify(notes_root.name)
+def markdown_bank(kind: str, root: Path, config: index_config.Config | None = None) -> str:
+    cfg = _config(config)
+    mapped = cfg.bank_for(root)
+    if mapped:
+        return mapped
+    prefix = {"notes": "notes", "papers": "papers", "bookmarks": "bookmarks"}.get(kind, "notes")
+    return f"{prefix}::{slugify(root.name)}"
 
 
 def split_frontmatter(text: str) -> tuple[list[str], str]:
@@ -356,8 +362,8 @@ def sync_vault(vault: Path, sink: sinks.Sink, state: dict, state_path: Path, app
     return sync(vault, vault_bank(vault, config), vault_documents(vault, config), sink, state, state_path, apply, limit, None)
 
 
-def sync_notes(notes_root: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(notes_root, notes_bank(notes_root, config), vault_documents(notes_root, config), sink, state, state_path, apply, limit, None)
+def sync_markdown(kind: str, root: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
+    return sync(root, markdown_bank(kind, root, config), vault_documents(root, config), sink, state, state_path, apply, limit, None)
 
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
@@ -376,17 +382,19 @@ def opted_in(path: Path, allowed: list[Path] | None) -> bool:
 
 def selected_sources(args: argparse.Namespace, config: index_config.Config) -> list[tuple[str, Path]]:
     # Explicit --repo or --vault narrows the run to exactly those sources.
-    if args.repo or args.vault or args.notes:
+    if args.repo or args.vault or args.notes or args.papers or args.bookmarks:
         return (
             [("repo", path) for path in args.repo or []]
             + [("vault", path) for path in args.vault or []]
             + [("notes", path) for path in args.notes or []]
+            + [("papers", path) for path in args.papers or []]
+            + [("bookmarks", path) for path in args.bookmarks or []]
         )
-    repos, vaults, notes = discover(config)
+    repos, vaults, markdown = discover(config)
     return (
         [("repo", repo) for repo in repos]
         + [("vault", vault) for vault in vaults]
-        + [("notes", note) for note in notes]
+        + [(kind, path) for kind, path in markdown]
     )
 
 
@@ -404,7 +412,9 @@ def main() -> int:
     parser.add_argument("--config", type=Path, help="index.yml to use (default: $HINDSIGHT_INDEX_CONFIG, ~/.config/hindsight/index.yml, then config/index.yml)")
     parser.add_argument("--repo", type=Path, action="append", help="index only these repositories (repeatable)")
     parser.add_argument("--vault", type=Path, action="append", help="index an Obsidian vault (repeatable)")
-    parser.add_argument("--notes", type=Path, action="append", help="index a markdown notes folder without .obsidian (repeatable)")
+    parser.add_argument("--notes", type=Path, action="append", help="index a markdown notes folder (repeatable)")
+    parser.add_argument("--papers", type=Path, action="append", help="index a papers library folder (markdown exports; repeatable)")
+    parser.add_argument("--bookmarks", type=Path, action="append", help="index a bookmarks export folder (repeatable)")
     parser.add_argument("--sink", default=os.environ.get("MEMORY_SINK") or sinks.DEFAULT_SINK, help="memory provider to write to (default: $MEMORY_SINK, then %(default)s); registered: " + ", ".join(sinks.registered_sinks()))
     parser.add_argument("--url", help="provider API base URL (default: $HINDSIGHT_URL for the hindsight sink, $MEMORY_API_URL for other sinks, then the sink's own default)")
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
@@ -449,13 +459,13 @@ def main() -> int:
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     failed = 0
     for kind, path in sources:
-        if kind in ("vault", "notes") and args.kind:
+        if kind in ("vault", "notes", "papers", "bookmarks") and args.kind:
             continue
         try:
             if kind == "repo":
                 changed, stale = sync_repo(path, sink, state, args.state, args.apply, args.limit, args.kind, config)
-            elif kind == "notes":
-                changed, stale = sync_notes(path, sink, state, args.state, args.apply, args.limit, config)
+            elif kind in ("notes", "papers", "bookmarks"):
+                changed, stale = sync_markdown(kind, path, sink, state, args.state, args.apply, args.limit, config)
             else:
                 changed, stale = sync_vault(path, sink, state, args.state, args.apply, args.limit, config)
             print(f"{path}: {changed} to retain, {stale} stale" + (" (applied)" if args.apply else " (dry run)"))
