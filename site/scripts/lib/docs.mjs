@@ -139,6 +139,7 @@ export function rewriteLinks(md, { sourcePath, published, kindOf, repoUrl, branc
   return mapProse(md, (prose) =>
     prose.replace(/(!?)\[([^\]]*)\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g, (whole, bang, text, href, title) => {
       if (/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(href)) return whole;
+      if (href.startsWith('/')) return whole;
       const [pathPart, hash = ''] = href.split(/#(.*)/s);
       const decoded = decodeURI(pathPart);
       const target = posix.normalize(posix.join(dir, decoded));

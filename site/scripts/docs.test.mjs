@@ -24,6 +24,10 @@ test('links to other repo files become blob or tree URLs', () => {
 test('external, anchor, and absolute links are untouched', () => {
   const md = '[a](https://x.dev) [b](#top) [c](mailto:a@b.co) [d](//cdn.x/y)';
   assert.equal(rewriteLinks(md, ctx), md);
+  assert.equal(
+    rewriteLinks('![diagram](/personal-memory/diagrams/architecture-1.svg)', ctx),
+    '![diagram](/personal-memory/diagrams/architecture-1.svg)',
+  );
 });
 
 test('links inside code are untouched', () => {
