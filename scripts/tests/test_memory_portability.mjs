@@ -139,7 +139,16 @@ function check(name, cond, detail = "") {
       return {
         ok: true,
         async text() {
-          return JSON.stringify([{ id: "d1", name: "doc.md", label: "hello cognee", externalMetadata: { doc_id: "x" } }]);
+          return JSON.stringify([
+            { id: "d1", name: "doc.md", label: "hello cognee", externalMetadata: { doc_id: "x" } },
+            {
+              id: "d2",
+              name: "full.md",
+              label: "short label",
+              text: "full document body from text field",
+              externalMetadata: { doc_id: "y" },
+            },
+          ]);
         },
       };
     }
@@ -150,7 +159,12 @@ function check(name, cond, detail = "") {
     { bank },
     fetchFn,
   );
-  check("cognee export records", out.records.length === 1 && out.records[0].content === "hello cognee");
+  check(
+    "cognee export records",
+    out.records.length === 2
+      && out.records.find((r) => r.id === "d1")?.content === "hello cognee"
+      && out.records.find((r) => r.id === "d2")?.content === "full document body from text field",
+  );
 }
 
 if (failed) process.exit(1);

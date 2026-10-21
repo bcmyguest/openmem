@@ -4,6 +4,56 @@ import { cogneeDatasetName } from "./cognee-dataset-name.mjs";
 const PAGE = 1000;
 
 /**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function trimString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {string}
+ */
+function textFromRawData(raw) {
+  if (typeof raw === "string") return raw.trim();
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return textFromRecord(raw);
+  }
+  return "";
+}
+
+/**
+ * Read `text`, `content`, or nested `raw_data` / `rawData` from a plain object.
+ * @param {unknown} obj
+ * @returns {string}
+ */
+function textFromRecord(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return "";
+  const rec = /** @type {Record<string, unknown>} */ (obj);
+  for (const key of ["text", "content"]) {
+    const s = trimString(rec[key]);
+    if (s) return s;
+  }
+  const fromRaw = textFromRawData(rec.raw_data ?? rec.rawData);
+  if (fromRaw) return fromRaw;
+  return "";
+}
+
+/**
+ * Prefer full document bytes/text from a Cognee dataset data row over label-only fields.
+ * @param {Record<string, unknown>} item
+ * @returns {string}
+ */
+export function cogneeDataItemContent(item) {
+  const fromItem = textFromRecord(item);
+  if (fromItem) return fromItem;
+  const fromDoc = textFromRecord(item.document ?? item.doc);
+  if (fromDoc) return fromDoc;
+  return trimString(item.label) || trimString(item.name) || "";
+}
+
+/**
  * @param {{ cognee?: { baseUrl: string, apiKey?: string } }} ctx
  * @param {{ bank?: string }} args
  * @param {typeof fetch} fetchFn
@@ -53,11 +103,11 @@ export async function exportCognee(ctx, args, fetchFn, env = process.env) {
     if (!Array.isArray(page)) break;
     for (const item of page) {
       if (!item || typeof item !== "object") continue;
-      const label = item.label ?? item.name ?? "";
       const meta = item.externalMetadata ?? item.external_metadata ?? {};
+      const body = cogneeDataItemContent(item);
       records.push({
         id: item.id != null ? String(item.id) : null,
-        content: String(label || item.name || "").trim() || `[cognee:${item.name || item.id}]`,
+        content: body || `[cognee:${item.name || item.id}]`,
         metadata: { cognee: { name: item.name ?? null, externalMetadata: meta } },
         scope_key: bank,
       });
