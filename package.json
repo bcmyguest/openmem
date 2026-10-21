@@ -70,6 +70,7 @@
     "personal-memory": "node cli/personal-memory.mjs",
     "install-mcp": "node cli/install-memory-mcp.mjs",
     "install-coding-agent": "node cli/install-coding-agent.mjs",
+    "feed-sync": "node cli/feed-sync.mjs",
     "switch-provider": "node cli/switch-memory-provider.mjs",
     "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
     "test:unit": "node scripts/tests/test_cli_package.mjs --unit",

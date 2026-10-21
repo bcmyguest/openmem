@@ -7,7 +7,8 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
+import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./coding-agent/agents.mjs";
+import { PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -21,13 +22,14 @@ const HELP = `${BIN}: wire session memory for coding agents
 Usage:
   npx personal-memory install-coding-agent [--yes] [--dry-run] [--agents a,b]
 
-Default agents: ${AGENT_IDS.join(", ")}
+Default agents (Hindsight plugin): ${DEFAULT_AGENT_IDS.join(", ")}
+All known agents: ${CODING_AGENTS.map((a) => a.id).join(", ")}
 
 Hindsight runs hindsight-coding-agents install. mem0/Cognee ensure unified MCP and print MCP session steps.
 `;
 
 function parseArgs(argv) {
-  const flags = { yes: false, dry: false, help: false, agents: [...AGENT_IDS], unknown: [] };
+  const flags = { yes: false, dry: false, help: false, agents: [...DEFAULT_AGENT_IDS], unknown: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--yes" || a === "-y") flags.yes = true;
@@ -81,8 +83,9 @@ export async function runInstallCodingAgent(opts) {
       h: opts.h || h(),
     });
   }
-  for (const agent of flags.agents) {
-    opts.h?.info(`  ${agent}: point session tooling at personal-memory MCP or agent-native MCP docs`);
+  for (const agentId of flags.agents) {
+    const row = CODING_AGENTS.find((a) => a.id === agentId);
+    opts.h?.info(`  ${agentId}: ${row?.sessionPath || "use personal-memory MCP memory_* after install-mcp"}`);
   }
   return { provider, ran: !flags.dry && flags.yes };
 }

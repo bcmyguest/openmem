@@ -24,6 +24,12 @@ papers:
 bookmarks:
   paths: []   # e.g. browser export (Linkwarden, Karakeep, manual markdown dumps)
 
+# Optional: pull RSS/arXiv/OpenAlex into out_dir; indexer watches out_dir as kind `feed`.
+feeds:
+  out_dir: ~/.local/share/personal-memory/feeds
+  rss: []
+  openalex_queries: []
+
 # Glob patterns on absolute paths. A source that matches is skipped.
 exclude: []
 
