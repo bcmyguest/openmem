@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { buildPmm, parsePmm, memoryExport } from "../../cli/mcp/portability.mjs";
+import { assertPmmVersion, buildPmm, memoryImport, parsePmm, memoryExport } from "../../cli/mcp/portability.mjs";
+import { sortPmmRecords } from "../../cli/mcp/pmm-records.mjs";
 import { cogneeDatasetName } from "../../cli/mcp/export/cognee-dataset-name.mjs";
 
 let failed = 0;
@@ -16,6 +17,59 @@ function check(name, cond, detail = "") {
   check("pmm version", pmm.pmm_version === 1);
   const round = parsePmm(JSON.stringify(pmm));
   check("parse json", round.pmm.source_provider === "mem0");
+}
+
+{
+  const sorted = sortPmmRecords([
+    { scope_key: "b", id: "2", content: "z" },
+    { scope_key: "a", content: "y" },
+    { scope_key: "b", id: "1", content: "a" },
+  ]);
+  check("record sort order", sorted[0].scope_key === "a" && sorted[2].content === "z");
+  let threw = false;
+  try {
+    assertPmmVersion(2);
+  } catch {
+    threw = true;
+  }
+  check("reject pmm major 2", threw);
+}
+
+{
+  const pmm = buildPmm({
+    provider: "mem0",
+    scope: { user_id: "u" },
+    records: [{ id: "1", content: "hello", scope_key: "u" }, { content: "new", scope_key: "u" }],
+  });
+  /** @type {typeof fetch} */
+  const fetchFn = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/memories?") && (!init || !init.method)) {
+      return {
+        ok: true,
+        async text() {
+          return JSON.stringify([{ id: "1", memory: "hello" }]);
+        },
+      };
+    }
+    if (u.endsWith("/memories") && init?.method === "POST") {
+      return { ok: true, async text() { return "{}"; } };
+    }
+    throw new Error(`unexpected ${u}`);
+  };
+  let addCalls = 0;
+  const addFn = async () => {
+    addCalls++;
+  };
+  const summary = await memoryImport(
+    { provider: "mem0", mem0: { baseUrl: "http://127.0.0.1:1" } },
+    JSON.stringify(pmm),
+    { merge_strategy: "skip_duplicates" },
+    fetchFn,
+    addFn,
+  );
+  check("mem0 dedupe skips hello", summary.skipped_count === 1 && summary.imported_count === 1);
+  check("mem0 dedupe one add", addCalls === 1);
 }
 
 {
