@@ -29,6 +29,10 @@ export function embedMermaidAsImages(md, opts) {
       );
     }
     const alt = index === 1 ? 'Architecture diagram' : `Architecture diagram ${index}`;
+    const darkFile = `${namePrefix}-${index}-dark.svg`;
+    if (existsSync(join(outDir, darkFile))) {
+      return `\n<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${urlPrefix}${file}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${urlPrefix}${darkFile}" alt="${alt} (dark theme)" />\n</div>\n`;
+    }
     return `\n![${alt}](${urlPrefix}${file})\n`;
   });
 }
@@ -38,19 +42,18 @@ export function embedMermaidAsImages(md, opts) {
  * @param {string} diagram
  * @param {string} outPath
  */
-export function renderMermaidToSvg(diagram, outPath) {
+export function renderMermaidToSvg(diagram, outPath, { theme, background } = {}) {
   const siteRoot = fileURLToPath(new URL('../..', import.meta.url));
   const puppeteerConfig = join(siteRoot, 'scripts', 'mermaid-puppeteer.json');
   mkdirSync(join(outPath, '..'), { recursive: true });
   const work = mkdtempSync(join(tmpdir(), 'pm-mmdc-'));
   const input = join(work, 'diagram.mmd');
   writeFileSync(input, diagram, 'utf8');
+  const bg = background ?? (theme === 'dark' ? '#1a1b26' : '#f9f9fb');
+  const args = ['--yes', '@mermaid-js/mermaid-cli', '-i', input, '-o', outPath, '-b', bg, '-p', puppeteerConfig];
+  if (theme) args.splice(args.length - 2, 0, '-t', theme);
   try {
-    execFileSync(
-      'npx',
-      ['--yes', '@mermaid-js/mermaid-cli', '-i', input, '-o', outPath, '-b', '#f9f9fb', '-p', puppeteerConfig],
-      { stdio: 'inherit', cwd: siteRoot },
-    );
+    execFileSync('npx', args, { stdio: 'inherit', cwd: siteRoot });
     if (!readFileSync(outPath, 'utf8').includes('<svg')) {
       throw new Error(`mmdc did not produce SVG at ${outPath}`);
     }

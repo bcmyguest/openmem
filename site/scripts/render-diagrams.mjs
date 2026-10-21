@@ -31,5 +31,7 @@ for (const page of PAGES) {
     const outPath = join(outDir, `${namePrefix}-${index}.svg`);
     console.log(`render ${page.source} #${index} -> ${outPath}`);
     renderMermaidToSvg(match[1].trim(), outPath);
+    const darkPath = join(outDir, `${namePrefix}-${index}-dark.svg`);
+    renderMermaidToSvg(match[1].trim(), darkPath, { theme: 'dark', background: '#1a1b26' });
   }
 }
