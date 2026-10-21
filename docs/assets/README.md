@@ -7,4 +7,4 @@ uv run --with pillow python scripts/render-setup-gif.py
 cp docs/assets/setup-demo.gif site/public/setup-demo.gif
 ```
 
-The capture uses stubbed `docker`/`curl` and `./setup --yes --dry-run`.
+The capture uses stubbed `docker`/`curl` and `npx personal-memory setup --dry-run` (via `wizard/bin/setup.mjs`).

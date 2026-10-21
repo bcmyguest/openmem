@@ -12,14 +12,14 @@ const supportedNames = providers.filter((p) => p.status === 'supported').map((p)
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
-  'A setup wizard, Docker Compose stack, and project and vault indexer that wire coding agents to a pluggable local memory provider. Provider status is read from the manifests.';
+  'Choose your memory backend — Hindsight, mem0, Cognee, or more as manifests land. One wizard and indexer on your machine; switch providers without rebuilding your workflow from scratch.';
 
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
 ${site.sourceInstall.command}`;
 const npxCommand = `npx ${site.npm.package}
 npx ${site.npm.package} up
-npx ${site.npm.package} install-mcp --yes
+npx ${site.npm.package} install-mcp --yes --notebooklm
 npx ${site.npm.package} switch mem0 --yes`;
 ---
 <Landing title={title} description={description}>
@@ -45,10 +45,10 @@ npx ${site.npm.package} switch mem0 --yes`;
   <main id="main">
     <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
       <div class="max-w-3xl">
-        <Badge variant="outline">Local-first · Docker Compose · work in progress</Badge>
+        <Badge variant="outline">Your backend · Local-first · Docker Compose</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          personal-memory is a setup wizard built around pluggable memory providers, a Docker Compose stack, and an indexer for your projects and notes. It wires coding agents to a provider that runs on your machine. {supportedNames ? `Supported today: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''} Every other provider is listed with the status its manifest declares.
+          Most agent-memory tools pick a stack for you. personal-memory is the opposite: one installer and indexer, and you choose the memory system — Hindsight today, mem0 or Cognee if that fits better, another provider when a manifest lands. Agents talk to that backend’s native plugin or MCP; we do not replace it. {supportedNames ? `Supported now: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <Button href="#install" size="lg">Install</Button>
@@ -63,7 +63,7 @@ npx ${site.npm.package} switch mem0 --yes`;
     <section class="border-y border-line bg-panel py-16" aria-labelledby="features-h">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 id="features-h" class="text-3xl font-bold tracking-tight">What it does</h2>
-        <p class="mt-3 max-w-2xl text-muted">It orchestrates the machine-local plumbing. Each provider keeps its own native settings, CLI, and docs.</p>
+        <p class="mt-3 max-w-2xl text-muted">Shared plumbing only — indexing, compose, smoke tests. Your provider keeps its API, models, and agent integration; you are not locked in.</p>
         <ul class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <Card as="li" class="bg-panel-raised">
@@ -90,7 +90,7 @@ npx ${site.npm.package} switch mem0 --yes`;
             </li>
           ))}
         </ol>
-        <p class="mt-6 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/provider-wizard-hooks/')}>The full phase order and the hook contract</a></p>
+        <p class="mt-6 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/architecture/')}>Architecture: indexing, MCP, and how memory updates</a></p>
       </div>
     </section>
 
@@ -98,7 +98,7 @@ npx ${site.npm.package} switch mem0 --yes`;
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 id="providers-h" class="text-3xl font-bold tracking-tight">Providers</h2>
         <p class="mt-3 max-w-2xl text-muted">
-          Generated from <code>providers/*/manifest.json</code> when this site is built. A provider is only marked supported when its manifest says so.
+          Add or swap backends without forking the project — status and wiring come from <code>providers/*/manifest.json</code> at build time. Supported means the manifest says it is ready for production use.
         </p>
         <div class="mt-8 overflow-x-auto rounded-xl border border-line" role="region" aria-labelledby="providers-h" tabindex="0">
           <table class="w-full min-w-[40rem] border-collapse text-left text-sm">
@@ -137,7 +137,7 @@ npx ${site.npm.package} switch mem0 --yes`;
     <section id="next" class="py-16" aria-labelledby="next-h">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
         <h2 id="next-h" class="text-3xl font-bold tracking-tight">Works today. Up next.</h2>
-        <p class="mt-3 max-w-2xl text-muted">What the current build does, and the next steps. No dates.</p>
+        <p class="mt-3 max-w-2xl text-muted">What ships now (including the unified personal-memory MCP), plus import/export and provider promotion. No dates.</p>
         <div class="mt-10 grid gap-4 md:grid-cols-2">
           <Card class="bg-panel-raised">
             <h3 class="font-semibold">Works today</h3>
@@ -168,7 +168,7 @@ npx ${site.npm.package} switch mem0 --yes`;
               {site.npm.published ? <Badge variant="supported">Published</Badge> : <Badge variant="inferred">After first npm release</Badge>}
             </h3>
             {site.npm.published ? (
-              <p class="mt-2 text-sm leading-relaxed text-muted">Preferred day-0 and day-2 commands. Same CLI for setup, stack control, MCP install, and provider switch.</p>
+              <p class="mt-2 text-sm leading-relaxed text-muted">Preferred day-0 and day-2 commands. <code>install-mcp</code> registers the NotebookLM MCP (Hindsight session memory uses the coding-agent plugin separately).</p>
             ) : (
               <p class="mt-2 text-sm leading-relaxed text-muted">
                 Command shape you will use after publish. Until then, clone and run <code>npx . setup</code> (same subcommands).
@@ -189,7 +189,7 @@ npx ${site.npm.package} switch mem0 --yes`;
         </div>
         <div class="mt-6 flex flex-wrap gap-3">
           <Button href={withBase('docs/getting-started/')}>Quickstart</Button>
-          <Button href={withBase('docs/memory-providers/')} variant="outline">How providers plug in</Button>
+          <Button href={withBase('docs/architecture/')} variant="outline">Architecture</Button>
         </div>
       </div>
     </section>

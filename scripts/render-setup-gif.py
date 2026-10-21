@@ -110,7 +110,7 @@ def main() -> int:
         print("capture too short", file=sys.stderr)
         return 1
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    prompt = "$ ./setup --yes --dry-run"
+    prompt = "$ npx personal-memory setup --dry-run"
     frames: list[Image.Image] = []
     # Typing the command
     for i in range(1, len(prompt) + 1):

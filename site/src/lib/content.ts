@@ -37,8 +37,12 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 
 export const features = [
   {
+    title: 'Any memory system you choose',
+    body: 'Not one vendor’s stack. Pick Hindsight, self-hosted mem0, Cognee, or the next manifest — same wizard and indexer. Switch with npx personal-memory switch; memories stay on the old backend until you migrate yourself.',
+  },
+  {
     title: 'One wizard, per-provider steps',
-    body: 'A Node wizard (npx personal-memory) asks for a stack action and a memory provider, then runs the shared steps: preflight, ports, index sources, start, health, and a smoke test. Providers add their own steps through hook modules.',
+    body: 'npx personal-memory asks for a stack action and a provider, then runs shared steps: preflight, ports, index sources, start, health, smoke test. Provider hooks add only what that backend needs.',
   },
   {
     title: 'A Compose stack, loopback only',
@@ -62,7 +66,7 @@ export const features = [
   },
   {
     title: 'Switch providers later',
-    body: 'npx personal-memory switch <provider> --yes updates wizard.conf (and config.toml when present), restarts the stack, and re-points provider MCP. It does not migrate memories between backends.',
+    body: 'Try mem0 without abandoning Hindsight config: npx personal-memory switch <provider> --yes rewires compose, env, and MCP. No forced migration — your data stays where you left it on each backend.',
   },
   {
     title: 'Local models by default',
@@ -95,11 +99,13 @@ export const works = [
   'Indexer for git repositories and Obsidian vaults, with tree-sitter outlines and secret-path masking',
   'Smoke retain and recall, and an idempotent rerun that reports changed=N',
   'Declarative config.toml and npx personal-memory tasks: up, down, doctor, install-mcp, switch',
-  'Opt-in NotebookLM sync plus notebooklm MCP (list/search) for coding agents',
-  'Provider MCP installers for mem0 and Cognee via npx personal-memory install-mcp',
+  'Unified personal-memory MCP (memory_add/search/recall/forget, PMM export/import) via install-mcp',
+  'Opt-in NotebookLM sync; install-mcp also registers the NotebookLM MCP when enabled',
+  'Provider-native MCP (mem0/Cognee) still available with install-mcp --provider-only',
 ];
 
 export const next = [
+  'PMM export/import: Hindsight list export and Cognee dataset export',
   ...notSupported.map((p) => `${p.label}: manifest status is ${p.status}`),
   'Live end-to-end runs against real mem0 and Cognee servers (required before supported)',
   site.npm.published ? 'Further npm releases' : `The first npm release, which makes npx ${site.npm.package} work`,

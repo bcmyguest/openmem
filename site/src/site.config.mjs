@@ -7,9 +7,9 @@
 
 export const site = {
   name: 'personal-memory',
-  tagline: 'One front door for coding-agent memory on your machine.',
+  tagline: 'Use the memory system you want — one local setup for coding agents.',
   description:
-    'A setup wizard, a Docker Compose stack, and a project and vault indexer that wire coding agents to a pluggable local memory provider. Provider status is read from the provider manifests.',
+    'Not locked to one memory product: pick Hindsight, self-hosted mem0, Cognee, or the next manifest — same wizard, shared indexer, switch when you want. Provider status is read from the manifests.',
   repoUrl: 'https://github.com/bcmyguest/personal-memory',
   /** Branch that source links in the docs point at. */
   branch: 'main',

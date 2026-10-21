@@ -29,6 +29,7 @@ import {
   mergeMem0McpServer,
   resolveMem0ApiUrl,
 } from "../providers/mem0/lib/mcp-install.mjs";
+import { installUnifiedMcp } from "./mcp/unified-mcp-install.mjs";
 import { resolveStackRoot } from "./stack.mjs";
 
 export { mem0McpEntry, mergeMem0McpServer, resolveMem0ApiUrl };
@@ -39,7 +40,12 @@ const DEFAULT_PROVIDER = "hindsight";
 /** Sibling MCP servers this tool must never rewrite (merge targets mem0/cognee stay off this list). */
 export const PROTECTED_MCP_SERVERS = Object.freeze(["hindsight", "codegraph", "notebooklm"]);
 
-const HELP = `${BIN}: merge memory MCP servers into ~/.cursor/mcp.json
+const HELP = `${BIN}: merge MCP servers into ~/.cursor/mcp.json
+
+By default merges the personal-memory unified MCP (memory_add/search/recall/forget on the
+active provider). Also NotebookLM when sync is enabled or --notebooklm. Native mem0/Cognee
+MCP: --provider-only. Skip unified: --no-unified-mcp. Hindsight session memory still uses
+the hindsight-coding-agents plugin.
 
 Usage:
   ${BIN} [flags]
@@ -52,6 +58,7 @@ Flags:
   --notebooklm        force NotebookLM MCP + notebooklmAccess.enabled
   --notebooklm-only   only NotebookLM step (skip provider MCP)
   --provider-only     only provider MCP (skip NotebookLM)
+  --no-unified-mcp    skip merging the personal-memory unified MCP server
   -h, --help          this help
 
 Provider resolution: MEMORY_PROVIDER, else wizard.conf, else hindsight.
@@ -65,6 +72,7 @@ NotebookLM is also detected when ~/.config/hindsight/notebooklm.yml has enabled:
  *   notebooklm: boolean,
  *   notebooklmOnly: boolean,
  *   providerOnly: boolean,
+ *   noUnifiedMcp: boolean,
  *   help: boolean,
  *   unknown: string[],
  * }} InstallMcpFlags
@@ -82,6 +90,7 @@ export function parseInstallMcpArgs(argv) {
     notebooklm: false,
     notebooklmOnly: false,
     providerOnly: false,
+    noUnifiedMcp: false,
     help: false,
     unknown: [],
   };
@@ -102,6 +111,9 @@ export function parseInstallMcpArgs(argv) {
         break;
       case "--provider-only":
         flags.providerOnly = true;
+        break;
+      case "--no-unified-mcp":
+        flags.noUnifiedMcp = true;
         break;
       case "-h":
       case "--help":
@@ -285,6 +297,7 @@ export async function runInstallMemoryMcp(opts) {
     else if (provider === "hindsight") plan.push("hindsight note (coding-agents plugin separate)");
     else plan.push(`provider=${provider} (no MCP handler)`);
   }
+  if (!flags.noUnifiedMcp) plan.push("personal-memory unified MCP (memory_add/search/recall/forget)");
 
   h.info(`provider=${provider}`);
   h.info(`plan: ${plan.length ? plan.join("; ") : "(nothing)"}`);
@@ -340,11 +353,20 @@ export async function runInstallMemoryMcp(opts) {
     }
   }
 
-  if (!flags.dry && (didNotebooklm || (didProvider && provider !== "hindsight"))) {
+  let didUnified = false;
+  if (!flags.noUnifiedMcp) {
+    const u = installUnifiedMcp(
+      { home, repoRoot, stackRoot, provider, dry: flags.dry },
+      h,
+    );
+    didUnified = u.changed || flags.dry;
+  }
+
+  if (!flags.dry && (didNotebooklm || didUnified || (didProvider && provider !== "hindsight"))) {
     h.ok("Restart Cursor Agent so it picks up MCP changes");
   }
 
-  return { provider, didNotebooklm, didProvider };
+  return { provider, didNotebooklm, didProvider, didUnified };
 }
 
 /**
