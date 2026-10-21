@@ -1,0 +1,29 @@
+{
+  "id": "letta",
+  "label": "Letta",
+  "status": "planned",
+  "notes": "Placeholder manifest. Letta (formerly MemGPT) server integration is not wired; track via issues before changing status.",
+  "settings": {
+    "nativeDocs": "https://docs.letta.com/",
+    "nativeConfigPaths": [],
+    "wizardOwns": []
+  },
+  "compose": {
+    "profile": "letta",
+    "files": [],
+    "services": [],
+    "healthService": null,
+    "healthPath": null,
+    "hostPortEnv": null,
+    "defaultHostPort": null
+  },
+  "indexer": {
+    "apiUrlEnv": "LETTA_API_URL",
+    "sink": "letta"
+  },
+  "codingAgent": {
+    "pluginPackage": null,
+    "configTemplate": null
+  },
+  "wizard": {}
+}
