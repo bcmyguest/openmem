@@ -384,6 +384,24 @@ process.on("exit", () => {
   check("live cognee has no API key", !("COGNEE_API_KEY" in (written.mcpServers.cognee.env || {})));
 }
 
+// --- idempotent second install-mcp (--yes) ---
+{
+  const home = tmp("idem");
+  const stack = tmp("idem-stack");
+  fs.mkdirSync(path.join(home, ".config/hindsight"), { recursive: true });
+  fs.writeFileSync(path.join(stack, ".env"), "MEM0_API_URL=http://127.0.0.1:18888\n");
+  const mcpPath = path.join(home, ".cursor/mcp.json");
+  fs.mkdirSync(path.dirname(mcpPath), { recursive: true });
+  fs.writeFileSync(mcpPath, JSON.stringify({ mcpServers: {} }));
+  const flags = parseInstallMcpArgs(["--yes"]);
+  const h = { info: () => {}, ok: () => {}, warn: () => {} };
+  await runInstallMemoryMcp({ home, repoRoot: ROOT, stackRoot: stack, flags, env: { MEMORY_PROVIDER: "mem0" }, h });
+  const afterFirst = fs.readFileSync(mcpPath, "utf8");
+  await runInstallMemoryMcp({ home, repoRoot: ROOT, stackRoot: stack, flags, env: { MEMORY_PROVIDER: "mem0" }, h });
+  const afterSecond = fs.readFileSync(mcpPath, "utf8");
+  check("install-mcp idempotent json", afterFirst === afterSecond);
+}
+
 // --- mutual exclusion ---
 {
   let threw = false;
