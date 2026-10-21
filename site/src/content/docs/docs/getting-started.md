@@ -97,6 +97,7 @@ Secrets and index config: `~/.config/hindsight/` (and optional `~/.config/person
 ## Next
 
 - [Architecture](../architecture/) — data flow, indexing, MCP by provider
+- [Index sources](../index-sources/) — git, Obsidian, notes/papers/bookmarks, feed cache
 - [Install with npx](../npx-install/) — upgrades, troubleshooting
 - [Configuration file](../personal-memory-config/) — declarative `config.toml`
 

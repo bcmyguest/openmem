@@ -1,7 +1,8 @@
 # Indexer sink drivers
 
 The shared indexer (`bin/hindsight-project-index`, watcher, compose `indexer` service) turns
-repositories and Obsidian vaults into documents and writes them through a **sink**: a Python module
+git repos, Obsidian vaults, markdown trees (`notes` / `papers` / `bookmarks`), and feed-cache
+folders into documents and writes them through a **sink**: a Python module
 under `indexer/sinks/<name>.py`. Provider manifests declare how compose and the wizard wire that
 sink; see [Pluggable memory providers](memory-providers.md) for manifests and wizard ownership.
 

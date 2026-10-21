@@ -2,9 +2,13 @@
 
 The indexer indexes each source once at startup, then keeps it current:
 
-- Obsidian vaults: any folder containing `.obsidian/` within a root's depth, plus `vaults.paths`. Each uses the bank `obsidian::<slug>` unless `banks` maps it. Changes are watched with inotify. A vault is re-indexed after `vault_quiet_seconds` (default 30) without changes. Dot-prefixed paths are ignored.
-- Git repositories: the outermost repositories under each `roots` entry, plus `repos`. The indexer polls each one every `poll_seconds` (default 60). A poll fingerprints `HEAD` and the tracked-file status (`git status --porcelain -uno`). After one poll with an unchanged fingerprint, the repository is re-indexed. Edits to an already-modified tracked file change no fingerprint until `HEAD` or the status changes. Repositories with a persistent error re-run on each poll.
-- Source discovery: sources are re-listed every `relist_seconds` (default 600), so new repositories and vaults are picked up without a restart.
+- **Git repositories:** the outermost repositories under each `roots` entry, plus `repos`. The indexer polls each one every `poll_seconds` (default 60). A poll fingerprints `HEAD` and the tracked-file status (`git status --porcelain -uno`). After one poll with an unchanged fingerprint, the repository is re-indexed. Edits to an already-modified tracked file change no fingerprint until `HEAD` or the status changes. Repositories with a persistent error re-run on each poll. Banks default to `coding-agent::<repo>` unless `banks` maps the path.
+- **Obsidian vaults:** any folder containing `.obsidian/` within a root's depth, plus `vaults.paths`. Each uses the bank `obsidian::<slug>` unless `banks` maps it. Changes are watched with inotify. A vault is re-indexed after `vault_quiet_seconds` (default 30) without changes. Dot-prefixed paths are ignored.
+- **Markdown trees:** `notes.paths`, `papers.paths`, and `bookmarks.paths` (plain folders without `.obsidian/`). Watched with inotify; banks default to `notes::`, `papers::`, and `bookmarks::` slugs. Bookmarks also index `.html` and `.txt` exports. Use `papers.paths` for Zotero markdown export dirs; see [sources-zotero.md](sources-zotero.md) and [sources-readwise.md](sources-readwise.md).
+- **Feed cache:** when `feeds.rss` or `feeds.openalex_queries` is set in `index.yml`, run `npx personal-memory feed-sync` to refresh markdown under `feeds.out_dir`; the indexer watches that directory as kind `feed` (`feed::<slug>` banks). See [sources-feeds.md](sources-feeds.md).
+- **Source discovery:** sources are re-listed every `relist_seconds` (default 600), so new repos, vaults, and configured paths are picked up without a restart.
+
+Operator overview: [index-sources.md](index-sources.md).
 - Code files get a tree-sitter outline (signatures, doc comments, imports) instead of a CodeGraph run. Parsing runs in-process; grammars are prefetched into the image at `/opt/tree-sitter-grammars`, so indexing needs no network. Supported languages: Python, JavaScript, TypeScript, TSX, Go, Rust, Java, C, C++, C#, Ruby, Lua, Bash, PHP. Known gaps: Go type declarations and TypeScript type aliases are not captured, and files with syntax errors give partial outlines. Outlines are re-retained once after this change, and the old CodeGraph-based code documents are deleted as stale.
 - `optInPaths` filters sources. A missing file means no filter; an empty list means nothing is indexed.
 - Automatic consolidation is disabled for the whole indexed bank, not only for indexed documents.
@@ -30,8 +34,10 @@ A file found this way replaces the default entirely. Keys it omits take the buil
 | `repos` | Extra repositories, outside the roots or not. Each must be a git repository. |
 | `vaults.auto` | `true` (default) finds any folder with `.obsidian/` within a root's depth. |
 | `vaults.paths` | Extra vault folders. |
+| `notes.paths`, `papers.paths`, `bookmarks.paths` | Markdown (and bookmark export) directories; see [index-sources.md](index-sources.md). |
+| `feeds.out_dir`, `feeds.rss`, `feeds.openalex_queries` | Feed sync output; requires `npx personal-memory feed-sync`. |
 | `exclude` | Glob patterns on absolute paths. A matching source is skipped. |
-| `banks` | Absolute path prefix to bank id; the longest prefix wins. Applies to repos and vaults. Unmatched repos fall back to `~/.hindsight/coding-agent.json` `mapPathToBank`, then `coding-agent::<name>`. |
+| `banks` | Absolute path prefix to bank id; the longest prefix wins. Applies to all source kinds. Unmatched repos fall back to `~/.hindsight/coding-agent.json` `mapPathToBank`, then `coding-agent::<name>`. |
 | `max_file_kb` | Largest indexed file, in kilobytes (1 KB = 1000 bytes). Default 128. |
 | `skip_dirs` | Directory names not descended into. Dot-prefixed directories are always skipped. |
 | `poll_seconds`, `vault_quiet_seconds`, `relist_seconds` | Watcher timings. |

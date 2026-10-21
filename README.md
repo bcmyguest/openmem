@@ -45,6 +45,8 @@ flowchart TB
   subgraph disk["Sources on disk"]
     GIT[Git repos]
     OBS[Obsidian vaults]
+    MD[notes · papers · bookmarks]
+    FEED[Feed cache]
   end
 
   subgraph compose["Docker Compose — one active provider"]
@@ -70,6 +72,8 @@ flowchart TB
 
   GIT --> IDX
   OBS --> IDX
+  MD --> IDX
+  FEED --> IDX
   AG <-->|stdio| UMCP
   AG <-->|hooks| SHIM
   AG <-->|optional| PLG
