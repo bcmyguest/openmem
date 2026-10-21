@@ -73,6 +73,7 @@
     "feed-sync": "node cli/feed-sync.mjs",
     "switch-provider": "node cli/switch-memory-provider.mjs",
     "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
+    "test:indexer": "cd indexer && python3 -m pytest -q",
     "test:unit": "node scripts/tests/test_cli_package.mjs --unit",
     "pack:check": "node scripts/check-pack.mjs"
   },

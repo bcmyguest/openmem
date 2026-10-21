@@ -1,0 +1,15 @@
+{
+  "id": "graphiti",
+  "label": "Graphiti",
+  "status": "planned",
+  "notes": "Placeholder for Zep Graphiti temporal knowledge graph backend.",
+  "settings": {
+    "nativeDocs": "https://help.getzep.com/graphiti",
+    "nativeConfigPaths": [],
+    "wizardOwns": []
+  },
+  "compose": { "profile": "graphiti", "files": [], "services": [] },
+  "indexer": { "apiUrlEnv": "GRAPHITI_API_URL", "sink": "graphiti" },
+  "codingAgent": { "pluginPackage": null, "configTemplate": null },
+  "wizard": {}
+}
