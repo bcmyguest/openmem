@@ -1,8 +1,25 @@
 /** PMM (Personal Memory Manifest) export/import — orchestrator over provider adapters. */
 
 import { runProviderExport } from "./export/index.mjs";
+import { exportMem0 } from "./export/mem0.mjs";
+import { pmmContentFingerprint, sortPmmRecords } from "./pmm-records.mjs";
 
 export const PMM_VERSION = 1;
+export const PMM_SUPPORTED_MAJOR = 1;
+
+/**
+ * @param {unknown} version
+ */
+export function assertPmmVersion(version) {
+  const n = Number(version);
+  if (!Number.isFinite(n) || Math.floor(n) !== n) {
+    throw new Error(`unsupported pmm_version ${String(version)}`);
+  }
+  const major = n;
+  if (major !== PMM_SUPPORTED_MAJOR) {
+    throw new Error(`unsupported PMM major version ${major} (supported: ${PMM_SUPPORTED_MAJOR})`);
+  }
+}
 
 /**
  * @param {{ provider: string, scope: Record<string, unknown>, records: object[] }} parts
@@ -13,7 +30,7 @@ export function buildPmm(parts) {
     exported_at: new Date().toISOString(),
     source_provider: parts.provider,
     scope: parts.scope,
-    records: parts.records,
+    records: sortPmmRecords(parts.records || []),
   };
 }
 
@@ -39,8 +56,8 @@ export function parsePmm(data) {
   if (!trimmed) throw new Error("import data is empty");
   if (trimmed.startsWith("{")) {
     const pmm = JSON.parse(trimmed);
-    if (pmm.pmm_version !== PMM_VERSION) throw new Error(`unsupported pmm_version ${pmm.pmm_version}`);
-    return { pmm };
+    assertPmmVersion(pmm.pmm_version);
+    return { pmm: { ...pmm, records: sortPmmRecords(pmm.records || []) } };
   }
   /** @type {ReturnType<typeof buildPmm>["records"]} */
   const records = [];
@@ -57,7 +74,24 @@ export function parsePmm(data) {
     }
   }
   if (!meta) throw new Error("jsonl import requires a PMM header line or a single JSON object");
-  return { pmm: { ...meta, records } };
+  assertPmmVersion(meta.pmm_version);
+  return { pmm: { ...meta, records: sortPmmRecords(records) } };
+}
+
+/**
+ * @param {ReturnType<typeof buildPmm>} pmm
+ * @param {import("./context.mjs").resolveMcpContext extends (...a: any) => infer R ? R : never} ctx
+ * @param {typeof fetch} fetchFn
+ */
+async function mem0ExistingKeys(ctx, userId, fetchFn) {
+  const { records } = await exportMem0(ctx, { user_id: userId }, fetchFn);
+  const ids = new Set();
+  const fingerprints = new Set();
+  for (const r of records) {
+    if (r.id) ids.add(String(r.id));
+    fingerprints.add(pmmContentFingerprint(String(r.content || "")));
+  }
+  return { ids, fingerprints };
 }
 
 /**
@@ -87,13 +121,21 @@ export async function memoryImport(ctx, data, args, fetchFn, addFn) {
   const imported = [];
   /** @type {string[]} */
   const skipped = [];
+  /** @type {{ ids: Set<string>, fingerprints: Set<string> } | null} */
+  let mem0Seen = null;
   for (const rec of pmm.records || []) {
     const content = String(rec.content || "").trim();
     if (!content) continue;
     const bank = String(rec.scope_key || pmm.scope?.bank || pmm.scope?.user_id || "personal-memory-mcp");
-    if (strategy === "skip_duplicates" && rec.id && ctx.provider === "mem0") {
-      skipped.push(String(rec.id));
-      continue;
+    if (strategy === "skip_duplicates" && ctx.provider === "mem0") {
+      if (!mem0Seen) mem0Seen = await mem0ExistingKeys(ctx, bank, fetchFn);
+      const fp = pmmContentFingerprint(content);
+      if ((rec.id && mem0Seen.ids.has(String(rec.id))) || mem0Seen.fingerprints.has(fp)) {
+        skipped.push(rec.id ? String(rec.id) : fp.slice(0, 40));
+        continue;
+      }
+      mem0Seen.fingerprints.add(fp);
+      if (rec.id) mem0Seen.ids.add(String(rec.id));
     }
     await addFn(ctx, "memory_add", { content, bank }, fetchFn);
     imported.push(rec.id ? String(rec.id) : content.slice(0, 40));
