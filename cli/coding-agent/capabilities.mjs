@@ -1,6 +1,9 @@
 /** Session-memory hook parity vs Hindsight plugin (non-Hindsight uses MCP shim). */
 
-export const AGENT_IDS = Object.freeze(["claude-code", "codex", "opencode", "cursor-cli"]);
+import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./agents.mjs";
+
+export const AGENT_IDS = Object.freeze(CODING_AGENTS.map((a) => a.id));
+export { DEFAULT_AGENT_IDS };
 
 /** @typedef {"retain" | "recall" | "reflect" | "consolidate" | "bank_scope"} Feature */
 
