@@ -48,7 +48,7 @@ export function renderMermaidToSvg(diagram, outPath) {
   try {
     execFileSync(
       'npx',
-      ['--yes', '@mermaid-js/mermaid-cli', '-i', input, '-o', outPath, '-b', 'transparent', '-p', puppeteerConfig],
+      ['--yes', '@mermaid-js/mermaid-cli', '-i', input, '-o', outPath, '-b', '#f9f9fb', '-p', puppeteerConfig],
       { stdio: 'inherit', cwd: siteRoot },
     );
     if (!readFileSync(outPath, 'utf8').includes('<svg')) {
