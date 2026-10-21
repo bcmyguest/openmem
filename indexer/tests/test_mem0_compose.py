@@ -79,11 +79,13 @@ def test_absent_env_file_still_renders(scratch, tmp_path):
 
 def test_fragment_declares_an_optional_env_file_and_no_service_of_its_own():
     data = yaml.safe_load((ROOT / "providers" / "mem0" / "compose.yaml").read_text())
-    assert set(data["services"]) == {"indexer"}
+    assert set(data["services"]) == {"indexer", "notebooklm"}
     assert "volumes" not in data
-    entry = data["services"]["indexer"]["env_file"][0]
-    assert entry["required"] is False
-    assert entry["path"] == "${MEM0_ENV_FILE:-${HOME}/.config/personal-memory/mem0.env}"
+    for name in ("indexer", "notebooklm"):
+        entry = data["services"][name]["env_file"][0]
+        assert entry["required"] is False
+        assert entry["path"] == "${MEM0_ENV_FILE:-${HOME}/.config/personal-memory/mem0.env}"
+        assert data["services"][name]["environment"]["MEMORY_SINK"] == "mem0"
 
 
 def test_missing_indexer_url_fails_loudly(scratch):
@@ -410,7 +412,14 @@ console.log(JSON.stringify(out));
     assert got["missing"].startswith("MEM0_API_URL is required")
     assert got["fromEnvFile"]["MEM0_API_URL"] == "http://localhost:18888"
     assert got["fromEnvFile"]["MEM0_INDEXER_URL"] == "http://host.docker.internal:18888"
-    assert got["keys"] == ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG"]
+    assert got["keys"] == [
+        "MEM0_API_URL",
+        "MEM0_INDEXER_URL",
+        "MEMORY_API_URL",
+        "COMPOSE_PROFILES",
+        "MEMORY_SINK",
+        "LITELLM_CONFIG",
+    ]
     assert set(got["drop"]) == set(got["keys"])
     assert got["values"]["MEM0_API_URL"] == "https://mem0.example.com/x"
     assert got["values"]["MEM0_INDEXER_URL"] == "https://mem0.example.com/x"

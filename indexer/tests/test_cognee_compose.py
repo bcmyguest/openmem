@@ -154,7 +154,7 @@ def test_fragment_without_its_profile_fails_loudly(scratch):
 def test_fragment_is_valid_yaml_with_a_single_provider_profile():
     data = yaml.safe_load((ROOT / FRAGMENT).read_text())
     assert data["services"]["cognee"]["profiles"] == ["cognee"]
-    assert set(data["services"]) == {"cognee", "indexer"}
+    assert set(data["services"]) == {"cognee", "indexer", "notebooklm"}
 
 
 # --- the real scripts/setup.mjs, end to end -----------------------------------------------------------------------
@@ -185,7 +185,17 @@ def test_setup_mjs_writes_an_env_that_renders_with_no_manual_variables(tmp_path)
     result = run_setup(stack, home)
 
     written = read_env(stack / ".env")
-    assert set(written) == {"HOST_UID", "HOST_GID", "COGNEE_PORT", "COMPOSE_PROFILES", "LITELLM_CONFIG"}
+    assert set(written) == {
+        "HOST_UID",
+        "HOST_GID",
+        "COGNEE_PORT",
+        "MEMORY_SINK",
+        "MEMORY_API_URL",
+        "COMPOSE_PROFILES",
+        "LITELLM_CONFIG",
+    }
+    assert written["MEMORY_SINK"] == "cognee"
+    assert written["MEMORY_API_URL"] == "http://cognee:8000"
     assert written["COGNEE_PORT"] == "8766"
     assert written["COMPOSE_PROFILES"] == "cognee"
     assert written["LITELLM_CONFIG"] == str(ROOT / "config" / "litellm.lemond.yaml")
@@ -226,6 +236,8 @@ def test_setup_mjs_rewrites_keys_without_duplicating_and_keeps_an_existing_litel
         "HOST_GID",
         "HOST_UID",
         "LITELLM_CONFIG",
+        "MEMORY_API_URL",
+        "MEMORY_SINK",
     ]
     assert read_env(stack / ".env")["LITELLM_CONFIG"] == "/kept/litellm.yaml"
     assert read_env(stack / ".env")["COGNEE_PORT"] == "18001"
