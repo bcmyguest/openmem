@@ -1,5 +1,6 @@
 import { search as cogneeSearch } from "../cognee-mcp.mjs";
 import { callMemoryConsolidate, callMemoryReflect } from "./memory-reflect-consolidate.mjs";
+import { cogneeLossy, hindsightItem, isPlainObject, mem0Lossy } from "./pmm-metadata.mjs";
 import { memoryExport, memoryImport } from "./portability.mjs";
 
 export const UNIFIED_MCP_TOOLS = [
@@ -12,7 +13,11 @@ export const UNIFIED_MCP_TOOLS = [
       properties: {
         content: { type: "string", description: "Text to remember" },
         bank: { type: "string", description: "Hindsight bank or mem0 user_id scope (default: personal-memory-mcp)" },
-        metadata: { type: "object", description: "Optional provider-specific metadata" },
+        metadata: {
+          type: "object",
+          description:
+            "Optional metadata. mem0 stores it as given; Hindsight stores string values and JSON-encodes others; Cognee cannot store it. The result reports anything not stored verbatim as metadata_lossy.",
+        },
       },
       required: ["content"],
       additionalProperties: false,
@@ -77,7 +82,8 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_import",
-    description: "Import PMM v1 payload into the active provider (best-effort cross-provider).",
+    description:
+      "Import a PMM v1 payload (json or jsonl) into the active provider. Record metadata is kept where the provider can store it; source ids are kept as metadata pmm_source_id. Reports failed records and lossy metadata; isError is set when any record fails.",
     inputSchema: {
       type: "object",
       properties: {
@@ -148,6 +154,16 @@ async function httpJson(url, init, fetchFn = fetch) {
 const DEFAULT_BANK = "personal-memory-mcp";
 
 /**
+ * `memory_add` metadata argument: absent → {}, a plain object → itself, anything else → error.
+ * @param {Record<string, unknown>} args
+ * @returns {Record<string, unknown> | null}
+ */
+function addMetadata(args) {
+  if (args.metadata == null) return {};
+  return isPlainObject(args.metadata) ? /** @type {Record<string, unknown>} */ (args.metadata) : null;
+}
+
+/**
  * @param {ReturnType<import("./context.mjs").resolveMcpContext>} ctx
  * @param {string} name
  * @param {Record<string, unknown>} [args]
@@ -161,8 +177,13 @@ export async function callUnifiedTool(ctx, name, args = {}, fetchFn = fetch) {
   if (name === "memory_import") {
     const data = String(args.data || "");
     if (!data.trim()) return textResult("data is required", true);
-    const summary = await memoryImport(ctx, data, args, fetchFn, callUnifiedTool);
-    return textResult(summary);
+    let summary;
+    try {
+      summary = await memoryImport(ctx, data, args, fetchFn, callUnifiedTool);
+    } catch (err) {
+      return textResult(err instanceof Error ? err.message : String(err), true);
+    }
+    return textResult(summary, summary.failed_count > 0);
   }
   if (name === "memory_provider_status") {
     return textResult({
@@ -212,16 +233,19 @@ async function callHindsight(ctx, name, args, fetchFn) {
   if (name === "memory_add") {
     const content = String(args.content || "").trim();
     if (!content) return textResult("content is required", true);
+    const metadata = addMetadata(args);
+    if (!metadata) return textResult("metadata must be an object", true);
+    const { item, lossy } = hindsightItem(content, metadata);
     const json = await httpJson(
       `${base}/v1/default/banks/${encBank}/memories`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items: [{ content }], async: false }),
+        body: JSON.stringify({ items: [item], async: false }),
       },
       fetchFn,
     );
-    return textResult({ provider: "hindsight", bank, result: json });
+    return textResult({ provider: "hindsight", bank, result: json, metadata_lossy: lossy });
   }
   if (name === "memory_search" || name === "memory_recall") {
     const query = String(args.query || "").trim();
@@ -269,6 +293,8 @@ async function callMem0(ctx, name, args, fetchFn) {
   if (name === "memory_add") {
     const content = String(args.content || "").trim();
     if (!content) return textResult("content is required", true);
+    const metadata = addMetadata(args);
+    if (!metadata) return textResult("metadata must be an object", true);
     const json = await httpJson(
       `${base}/memories`,
       {
@@ -279,11 +305,12 @@ async function callMem0(ctx, name, args, fetchFn) {
           user_id: userId,
           agent_id: "personal-memory-mcp",
           infer: false,
+          ...(Object.keys(metadata).length ? { metadata } : {}),
         }),
       },
       fetchFn,
     );
-    return textResult({ provider: "mem0", user_id: userId, result: json });
+    return textResult({ provider: "mem0", user_id: userId, result: json, metadata_lossy: mem0Lossy() });
   }
   if (name === "memory_search" || name === "memory_recall") {
     const query = String(args.query || "").trim();
@@ -319,6 +346,8 @@ async function callCognee(ctx, name, args, fetchFn) {
   if (name === "memory_add") {
     const content = String(args.content || "").trim();
     if (!content) return textResult("content is required", true);
+    const metadata = addMetadata(args);
+    if (!metadata) return textResult("metadata must be an object", true);
     const dataset = String(args.bank || DEFAULT_BANK).trim() || DEFAULT_BANK;
     const json = await httpJson(
       `${base}/api/v1/add`,
@@ -336,6 +365,7 @@ async function callCognee(ctx, name, args, fetchFn) {
       provider: "cognee",
       dataset,
       result: json,
+      metadata_lossy: cogneeLossy(metadata),
       note: "Run cognify on the dataset for graph search to see new material.",
     });
   }

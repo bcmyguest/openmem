@@ -2,6 +2,29 @@ import { listBanks, listMemories } from "../../notebooklm-mcp.mjs";
 
 const PAGE = 500;
 
+/** Hindsight memory fields kept in PMM metadata: source, timestamps and supersession state. */
+const KEPT_FIELDS = [
+  "fact_type", "context", "document_id", "tags", "date", "mentioned_at", "occurred_start", "occurred_end",
+  "updated_at", "state", "invalidation_reason", "invalidated_at", "source_memory_ids",
+];
+
+/**
+ * The item's own metadata plus each non-empty kept field.
+ * @param {Record<string, any>} m a /memories/list item
+ */
+export function hindsightRecordMetadata(m) {
+  /** @type {Record<string, unknown>} */
+  const out = m.metadata && typeof m.metadata === "object" ? { ...m.metadata } : {};
+  const type = m.fact_type ?? m.type;
+  if (type != null) out.type = type;
+  for (const k of KEPT_FIELDS) {
+    const v = m[k];
+    if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 /**
  * @param {{ hindsightUrl?: string }} ctx
  * @param {{ bank?: string }} args
@@ -32,7 +55,7 @@ export async function exportHindsight(ctx, args, fetchFn) {
         records.push({
           id: m.id ?? m.memory_id ?? null,
           content,
-          metadata: { type: m.type ?? null, ...(m.metadata && typeof m.metadata === "object" ? m.metadata : {}) },
+          metadata: hindsightRecordMetadata(m),
           scope_key: bank,
         });
       }

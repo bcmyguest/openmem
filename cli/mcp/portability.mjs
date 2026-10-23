@@ -2,6 +2,7 @@
 
 import { runProviderExport } from "./export/index.mjs";
 import { exportMem0 } from "./export/mem0.mjs";
+import { importMetadata, isPlainObject } from "./pmm-metadata.mjs";
 import { pmmContentFingerprint, sortPmmRecords } from "./pmm-records.mjs";
 
 export const PMM_VERSION = 1;
@@ -48,34 +49,68 @@ export function serializePmm(pmm, format) {
 }
 
 /**
+ * Parse a PMM export: one JSON document, or JSONL (a header line, then one record per line).
+ * A document that is not valid JSON as a whole is read as JSONL, so a JSONL export (which also
+ * starts with "{") is never mistaken for a single document.
  * @param {string} data
  * @returns {{ pmm: ReturnType<typeof buildPmm> }}
  */
 export function parsePmm(data) {
   const trimmed = String(data || "").trim();
   if (!trimmed) throw new Error("import data is empty");
-  if (trimmed.startsWith("{")) {
-    const pmm = JSON.parse(trimmed);
-    assertPmmVersion(pmm.pmm_version);
-    return { pmm: { ...pmm, records: sortPmmRecords(pmm.records || []) } };
+  let whole;
+  try {
+    whole = JSON.parse(trimmed);
+  } catch (err) {
+    if (!trimmed.includes("\n")) throw new Error(`import data is not valid JSON: ${err instanceof Error ? err.message : err}`);
+    return parsePmmJsonl(trimmed);
   }
-  /** @type {ReturnType<typeof buildPmm>["records"]} */
+  if (!isPlainObject(whole)) throw new Error("import data must be a PMM JSON object");
+  assertPmmVersion(whole.pmm_version);
+  if (whole.records != null && !Array.isArray(whole.records)) throw new Error("PMM records must be an array");
+  return { pmm: { ...whole, records: sortPmmRecords(whole.records || []) } };
+}
+
+/** @param {string} trimmed */
+function parsePmmJsonl(trimmed) {
+  /** @type {object[]} */
   const records = [];
   let meta = null;
-  for (const line of trimmed.split("\n")) {
-    const row = line.trim();
+  const lines = trimmed.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const row = lines[i].trim();
     if (!row) continue;
-    const obj = JSON.parse(row);
-    if (obj.pmm_version === PMM_VERSION && obj.source_provider) {
+    let obj;
+    try {
+      obj = JSON.parse(row);
+    } catch (err) {
+      throw new Error(`jsonl line ${i + 1}: ${err instanceof Error ? err.message : err}`);
+    }
+    if (!isPlainObject(obj)) throw new Error(`jsonl line ${i + 1}: expected a JSON object`);
+    if ("pmm_version" in obj) {
+      if (meta) throw new Error(`jsonl line ${i + 1}: second PMM header`);
+      if (records.length) throw new Error(`jsonl line ${i + 1}: PMM header must be the first line`);
+      assertPmmVersion(obj.pmm_version);
       meta = obj;
       if (Array.isArray(obj.records)) records.push(...obj.records);
-    } else if (obj.content != null) {
+    } else {
+      if (!meta) throw new Error("jsonl import requires a PMM header line first");
       records.push(obj);
     }
   }
-  if (!meta) throw new Error("jsonl import requires a PMM header line or a single JSON object");
-  assertPmmVersion(meta.pmm_version);
+  if (!meta) throw new Error("jsonl import requires a PMM header line first");
   return { pmm: { ...meta, records: sortPmmRecords(records) } };
+}
+
+/** @param {unknown} result an MCP tool result */
+function resultPayload(result) {
+  const text = /** @type {any} */ (result)?.content?.[0]?.text;
+  if (typeof text !== "string") return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 /**
@@ -121,32 +156,64 @@ export async function memoryImport(ctx, data, args, fetchFn, addFn) {
   const imported = [];
   /** @type {string[]} */
   const skipped = [];
+  /** @type {{ id: string, error: string }[]} */
+  const failed = [];
+  /** @type {Record<string, { stringified: number, dropped: number }>} */
+  const lossy = {};
   /** @type {{ ids: Set<string>, fingerprints: Set<string> } | null} */
   let mem0Seen = null;
   for (const rec of pmm.records || []) {
     const content = String(rec.content || "").trim();
     if (!content) continue;
+    const label = rec.id ? String(rec.id) : content.slice(0, 40);
     const bank = String(rec.scope_key || pmm.scope?.bank || pmm.scope?.user_id || "personal-memory-mcp");
+    const fp = pmmContentFingerprint(content);
     if (strategy === "skip_duplicates" && ctx.provider === "mem0") {
       if (!mem0Seen) mem0Seen = await mem0ExistingKeys(ctx, bank, fetchFn);
-      const fp = pmmContentFingerprint(content);
       if ((rec.id && mem0Seen.ids.has(String(rec.id))) || mem0Seen.fingerprints.has(fp)) {
         skipped.push(rec.id ? String(rec.id) : fp.slice(0, 40));
         continue;
       }
+    }
+    const metadata = importMetadata(rec, pmm.source_provider);
+    let result;
+    try {
+      result = await addFn(ctx, "memory_add", { content, bank, metadata }, fetchFn);
+    } catch (err) {
+      failed.push({ id: label, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    const payload = resultPayload(result);
+    if (result?.isError) {
+      failed.push({ id: label, error: typeof payload === "string" ? payload : JSON.stringify(payload) });
+      continue;
+    }
+    if (mem0Seen) {
       mem0Seen.fingerprints.add(fp);
       if (rec.id) mem0Seen.ids.add(String(rec.id));
     }
-    await addFn(ctx, "memory_add", { content, bank }, fetchFn);
-    imported.push(rec.id ? String(rec.id) : content.slice(0, 40));
+    imported.push(label);
+    const report = isPlainObject(payload) ? payload.metadata_lossy : null;
+    for (const kind of /** @type {const} */ (["stringified", "dropped"])) {
+      for (const key of Array.isArray(report?.[kind]) ? report[kind] : []) {
+        lossy[key] ??= { stringified: 0, dropped: 0 };
+        lossy[key][kind]++;
+      }
+    }
   }
+  const status = !failed.length ? "complete" : imported.length ? "partial" : "failed";
   return {
     pmm_version: PMM_VERSION,
     target_provider: ctx.provider,
     source_provider: pmm.source_provider,
     merge_strategy: strategy,
+    status,
     imported_count: imported.length,
     skipped_count: skipped.length,
+    failed_count: failed.length,
+    failed,
+    metadata_lossy: lossy,
+    provenance: "source ids are stored as metadata pmm_source_id (and pmm_source_provider)",
     cross_provider: pmm.source_provider !== ctx.provider,
   };
 }
