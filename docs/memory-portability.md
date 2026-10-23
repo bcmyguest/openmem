@@ -6,7 +6,7 @@ Status: **`memory_export` / `memory_import`** on the unified MCP are **beta**. P
 
 ## PMM format (version 1)
 
-JSON object (or JSONL with one PMM object per line for streaming):
+A JSON object, or JSONL: a header line holding every field except `records`, then one record per line. Import reads either; a payload that is not valid JSON as a whole is read as JSONL, and a malformed JSONL line is reported by line number.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -32,7 +32,13 @@ Import accepts PMM with `merge_strategy`:
 | `skip_duplicates` (default) | Skip records whose `id` already exists (mem0) |
 | `overwrite` | Re-import all records (may duplicate on backends without idempotent upsert) |
 
-**Cross-provider import** (e.g. PMM from mem0 into Hindsight) is best-effort: we map `content` + `scope_key` into the active provider’s add API; embeddings and graph structure are **not** preserved.
+**Cross-provider import** (e.g. PMM from mem0 into Hindsight) maps `content`, `scope_key` and `metadata` into the active provider’s add API; embeddings and graph structure are **not** preserved.
+
+**Provenance.** Destination ids are assigned by the target provider, so each imported record carries its original id and provider as metadata `pmm_source_id` and `pmm_source_provider`.
+
+**Metadata.** Each provider keeps what it can (see the table below); the import summary's `metadata_lossy` counts, per key, values that were JSON-encoded (`stringified`) or not stored (`dropped`). Hindsight exports include each memory's `fact_type`, `context`, `document_id`, `tags`, timestamps (`date`, `mentioned_at`, `occurred_start`, `occurred_end`, `updated_at`) and supersession state (`state`, `invalidation_reason`, `invalidated_at`, `source_memory_ids`) in `metadata`.
+
+**Failures.** Import checks every write. The summary reports `status` (`complete`, `partial` or `failed`), `imported_count`, `skipped_count`, `failed_count` and `failed` (`[{ id, error }]`); the MCP result has `isError: true` whenever any record failed. Records that succeeded stay written, so re-running with `skip_duplicates` on mem0 retries only the rest.
 
 ## Implementation (orchestrator + adapters)
 
@@ -53,9 +59,9 @@ Restart Cursor Agent after `npx personal-memory install-mcp --yes`.
 
 | Provider | Export | Import |
 | --- | --- | --- |
-| **mem0** | `GET /memories` with `user_id` from `bank` arg (API key from env file) | `POST /memories` per record (`infer: false`) |
-| **Hindsight** | `GET /v1/default/banks` then paginated `GET …/memories/list` per bank (`bank` arg = one bank; omit = all banks) | `POST …/banks/{bank}/memories` per record |
-| **Cognee** | Resolve indexer dataset name from `bank`, `GET /api/v1/datasets`, paginate `GET …/data` (label/name as content; not full file bytes) | `POST /api/v1/add` per record when dataset in scope |
+| **mem0** | `GET /memories` with `user_id` from `bank` arg (API key from env file) | `POST /memories` per record (`infer: false`); metadata stored as given |
+| **Hindsight** | `GET /v1/default/banks` then paginated `GET …/memories/list` per bank (`bank` arg = one bank; omit = all banks) | `POST …/banks/{bank}/memories` per record; metadata values that are not strings are JSON-encoded, nulls dropped; `timestamp` (else `occurred_start`, else `date`), `context`, `document_id` and `tags` also fill Hindsight's own fields |
+| **Cognee** | Resolve indexer dataset name from `bank`, `GET /api/v1/datasets`, paginate `GET …/data` (label/name as content; not full file bytes) | `POST /api/v1/add` per record when dataset in scope; metadata cannot be stored and is reported as dropped |
 
 ## Related
 
