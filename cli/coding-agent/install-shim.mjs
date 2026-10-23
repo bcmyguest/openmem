@@ -1,37 +1,34 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { SHIM_AGENT_IDS, SHIM_HARNESSES, SHIM_MARKER } from "./hook-harnesses.mjs";
+import { mergeOpencodeConfig, opencodeConfigPath } from "./opencode-config.mjs";
 
-const HOOK_RUNNER = path.join(path.dirname(fileURLToPath(import.meta.url)), "hook-runner.mjs");
-const OPENCODE_PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "opencode-plugin");
-
-function hookCommand(harnessId, phase) {
-  return `node ${JSON.stringify(HOOK_RUNNER)} ${harnessId} ${phase}`;
+function hookCommand(root, harnessId, phase) {
+  return `node ${JSON.stringify(path.join(root, "cli", "coding-agent", "hook-runner.mjs"))} ${harnessId} ${phase}`;
 }
 
-function nestedHookBlock(harnessId, phase, timeout) {
+function nestedHookBlock(root, harnessId, phase, timeout) {
   return {
-    hooks: [{ type: "command", command: hookCommand(harnessId, phase), timeout }],
+    hooks: [{ type: "command", command: hookCommand(root, harnessId, phase), timeout }],
   };
 }
 
-function mergeNestedHooks(existing, harnessId, spec) {
+function mergeNestedHooks(existing, root, harnessId, spec) {
   const hooks = existing && typeof existing === "object" ? { ...existing } : {};
   for (const [phase, meta] of Object.entries(spec.events)) {
     const list = Array.isArray(hooks[meta.hook]) ? hooks[meta.hook].filter((e) => !JSON.stringify(e).includes(SHIM_MARKER)) : [];
-    hooks[meta.hook] = [...list, nestedHookBlock(harnessId, phase, meta.timeout)];
+    hooks[meta.hook] = [...list, nestedHookBlock(root, harnessId, phase, meta.timeout)];
   }
   return hooks;
 }
 
-function mergeFlatHooks(existing, harnessId, spec) {
+function mergeFlatHooks(existing, root, harnessId, spec) {
   const hooks = existing && typeof existing === "object" ? { ...existing } : {};
   for (const [phase, meta] of Object.entries(spec.events)) {
     const list = Array.isArray(hooks[meta.hook]) ? hooks[meta.hook].filter((e) => !String(e?.command).includes(SHIM_MARKER)) : [];
     hooks[meta.hook] = [
       ...list,
-      { command: hookCommand(harnessId, phase), timeout: meta.timeout },
+      { command: hookCommand(root, harnessId, phase), timeout: meta.timeout },
     ];
   }
   return hooks;
@@ -47,30 +44,6 @@ function writeJson(pathname, data) {
   fs.writeFileSync(pathname, `${JSON.stringify(data, null, 2)}\n`);
 }
 
-function opencodeConfigPath(home) {
-  const dir = path.join(home, ".config", "opencode");
-  for (const name of ["opencode.jsonc", "opencode.json"]) {
-    const p = path.join(dir, name);
-    if (fs.existsSync(p)) return p;
-  }
-  return path.join(dir, "opencode.json");
-}
-
-/** Strip // comments for minimal jsonc merge (opencode). */
-function parseJsonc(text) {
-  const stripped = text.replace(/^\s*\/\/.*$/gm, "");
-  return JSON.parse(stripped);
-}
-
-function writeJsoncPlugin(pathname, pluginPath) {
-  let cfg = {};
-  if (fs.existsSync(pathname)) cfg = parseJsonc(fs.readFileSync(pathname, "utf8"));
-  const plugins = Array.isArray(cfg.plugin) ? cfg.plugin.filter((p) => !String(p).includes("personal-memory")) : [];
-  plugins.push(pluginPath);
-  cfg.plugin = plugins;
-  writeJson(pathname, cfg);
-}
-
 /**
  * @param {{ home: string, repoRoot: string, agents: string[], dry: boolean, h?: { info: Function, ok: Function, warn: Function } }} opts
  */
@@ -78,6 +51,7 @@ export function installSessionShim(opts) {
   const home = opts.home;
   const h = opts.h || { info: () => {}, ok: () => {}, warn: () => {} };
   const agents = opts.agents.filter((id) => SHIM_AGENT_IDS.includes(id) || id === "opencode");
+  const opencodePlugin = path.join(opts.repoRoot, "cli", "coding-agent", "opencode-plugin.mjs");
   if (!agents.length) {
     h.warn("no agents selected for session shim (claude-code, codex, cursor-cli, opencode)");
     return { installed: [] };
@@ -88,9 +62,12 @@ export function installSessionShim(opts) {
     if (agentId === "opencode") {
       const cfgPath = opencodeConfigPath(home);
       if (opts.dry) {
-        h.info(`[dry-run] register opencode plugin ${OPENCODE_PLUGIN} in ${cfgPath}`);
+        h.info(`[dry-run] register opencode plugin ${opencodePlugin} in ${cfgPath}`);
       } else {
-        writeJsoncPlugin(cfgPath, OPENCODE_PLUGIN);
+        mergeOpencodeConfig(home, "plugin", (existing) => {
+          const plugins = Array.isArray(existing) ? existing.filter((p) => !String(p).includes("personal-memory")) : [];
+          return [...plugins, opencodePlugin];
+        });
         h.ok(`opencode: registered personal-memory plugin in ${cfgPath}`);
       }
       installed.push("opencode");
@@ -106,9 +83,9 @@ export function installSessionShim(opts) {
     }
     const prev = readJson(cfgPath);
     if (spec.configStyle === "nested") {
-      prev[spec.rootKey] = mergeNestedHooks(prev[spec.rootKey], agentId, spec);
+      prev[spec.rootKey] = mergeNestedHooks(prev[spec.rootKey], opts.repoRoot, agentId, spec);
     } else {
-      Object.assign(prev, mergeFlatHooks(prev, agentId, spec));
+      Object.assign(prev, mergeFlatHooks(prev, opts.repoRoot, agentId, spec));
     }
     writeJson(cfgPath, prev);
     h.ok(`${agentId}: session hooks → ${cfgPath}`);

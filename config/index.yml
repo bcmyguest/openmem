@@ -34,7 +34,8 @@ feeds:
 exclude: []
 
 # Absolute path prefix -> Hindsight bank id. The longest matching prefix wins; applies to repos and vaults.
-# Unmatched repositories fall back to ~/.hindsight/coding-agent.json mapPathToBank, then coding-agent::<name>.
+# Unmatched repositories fall back to ~/.config/personal-memory/coding-agent.json mapPathToBank,
+# then the legacy ~/.hindsight/coding-agent.json mapping, then coding-agent::<repository-name>.
 banks:
   ~/Documents/sample-project: coding-agent::documents-sample-project
   # ~/Zotero/export-md: papers::zotero
