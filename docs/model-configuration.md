@@ -14,10 +14,12 @@ Edit the YAML (or a per-machine override) to change models.
 
 | File | Backend | Default split |
 | --- | --- | --- |
-| `config/litellm.lemond.yaml` | lemond on the host | Reflect: Gemma 4 E4B GGUF (`unsloth/`); retain and consolidate: E2B |
+| `config/litellm.lemond.yaml` | lemond on the host | Retain, reflect and consolidate: Nemotron 3.5 Bolt E4B GGUF (`unsloth/`, UD-Q8_K_XL), pulled as `user.Nemotron-3.5-Bolt-E4B-GGUF` |
 | `config/litellm.ollama.yaml` | Ollama on the host | Used when `MEMORY_BACKEND=ollama`; `gemma4:e4b` needs Ollama newer than 0.20.3 |
 
-**Why reflect uses a larger model:** E2B often returns no usable tool call on Hindsight reflect (`finish_reason=length`). The shipped lemond route uses E4B for `memory-reflect` only. Qwen3.5-4B works as an alternative if you change the route; pick any model that passes a direct tool-call check and a smoke reflect.
+**Why not Gemma E2B for reflect:** E2B often returns no usable tool call on Hindsight reflect (`finish_reason=length`). Nemotron 3.5 Bolt E4B passed a direct tool-call check, a retain and a smoke reflect on 2026-10-23. Gemma 4 E4B and Qwen3.5-4B also work if you change the route; pick any model that passes a direct tool-call check and a smoke reflect.
+
+Pull the Nemotron model once: `lemonade pull user.Nemotron-3.5-Bolt-E4B-GGUF --checkpoint main unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF:NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q8_K_XL.gguf --recipe llamacpp --label chat`.
 
 ## Route selection
 
