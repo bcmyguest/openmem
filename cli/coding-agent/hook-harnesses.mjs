@@ -1,6 +1,6 @@
 /** Hook event names and stdout shapes per coding-agent host. */
 
-export const SHIM_MARKER = "personal-memory/coding-agent/hook-runner.mjs";
+export const SHIM_MARKER = "coding-agent/hook-runner.mjs";
 
 export const SHIM_HARNESSES = {
   "claude-code": {

@@ -33,6 +33,7 @@
   },
   "files": [
     "cli/",
+    "skills/",
     "wizard/bin/",
     "wizard/lib/",
     "providers/",
@@ -79,6 +80,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@iarna/toml": "^2.2.5"
+    "@iarna/toml": "^2.2.5",
+    "yaml": "^2.9.1"
   }
 }

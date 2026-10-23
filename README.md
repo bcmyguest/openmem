@@ -12,7 +12,7 @@
 | --- | --- |
 | 1. Wizard | `npx personal-memory` |
 | 2. Check | `npx personal-memory doctor` |
-| 3. MCP (optional) | `npx personal-memory install-mcp --yes` |
+| 3. Coding agents | `npx personal-memory install-coding-agent --yes` |
 
 **Checkout instead of npx:**
 
@@ -62,10 +62,11 @@ flowchart TB
   LIT --> LLM[(lemond · Ollama · OpenAI-compatible)]
 
   subgraph host["Host — coding agents"]
-    AG[Claude Code · Codex · Cursor …]
+    AG[Claude Code · Codex · Cursor Agent · OpenCode]
     UMCP["personal-memory MCP\n(memory_*)"]
     SHIM["Session hooks"]
     PLG["Hindsight plugin\n(optional)"]
+    SKILL["personal-memory skill"]
     PMCP[Provider MCP optional]
     NLMCP[NotebookLM MCP optional]
   end
@@ -76,6 +77,7 @@ flowchart TB
   FEED --> IDX
   AG <-->|stdio| UMCP
   AG <-->|hooks| SHIM
+  AG --> SKILL
   AG <-->|optional| PLG
   SHIM --> UMCP
   AG <-->|stdio| PMCP
@@ -92,7 +94,9 @@ flowchart TB
 | Connection | What it is |
 | --- | --- |
 | Sources → indexer → provider | Shared watcher; sink from active manifest (`MEMORY_SINK`) |
-| Agents → MCP / plugin → provider | `install-mcp` adds unified **`personal-memory`** MCP; Hindsight session memory uses the coding-agent **plugin** |
+| Agents → MCP / hooks → provider | `install-coding-agent` installs the shared **`personal-memory`** skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode |
+
+On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [coding-agent hooks](docs/coding-agent-hooks.md) for the current limits.
 | Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
 
 Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.

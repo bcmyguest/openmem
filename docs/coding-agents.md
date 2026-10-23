@@ -8,7 +8,13 @@ npx personal-memory install-coding-agent --yes
 # same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli,hermes,gemini-cli,amp,cline
 ```
 
-This runs `install-mcp` and installs SessionStart / prompt / Stop hooks for Claude Code, Codex, Cursor CLI, plus an OpenCode plugin. See [hook parity](coding-agent-hooks.md).
+This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [personal-memory skill](../skills/personal-memory/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
+
+For Codex, installation enables `features.hooks` when unset and preserves an explicit `false`. For OpenCode, the plugin and MCP entry go into the existing `opencode.jsonc` or `opencode.json`; unrelated settings and JSONC comments outside the updated fields are retained.
+
+Codex requires review of new or changed non-managed hooks in `/hooks` before they run. [Codex hook documentation](https://developers.openai.com/codex/hooks) describes this trust step.
+
+The command keeps existing agent settings and other MCP servers. It does not remove the optional Hindsight plugin; after checking the new MCP and hooks, remove the old plugin through its own uninstaller if you no longer want both integrations running.
 
 The wizard coding-agent step follows the same idea for Hindsight-first flows.
 
@@ -16,7 +22,7 @@ Use a **real** `~/.hindsight/coding-agent.json` on disk (seed from `config/codin
 
 ### Memory MCP servers (`~/.cursor/mcp.json`)
 
-To register **only** memory-related MCP entries (NotebookLM, mem0, Cognee) without re-running full setup:
+To register **only** Cursor's memory-related MCP entries (NotebookLM, mem0, Cognee, and unified `personal-memory`) without re-running full setup:
 
 ```sh
 npx personal-memory install-mcp --yes

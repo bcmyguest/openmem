@@ -1,8 +1,26 @@
 import { search as cogneeSearch } from "../cognee-mcp.mjs";
 import { callMemoryConsolidate, callMemoryReflect } from "./memory-reflect-consolidate.mjs";
 import { memoryExport, memoryImport } from "./portability.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { parseDocument } from "yaml";
+import { bankFromCwd } from "../coding-agent/bank-from-cwd.mjs";
+import { accessAllowed, accessConfigPath, readAccessConfig } from "../coding-agent/access-policy.mjs";
+import { fileURLToPath } from "node:url";
+
+const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 export const UNIFIED_MCP_TOOLS = [
+  {
+    name: "memory_project_scope",
+    description: "Read the local project bank mapping and session access policy for a workspace. Makes no memory-provider calls.",
+    inputSchema: {
+      type: "object",
+      properties: { cwd: { type: "string", description: "Absolute workspace path (defaults to the MCP process working directory)" } },
+      additionalProperties: false,
+    },
+  },
   {
     name: "memory_add",
     description:
@@ -154,6 +172,38 @@ const DEFAULT_BANK = "personal-memory-mcp";
  * @param {typeof fetch} [fetchFn]
  */
 export async function callUnifiedTool(ctx, name, args = {}, fetchFn = fetch) {
+  if (name === "memory_project_scope") {
+    const cwd = args.cwd === undefined ? process.cwd() : args.cwd;
+    if (typeof cwd !== "string" || !cwd.trim() || !path.isAbsolute(cwd)) {
+      return textResult("cwd must be an absolute workspace path", true);
+    }
+    const home = process.env.HOME || os.homedir();
+    const accessConfig = readAccessConfig(home);
+    const indexPath = process.env.HINDSIGHT_INDEX_CONFIG
+      ? path.resolve(process.env.HINDSIGHT_INDEX_CONFIG.replace(/^~(?=$|\/)/, home))
+      : fs.existsSync(path.join(home, ".config", "hindsight", "index.yml"))
+        ? path.join(home, ".config", "hindsight", "index.yml")
+        : path.join(PKG_ROOT, "config", "index.yml");
+    let indexBanks;
+    try {
+      const doc = parseDocument(fs.readFileSync(indexPath, "utf8"), { uniqueKeys: true, version: "1.1" });
+      if (doc.errors.length) throw doc.errors[0];
+      indexBanks = doc.toJS()?.banks;
+    } catch (err) {
+      return textResult(`Unable to read active index.yml (${indexPath}): ${err.message}`, true);
+    }
+    const permitted = accessAllowed(cwd, accessConfig);
+    return textResult({
+      cwd: path.resolve(cwd),
+      bank: bankFromCwd(cwd, { home, env: process.env, banks: indexBanks || {}, mapPathToBank: accessConfig?.mapPathToBank }),
+      accessPermitted: permitted,
+      accessConfigPath: accessConfigPath(home),
+      personalMemoryMapping: accessConfig?.mapPathToBank || {},
+      indexConfigPath: indexPath,
+      indexBanks: indexBanks || {},
+      policyConfigValid: accessConfig !== null,
+    });
+  }
   if (name === "memory_export") {
     const out = await memoryExport(ctx, args, fetchFn);
     return textResult(typeof out === "string" ? out : out);
