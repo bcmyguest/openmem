@@ -387,18 +387,14 @@ async function callCognee(ctx, name, args, fetchFn) {
     const content = String(args.content || "").trim();
     if (!content) return textResult("content is required", true);
     const dataset = String(args.bank || DEFAULT_BANK).trim() || DEFAULT_BANK;
-    const json = await httpJson(
-      `${base}/api/v1/add`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(ctx.cognee?.apiKey ? { "X-Api-Key": ctx.cognee.apiKey } : {}),
-        },
-        body: JSON.stringify({ data: content, datasetName: dataset }),
-      },
-      fetchFn,
-    );
+    // Cognee 1.6.x add is multipart/form-urlencoded: JSON bodies ignore datasetName.
+    // Text goes in raw_data; file uploads use the data field (see Cognee OpenAPI).
+    const form = new FormData();
+    form.set("datasetName", dataset);
+    form.set("raw_data", content);
+    const headers = {};
+    if (ctx.cognee?.apiKey) headers["X-Api-Key"] = ctx.cognee.apiKey;
+    const json = await httpJson(`${base}/api/v1/add`, { method: "POST", headers, body: form }, fetchFn);
     return textResult({
       provider: "cognee",
       dataset,
