@@ -1,6 +1,7 @@
 # OpenMem
 
 [![npm version](https://img.shields.io/npm/v/openmem.svg)](https://www.npmjs.com/package/openmem)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![OpenMem MCP server](https://glama.ai/mcp/servers/@bcmyguest/openmem/badges/score.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
 [![smithery badge](https://smithery.ai/badge/@bcmyguest/openmem)](https://smithery.ai/server/@bcmyguest/openmem)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
@@ -133,4 +134,4 @@ More setup analogues (Chezmoi, Home Assistant integrations, …): [docs/memory-p
 
 ## License
 
-Apache-2.0
+[Apache License 2.0](LICENSE) — see `LICENSE` (Copyright 2026 B Guest).
