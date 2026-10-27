@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.bcmyguest/openmem",
   "title": "OpenMem",
-  "description": "Memory interface for coding agents — stable memory_* tools over Hindsight, mem0, or Cognee.",
-  "version": "0.6.1",
+  "description": "Memory interface for coding agents \u2014 stable memory_* tools over Hindsight, mem0, or Cognee.",
+  "version": "0.6.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "openmem",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "transport": {
         "type": "stdio"
       },
