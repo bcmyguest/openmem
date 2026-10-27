@@ -424,6 +424,26 @@ check("dry-run wrote no generated files into the stack or the package", ["", "..
 const homeAfter = fs.readdirSync(home, { recursive: true }).sort().join("\n");
 check("scratch HOME unchanged by dry-run", homeAfter === homeBefore, `${homeBefore}\n--\n${homeAfter}`);
 
+// Install coding-agent wiring from the packed package, then check that every
+// registered command points at the stable copy rather than this npm install.
+const agentHome = path.join(work, "agent-home");
+makeHome(agentHome);
+const agentEnv = cliEnv(agentHome, { PM_STACK_ROOT: path.join(work, "agent-stack") });
+const agentBin = path.join(proj, "node_modules/.bin/personal-memory-install-coding-agent");
+const agentInstall = cli(agentBin, ["--yes"], agentEnv);
+const agentRuntime = path.join(agentHome, ".local/share/personal-memory/agent-runtime");
+check("packed coding-agent installer succeeds", agentInstall.status === 0, agentInstall.stdout + agentInstall.stderr);
+check("packed coding-agent installer stages a stable runtime", fs.existsSync(path.join(agentRuntime, "cli/coding-agent/hook-runner.mjs")) && fs.existsSync(path.join(agentRuntime, "node_modules/yaml/package.json")));
+const agentSettings = [
+  path.join(agentHome, ".claude/settings.json"),
+  path.join(agentHome, ".codex/config.toml"),
+  path.join(agentHome, ".cursor/hooks.json"),
+  path.join(agentHome, ".config/opencode/opencode.json"),
+];
+check("packed coding-agent installer wires four agents to the stable runtime", agentSettings.every((p) => fs.existsSync(p) && read(p).includes(agentRuntime) && !read(p).includes(installed)));
+const agentReinstall = cli(agentBin, ["--yes"], agentEnv);
+check("packed coding-agent reinstall succeeds without duplicate runtime hooks", agentReinstall.status === 0 && agentSettings.every((p) => read(p).split(agentRuntime).length === 2), agentReinstall.stdout + agentReinstall.stderr);
+
 // Generated files, a local edit and a simulated package upgrade.
 fs.writeFileSync(path.join(stackRoot, ".env"), "HOST_UID=1000\n");
 fs.writeFileSync(path.join(stackRoot, "compose.override.yaml"), "services: {}\n");

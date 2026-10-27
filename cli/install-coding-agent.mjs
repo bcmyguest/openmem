@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./coding-agent/agents.mjs";
 import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { installSessionShim } from "./coding-agent/install-shim.mjs";
+import { installAgentAccess } from "./coding-agent/install-access.mjs";
+import { prepareAgentRuntime } from "./coding-agent/runtime.mjs";
 import { SHIM_AGENT_IDS } from "./coding-agent/hook-harnesses.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
@@ -74,9 +76,13 @@ export async function runInstallCodingAgent(opts) {
   opts.h?.info(`Provider ${provider}: capabilities ${JSON.stringify(caps)}`);
 
   const shimAgents = flags.agents.filter((id) => SHIM_AGENT_IDS.includes(id) || id === "opencode");
+  const runtimeRoot = prepareAgentRuntime({
+    home, repoRoot: opts.repoRoot, stackRoot: opts.stackRoot, dry: flags.dry || !flags.yes, h: opts.h || h(),
+  });
   if (flags.dry) {
     opts.h?.info("dry-run: would run install-mcp --yes");
-    installSessionShim({ home, repoRoot: opts.repoRoot, agents: shimAgents, dry: true, h: opts.h || h() });
+    installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: true, h: opts.h || h() });
+    installAgentAccess({ home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: true, h: opts.h || h() });
     if (flags.hindsightPlugin && provider === "hindsight") {
       const apiUrl = resolveHindsightApiUrl({ home, stackRoot: opts.stackRoot, env });
       opts.h?.info(
@@ -92,7 +98,7 @@ export async function runInstallCodingAgent(opts) {
 
   await runInstallMemoryMcp({
     home,
-    repoRoot: opts.repoRoot,
+    repoRoot: runtimeRoot,
     stackRoot: opts.stackRoot,
     flags: { yes: true, dry: false, notebooklm: false, notebooklmOnly: false, providerOnly: false, noUnifiedMcp: false, help: false, unknown: [] },
     env,
@@ -100,10 +106,13 @@ export async function runInstallCodingAgent(opts) {
   });
   installSessionShim({
     home,
-    repoRoot: opts.repoRoot,
+    repoRoot: runtimeRoot,
     agents: shimAgents,
     dry: false,
     h: opts.h || h(),
+  });
+  installAgentAccess({
+    home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: false, h: opts.h || h(),
   });
 
   if (flags.hindsightPlugin && provider === "hindsight") {

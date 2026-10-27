@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-01T10:00:00Z","type":"session_meta","payload":{"cwd":"/tmp/project","model":"test"}}
+{"timestamp":"2026-10-01T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the startup bug"}]}}
+{"timestamp":"2026-10-01T10:00:02Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"private reasoning"}]}}
+{"timestamp":"2026-10-01T10:00:03Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":\"npm test\"}"}}
+{"timestamp":"2026-10-01T10:00:04Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The startup path now validates configuration."}]}}

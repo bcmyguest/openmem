@@ -99,16 +99,36 @@ def test_invalid_config_exits_with_error(indexer, tmp_path, monkeypatch, capsys)
     assert "unknown key(s) reposs" in capsys.readouterr().err
 
 
-def test_bank_precedence_config_then_agent_mapping_then_name(indexer, tmp_path, monkeypatch):
-    agent = tmp_path / "coding-agent.json"
-    agent.write_text(json.dumps({"mapPathToBank": {str(tmp_path / "agent"): "from-agent"}}))
-    monkeypatch.setattr(indexer, "AGENT_CONFIG", agent)
+def test_bank_precedence_config_then_personal_then_legacy_then_name(indexer, tmp_path, monkeypatch):
+    personal = tmp_path / "personal-coding-agent.json"
+    personal.write_text(json.dumps({"mapPathToBank": {str(tmp_path / "agent"): "from-personal"}}))
+    legacy = tmp_path / "legacy-coding-agent.json"
+    legacy.write_text(json.dumps({"mapPathToBank": {
+        str(tmp_path / "agent"): "legacy-lower-priority",
+        str(tmp_path / "legacy"): "from-legacy",
+    }}))
+    monkeypatch.setattr(indexer, "PERSONAL_MEMORY_AGENT_CONFIG", personal)
+    monkeypatch.setattr(indexer, "AGENT_CONFIG", legacy)
     config = config_for(tmp_path, banks={str(tmp_path / "agent"): "from-config", str(tmp_path / "cfg"): "cfg-bank"})
 
     assert indexer.bank_id(tmp_path / "agent" / "repo", config) == "from-config"
     assert indexer.bank_id(tmp_path / "cfg" / "repo", config) == "cfg-bank"
-    assert indexer.bank_id(tmp_path / "agent" / "repo") == "from-agent"
-    assert indexer.bank_id(tmp_path / "plain") == "coding-agent::plain"
+    assert indexer.bank_id(tmp_path / "agent" / "repo") == "from-personal"
+    assert indexer.bank_id(tmp_path / "legacy" / "repo") == "from-legacy"
+    assert indexer.bank_id(tmp_path / "plain" / "MixedCase") == "coding-agent::MixedCase"
+
+
+def test_linked_worktree_uses_common_project_name(indexer, tmp_path):
+    main = tmp_path / "MainProject"
+    worktree = tmp_path / "linked-checkout"
+    git_dir = main / ".git"
+    worktree_git_dir = git_dir / "worktrees" / "linked-checkout"
+    worktree_git_dir.mkdir(parents=True)
+    (worktree_git_dir / "commondir").write_text("../..\n")
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+
+    assert indexer.bank_id(worktree) == "coding-agent::MainProject"
 
 
 def test_vault_bank_uses_config_before_slug(indexer, tmp_path):

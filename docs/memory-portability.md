@@ -6,7 +6,7 @@ Status: **`memory_export` / `memory_import`** on the unified MCP are **beta**. P
 
 ## PMM format (version 1)
 
-JSON object (or JSONL with one PMM object per line for streaming):
+JSON object, or JSONL with one header line followed by one normalized record per line:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -29,10 +29,12 @@ Import accepts PMM with `merge_strategy`:
 
 | Strategy | Behavior |
 | --- | --- |
-| `skip_duplicates` (default) | Skip records whose `id` already exists (mem0) |
+| `skip_duplicates` (default) | For mem0, skip records whose id or content fingerprint already exists in the same bank |
 | `overwrite` | Re-import all records (may duplicate on backends without idempotent upsert) |
 
 **Cross-provider import** (e.g. PMM from mem0 into Hindsight) is best-effort: we map `content` + `scope_key` into the active provider’s add API; embeddings and graph structure are **not** preserved.
+
+The MCP export currently collects all records in memory before returning them, including with `format: "jsonl"`. Use a bank filter for large stores; the MCP response is not a file stream. Hindsight export reads the memory-list endpoint and does not include knowledge pages, bank configuration, or source documents. Confirm migrated data before switching providers.
 
 ## Implementation (orchestrator + adapters)
 

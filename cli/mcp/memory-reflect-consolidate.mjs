@@ -34,14 +34,15 @@ export async function callMemoryReflect(ctx, args, callTool, fetchFn = fetch) {
   if (ctx.provider === "hindsight" && ctx.hindsightUrl) {
     const base = ctx.hindsightUrl.replace(/\/+$/, "");
     const enc = encodeURIComponent(bank);
-    const res = await fetchFn(`${base}/v1/default/banks/${enc}/memories/recall`, {
+    const res = await fetchFn(`${base}/v1/default/banks/${enc}/reflect`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ query, budget: "low", max_tokens: 1024 }),
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`Hindsight reflect → ${res.status}: ${text.slice(0, 300)}`);
-    return { provider: "hindsight", bank, query, mode: "hindsight_recall", result: JSON.parse(text) };
+    const result = JSON.parse(text);
+    return { provider: "hindsight", bank, query, mode: "hindsight_reflect", answer: result.text, result };
   }
 
   const searchOut = await callTool("memory_search", { query, bank, limit }, fetchFn);

@@ -25,6 +25,7 @@ WIKILINK = re.compile(r"!?\[\[([^\]|#\n]+)[^\]\n]*\]\]")
 INLINE_TAG = re.compile(r"(?<![\w/#&])#([A-Za-z][\w/-]*)")
 DEFAULT_STATE = Path.home() / ".cache/hindsight-project-index/state.json"
 AGENT_CONFIG = Path.home() / ".hindsight/coding-agent.json"
+PERSONAL_MEMORY_AGENT_CONFIG = Path.home() / ".config/personal-memory/coding-agent.json"
 
 
 def scan_root(root: Path, depth: int, skip_dirs: frozenset[str], want_vaults: bool) -> tuple[list[Path], list[Path]]:
@@ -290,17 +291,48 @@ def save_state(path: Path, state: dict) -> None:
 
 
 def bank_id(repo: Path, config: index_config.Config | None = None) -> str:
-    # Order: index.yml banks, then the coding-agent plugin's mapPathToBank, then the repository name.
+    # Order: index.yml banks, personal-memory mapping, legacy Hindsight mapping, repository name.
     configured = _config(config).bank_for(repo)
     if configured:
         return configured
-    agent = json.loads(AGENT_CONFIG.read_text()) if AGENT_CONFIG.exists() else {}
-    mappings = agent.get("mapPathToBank", {})
-    for prefix, bank in sorted(mappings.items(), key=lambda item: len(item[0]), reverse=True):
-        path = Path(prefix).expanduser().resolve()
-        if repo == path or path in repo.parents:
-            return bank
-    return "coding-agent::" + repo.name
+    for config_path in (PERSONAL_MEMORY_AGENT_CONFIG, AGENT_CONFIG):
+        agent = json.loads(config_path.read_text()) if config_path.exists() else {}
+        mappings = agent.get("mapPathToBank", {})
+        resolved = sorted(
+            ((Path(prefix).expanduser().resolve(), bank) for prefix, bank in mappings.items()),
+            key=lambda item: len(str(item[0])),
+            reverse=True,
+        )
+        for path, bank in resolved:
+            if repo == path or path in repo.parents:
+                return bank
+    return "coding-agent::" + project_name(repo)
+
+
+def project_name(repo: Path) -> str:
+    """Return the shared project name for linked worktrees, otherwise the repo directory name."""
+    root = repo.resolve()
+    git_entry = root / ".git"
+    try:
+        if git_entry.is_dir():
+            git_dir = git_entry
+        elif git_entry.is_file():
+            match = re.match(r"^gitdir:\s*(.+?)\s*$", git_entry.read_text())
+            if not match:
+                return root.name
+            git_dir = Path(match.group(1))
+            if not git_dir.is_absolute():
+                git_dir = (root / git_dir).resolve()
+        else:
+            return root.name
+
+        common_file = git_dir / "commondir"
+        common_dir = (git_dir / common_file.read_text().strip()).resolve() if common_file.exists() else git_dir
+        if git_dir.parent.name == "worktrees" and common_dir.name == ".git":
+            return common_dir.parent.name
+    except OSError:
+        pass
+    return root.name
 
 
 def kinds_key(source: Path) -> str:
