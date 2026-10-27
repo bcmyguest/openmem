@@ -1,9 +1,11 @@
 # OpenMem
 
 [![npm version](https://img.shields.io/npm/v/openmem.svg)](https://www.npmjs.com/package/openmem)
+[![OpenMem MCP server](https://glama.ai/mcp/servers/@bcmyguest/openmem/badges/score.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
+[![smithery badge](https://smithery.ai/badge/@bcmyguest/openmem)](https://smithery.ai/server/@bcmyguest/openmem)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
 
-**npm:** [openmem](https://www.npmjs.com/package/openmem) · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+**npm:** [openmem](https://www.npmjs.com/package/openmem) · **MCP:** `npx -y openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
 **OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API and ops surface over pluggable backends (Hindsight, mem0, Cognee, …), with shared wizard, indexer, and import/export formats (PMM first).
 

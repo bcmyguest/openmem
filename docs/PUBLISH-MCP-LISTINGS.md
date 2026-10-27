@@ -35,11 +35,7 @@ Flip `site.npm.published` to `true` in `site/src/site.config.mjs` in the same ch
 
 Expected URL: `https://glama.ai/mcp/servers/@bcmyguest/openmem` (exact slug may vary)
 
-Badge (after live):
-
-```markdown
-[![Glama](https://glama.ai/mcp/servers/@bcmyguest/openmem/badge)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
-```
+README already has the Glama score badge for that path. After the listing is live and scored, the badge fills in; until then it may look empty/broken — that is expected.
 
 ## 3. Smithery
 
@@ -47,6 +43,8 @@ Badge (after live):
 2. https://smithery.ai/new → **Add from GitHub** → `bcmyguest/openmem`
 3. Confirm `smithery.yaml` / `npx -y openmem-mcp`
 4. Tags: `memory`, `coding-agents`, `hindsight`, `mem0`, `cognee`, `mcp`
+
+README already has the Smithery badge linking to `@bcmyguest/openmem`. If Smithery assigns a different slug, update the badge URLs in `README.md` to match.
 
 ## 4. Official MCP Registry
 
