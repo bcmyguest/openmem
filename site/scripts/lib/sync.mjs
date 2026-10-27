@@ -65,6 +65,11 @@ export function runSync({ repoRoot, siteRoot, repoUrl, branch, log = () => {} })
 
   const { allowlist, deny } = loadPrivacyConfig(siteRoot);
   const published = new Map(PAGES.filter((p) => p.kind === 'doc' && existsSync(join(repoRoot, p.source))).map((p) => [p.source, p.slug]));
+  // Manifest pages have no markdown source; still accept relative links so sync
+  // does not rewrite them to GitHub blob URLs.
+  for (const page of PAGES) {
+    if (page.kind === 'manifest') published.set(`docs/${page.slug}.md`, page.slug);
+  }
   const kindOf = (repoPath) => {
     const abs = join(repoRoot, repoPath);
     if (!existsSync(abs)) return null;
@@ -108,8 +113,7 @@ export function runSync({ repoRoot, siteRoot, repoUrl, branch, log = () => {} })
     }
     const title = page.slug === 'npx-install' ? (firstHeading(raw) ?? page.title) : page.title;
     const body = rewriteLinks(stripH1(raw), { sourcePath: page.source, published, kindOf, repoUrl, branch });
-    const footer = `\n\n---\n\nThis page is generated from [\`${page.source}\`](${repoUrl}/blob/${branch}/${page.source}) in the repository.`;
-    writeFileSync(out, withFrontmatter({ title, description: page.description }, body + footer));
+    writeFileSync(out, withFrontmatter({ title, description: page.description }, body));
     pages.push({ ...page, title });
     log(`page ${page.slug} <- ${page.source}`);
   }

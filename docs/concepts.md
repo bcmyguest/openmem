@@ -58,7 +58,7 @@ OpenMem owns machine plumbing. Providers own memory quality.
 
 A **provider** is the translation layer between OpenMem and a memory backend. It maps manifests, Compose fragments, wizard hooks, and an indexer sink onto that product’s API so agents and the indexer stay backend-agnostic.
 
-Ship a provider as `providers/<id>/` (manifest + hooks + compose). Status (`supported` / `experimental` / `planned`) comes from the manifest. See [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) and [Pluggable memory providers](memory-providers.md).
+Ship a provider as `providers/<id>/` (manifest + hooks + compose). Status (`supported` / `experimental` / `planned`) comes from the manifest. See [Provider status](provider-status.md) and [Pluggable memory providers](memory-providers.md).
 
 Only one provider is registered as active (`MEMORY_PROVIDER`). Switching replaces the active backend for Compose, the indexer sink, and unified MCP.
 
@@ -107,6 +107,6 @@ A shared **indexer** watches git repos, Obsidian vaults, notes trees, and feed c
 | --- | --- |
 | [Quickstart](quickstart.md) | First install |
 | [Architecture](architecture.md) | Runtime data paths |
-| [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) | Which backends ship |
+| [Provider status](provider-status.md) | Which backends ship |
 | [Memory portability](memory-portability.md) | PMM export/import |
 | [OpenMem rename notes](OPENMEM.md) | CLI names and path compat |

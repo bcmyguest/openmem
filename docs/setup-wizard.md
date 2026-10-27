@@ -34,7 +34,7 @@ Configure runs these steps in order (provider hooks replace or extend some steps
 | Step | Title | What happens |
 | --- | --- | --- |
 | 1 | Preflight | `git`, `curl`, `docker`, Compose v2; host UID/GID; API/control-plane ports |
-| 2 | Memory provider | Hindsight, mem0, or Cognee ([Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/)) |
+| 2 | Memory provider | Hindsight, mem0, or Cognee ([Provider status](provider-status.md)) |
 | 3 | Provider config | See table below |
 | 4 | Secrets and env | Files under `~/.config/hindsight/` (mode 600); runs `scripts/setup.mjs` for stack `.env` and `compose.override.yaml` |
 | 5 | Sources to index | Writes `~/.config/hindsight/index.yml`; lists sources with a dry indexer run |

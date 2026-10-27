@@ -21,6 +21,7 @@ npx . install-coding-agent --yes
 Once on npm: `npx openmem` / `npx openmem-mcp`
 
 - Repo: https://github.com/bcmyguest/openmem
+- Docs: https://bcmyguest.github.io/openmem/
 - Concepts: https://bcmyguest.github.io/openmem/docs/concepts/
 - Release: https://github.com/bcmyguest/openmem/releases/tag/v0.6.3
 - Glama (openmem-mcp): https://glama.ai/mcp/servers/@bcmyguest/openmem
@@ -32,4 +33,4 @@ Inspired in part by how OpenFeature separates flag APIs from vendors — listed 
 **Short (X / Discord):**
 
 OpenMem — memory interface for coding agents. Stable `memory_*` MCP over Hindsight / mem0 / Cognee. Wizard + indexer + switch. Not a memory engine — the layer in front of them.
-https://github.com/bcmyguest/openmem · https://glama.ai/mcp/servers/@bcmyguest/openmem (openmem-mcp)
+https://bcmyguest.github.io/openmem/ · https://github.com/bcmyguest/openmem · https://glama.ai/mcp/servers/@bcmyguest/openmem (openmem-mcp)
