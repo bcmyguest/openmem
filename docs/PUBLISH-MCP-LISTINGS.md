@@ -36,9 +36,31 @@ Do **not** publish unscoped `openmem` (blocked as too similar to `open-mem`) or 
 4. Install (stdio MCP): `npx -y -p @bcmyguest/openmem openmem-mcp`
 5. After indexing, **Claim ownership** (repo already has `glama.json` with maintainer `bcmyguest`)
 
-Listing name on Glama: **openmem-mcp**. Canonical URL (repo slug): `https://glama.ai/mcp/servers/@bcmyguest/openmem`
+Listing name on Glama: **openmem-mcp**. Canonical URL (repo slug): `https://glama.ai/mcp/servers/bcmyguest/openmem` (also resolves with `@bcmyguest/openmem`).
 
-README badges use the Glama name (`@bcmyguest/openmem-mcp` score/card images) and link to that canonical page.
+README / awesome-list badges must use the **repo slug** path (`bcmyguest/openmem`). The listing-name path `@bcmyguest/openmem-mcp` returns a “not listed” badge. Score badge links to `/score`.
+
+### Unlock Glama quality / security grades
+
+A Glama **release** is a containerized build (not a GitHub tag). Auto-Release stays blocked until the first manual release exists.
+
+1. **Sync Server**, then confirm claim (`glama.json` maintainers).
+2. **Admin → Dockerfile** (Glama generates the image; wraps CMD with `mcp-proxy --`). Prefer the npm recipe (`@bcmyguest/openmem` is published):
+
+| Field | Value |
+| --- | --- |
+| Build steps | `["npm install -g @bcmyguest/openmem@latest"]` |
+| CMD arguments | `["openmem-mcp"]` |
+| Env schema | `{"type":"object","properties":{},"required":[]}` |
+| Placeholder parameters | `{}` |
+| Pinned commit | empty (or any SHA — npm recipe ignores repo tree for the binary) |
+
+Source alternative (do not mix): `["npm ci --omit=dev"]` + `["node", "cli/openmem-mcp.mjs"]`.
+
+3. **Deploy** (build test) → **Make Release** (e.g. `0.6.4`) → **Create & Publish Release**. Then Auto-Release can publish on later commits.
+4. Seed usage with **Try in Browser** once so “No recent usage” clears.
+
+Repo also ships a root `Dockerfile` aligned with the source recipe for local `docker build` checks.
 
 ## 3. Official MCP Registry
 

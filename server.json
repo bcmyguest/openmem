@@ -3,12 +3,12 @@
   "name": "io.github.bcmyguest/openmem",
   "title": "OpenMem",
   "description": "Memory interface for coding agents \u2014 stable memory_* tools over Hindsight, mem0, or Cognee.",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@bcmyguest/openmem",
-      "version": "0.6.3",
+      "version": "0.6.4",
       "transport": {
         "type": "stdio"
       },

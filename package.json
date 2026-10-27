@@ -1,6 +1,6 @@
 {
   "name": "@bcmyguest/openmem",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "OpenMem \u2014 memory interface for coding agents: pluggable providers (Hindsight, mem0, Cognee, \u2026), shared wizard/indexer, multi-format import/export (PMM and more).",
   "type": "module",
   "license": "Apache-2.0",

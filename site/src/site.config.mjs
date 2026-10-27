@@ -21,7 +21,7 @@ export const site = {
    * Flip it in the same change that publishes the first release.
    */
   npm: {
-    published: false,
+    published: true,
     package: '@bcmyguest/openmem',
   },
   /** Commands that work from a checkout today (same CLI shape as npx). */
