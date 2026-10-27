@@ -1,27 +1,40 @@
 {
-  "name": "personal-memory",
-  "version": "0.5.2",
-  "description": "Choose your coding-agent memory backend (Hindsight, mem0, Cognee): one wizard, shared indexer, switch providers without vendor lock-in.",
+  "name": "openmem",
+  "version": "0.6.0",
+  "description": "OpenMem — interface layer for coding-agent memory: pluggable providers (Hindsight, mem0, Cognee, …), shared wizard/indexer, multi-format import/export (PMM and more).",
   "type": "module",
   "license": "Apache-2.0",
   "author": "B Guest",
-  "homepage": "https://bcmyguest.github.io/personal-memory/",
+  "homepage": "https://github.com/bcmyguest/openmem",
   "bugs": {
-    "url": "https://github.com/bcmyguest/personal-memory/issues"
+    "url": "https://github.com/bcmyguest/openmem/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bcmyguest/personal-memory.git"
+    "url": "git+https://github.com/bcmyguest/openmem.git"
   },
   "keywords": [
+    "openmem",
     "memory",
     "ai-memory",
     "hindsight",
+    "mem0",
+    "cognee",
+    "mcp",
     "docker-compose",
     "setup-wizard",
-    "coding-agent"
+    "coding-agent",
+    "pmm"
   ],
   "bin": {
+    "openmem": "cli/personal-memory.mjs",
+    "openmem-setup": "wizard/bin/setup.mjs",
+    "openmem-mcp": "cli/personal-memory-mcp.mjs",
+    "openmem-install-mcp": "cli/install-memory-mcp.mjs",
+    "openmem-install-coding-agent": "cli/install-coding-agent.mjs",
+    "openmem-switch-provider": "cli/switch-memory-provider.mjs",
+    "openmem-notebooklm-mcp": "cli/notebooklm-mcp.mjs",
+    "openmem-cognee-mcp": "cli/cognee-mcp.mjs",
     "personal-memory": "cli/personal-memory.mjs",
     "personal-memory-setup": "wizard/bin/setup.mjs",
     "personal-memory-notebooklm-mcp": "cli/notebooklm-mcp.mjs",
@@ -68,6 +81,7 @@
   "scripts": {
     "setup": "node wizard/bin/setup.mjs",
     "pm": "node wizard/bin/pm.mjs",
+    "openmem": "node cli/personal-memory.mjs",
     "personal-memory": "node cli/personal-memory.mjs",
     "install-mcp": "node cli/install-memory-mcp.mjs",
     "install-coding-agent": "node cli/install-coding-agent.mjs",

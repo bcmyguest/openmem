@@ -24,7 +24,7 @@ npx personal-memory
 **From a git checkout** (repo directory is the stack root):
 
 ```sh
-git clone https://github.com/bcmyguest/personal-memory.git
+git clone https://github.com/bcmyguest/openmem.git
 cd personal-memory
 npm install
 npx . setup

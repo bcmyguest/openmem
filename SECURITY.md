@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report vulnerabilities privately through GitHub's
-[private vulnerability reporting](https://github.com/bcmyguest/personal-memory/security/advisories/new).
+[private vulnerability reporting](https://github.com/bcmyguest/openmem/security/advisories/new).
 Do not open a public issue. Expect a first reply within 14 days.
 
 ## Supported versions

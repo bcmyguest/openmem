@@ -6,28 +6,28 @@
 // BASE_PATH=/ for a custom domain at the root.
 
 export const site = {
-  name: 'personal-memory',
-  tagline: 'One local setup. Pick your agent memory backend.',
+  name: 'OpenMem',
+  tagline: 'Interface layer for coding-agent memory.',
   description:
-    'Wizard, Docker Compose, and a shared indexer for Hindsight, mem0, or Cognee. Provider badges on this site come from manifests at build time.',
-  repoUrl: 'https://github.com/bcmyguest/personal-memory',
+    'Pluggable providers (Hindsight, mem0, Cognee), shared wizard and indexer, multi-format import/export. Provider badges on this site come from manifests at build time.',
+  repoUrl: 'https://github.com/bcmyguest/openmem',
   /** Branch that source links in the docs point at. */
   branch: 'main',
   siteUrl: 'https://bcmyguest.github.io',
-  basePath: '/personal-memory/',
+  basePath: '/openmem/',
   /**
    * npm release state. Keep `published: false` until the package is on the
    * registry; the install section then labels `npx` as not yet available.
    * Flip it in the same change that publishes the first release.
    */
   npm: {
-    published: true,
-    package: 'personal-memory',
+    published: false,
+    package: 'openmem',
   },
   /** Commands that work from a checkout today (same CLI shape as npx). */
   sourceInstall: {
-    clone: 'https://github.com/bcmyguest/personal-memory.git',
-    directory: 'personal-memory',
+    clone: 'https://github.com/bcmyguest/openmem.git',
+    directory: 'openmem',
     command: 'npm install && npx . setup',
   },
 };
