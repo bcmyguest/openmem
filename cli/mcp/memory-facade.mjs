@@ -30,7 +30,7 @@ export const UNIFIED_MCP_TOOLS = [
       type: "object",
       properties: {
         content: { type: "string", description: "Text to remember" },
-        bank: { type: "string", description: "Hindsight bank or mem0 user_id scope (default: personal-memory-mcp)" },
+        bank: { type: "string", description: "Hindsight bank or mem0 user_id scope (default: openmem-mcp)" },
         metadata: { type: "object", description: "Optional provider-specific metadata" },
         async: {
           type: "boolean",
@@ -169,7 +169,7 @@ async function httpJson(url, init, fetchFn = fetch) {
   return json;
 }
 
-const DEFAULT_BANK = "personal-memory-mcp";
+const DEFAULT_BANK = "openmem-mcp";
 
 /** Hindsight ingest: default async so Cursor/Claude MCP clients do not time out on extraction. */
 function hindsightMemoryAddAsync(args) {
@@ -344,7 +344,7 @@ async function callMem0(ctx, name, args, fetchFn) {
         body: JSON.stringify({
           messages: [{ role: "user", content }],
           user_id: userId,
-          agent_id: "personal-memory-mcp",
+          agent_id: "openmem-mcp",
           infer: false,
         }),
       },
@@ -431,7 +431,7 @@ export async function handleUnifiedMessage(msg, ctx, fetchFn = fetch) {
       result: {
         protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "personal-memory", version: "0.1.0" },
+        serverInfo: { name: "openmem", version: "0.1.0" },
       },
     };
   }

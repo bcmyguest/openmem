@@ -1,6 +1,6 @@
 # Memory export and import
 
-Portable **export/import** lets you inspect what a provider stores, move data when you change backends, and satisfy “give me my data” requests. There is **no** industry-standard memory file format yet; personal-memory defines a small **PMM** (Personal Memory Manifest) envelope so tools and future providers can converge.
+Portable **export/import** lets you inspect what a provider stores, move data when you change backends, and satisfy “give me my data” requests. There is **no** industry-standard memory file format yet; openmem defines a small **PMM** (Personal Memory Manifest) envelope so tools and future providers can converge.
 
 Status: **`memory_export` / `memory_import`** on the unified MCP are **beta**. PMM v1 is stable; adapters live under `cli/mcp/export/` (orchestrator: `cli/mcp/portability.mjs`).
 
@@ -38,18 +38,18 @@ The MCP export currently collects all records in memory before returning them, i
 
 ## Implementation (orchestrator + adapters)
 
-personal-memory stays a **meta orchestrator**: PMM shape and import live in `cli/mcp/portability.mjs`; each backend implements **list/map** in `cli/mcp/export/` (`hindsight.mjs`, `mem0.mjs`, `cognee.mjs`). New providers add an adapter and one branch in `cli/mcp/export/index.mjs` — no changes to the MCP tool names agents call.
+openmem stays a **meta orchestrator**: PMM shape and import live in `cli/mcp/portability.mjs`; each backend implements **list/map** in `cli/mcp/export/` (`hindsight.mjs`, `mem0.mjs`, `cognee.mjs`). New providers add an adapter and one branch in `cli/mcp/export/index.mjs` — no changes to the MCP tool names agents call.
 
 ## Unified MCP tools
 
-On the `personal-memory` MCP server (see [Architecture](architecture.md)):
+On the `openmem` MCP server (see [Architecture](architecture.md)):
 
 ```text
 memory_export   { format?: "json"|"jsonl", bank?: string, user_id?: string }
 memory_import   { data: string, merge_strategy?: "skip_duplicates"|"overwrite" }
 ```
 
-Restart Cursor Agent after `npx personal-memory install-mcp --yes`.
+Restart Cursor Agent after `npx openmem install-mcp --yes`.
 
 ## Provider behavior
 
@@ -61,5 +61,5 @@ Restart Cursor Agent after `npx personal-memory install-mcp --yes`.
 
 ## Related
 
-- [Architecture — provider interface](architecture.md#how-personal-memory-interfaces-with-providers)
+- [Architecture — provider interface](architecture.md#how-openmem-interfaces-with-providers)
 - [mem0](mem0.md) · [Cognee](cognee.md)

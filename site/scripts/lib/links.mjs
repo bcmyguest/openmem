@@ -16,7 +16,7 @@ const SKIP_SCHEME = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
 /**
  * @param {string} dist built directory
- * @param {{ base: string, origin?: string }} opts base like "/personal-memory/"; origin like "https://host"
+ * @param {{ base: string, origin?: string }} opts base like "/openmem/"; origin like "https://host"
  */
 export function checkLinks(dist, { base, origin }) {
   const baseDir = base.endsWith('/') ? base : `${base}/`;

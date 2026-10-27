@@ -85,7 +85,7 @@ def test_only_hindsight_services_are_profiled_and_the_indexer_is_neutral(scratch
     depends = everything["indexer"]["depends_on"]
     assert depends["hindsight"]["required"] is False
     assert depends["indexer-state-init"]["required"] is True
-    assert everything["indexer"]["image"] == "personal-memory-indexer:local"
+    assert everything["indexer"]["image"] == "openmem-indexer:local"
     assert everything["indexer"]["environment"]["HINDSIGHT_URL"] == "http://hindsight:8888"
 
 

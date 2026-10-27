@@ -1,6 +1,6 @@
 # MCP install guide
 
-personal-memory can register several **independent** stdio MCP servers in `~/.cursor/mcp.json`.
+openmem can register several **independent** stdio MCP servers in `~/.cursor/mcp.json`.
 They differ by tool names, which API they call, and whether they depend on Hindsight. Use this guide
 to pick the right combination; day-to-day defaults are covered in [Quickstart](quickstart.md) and
 [Architecture](architecture.md).
@@ -9,7 +9,7 @@ to pick the right combination; day-to-day defaults are covered in [Quickstart](q
 
 | Server key (typical) | Install path | Tools (examples) | Backend |
 | --- | --- | --- | --- |
-| **`personal-memory`** | Default `install-mcp` | `memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget`, `memory_provider_status`, export/import | Active provider (`MEMORY_PROVIDER` / `wizard.conf`): Hindsight, mem0, or Cognee HTTP |
+| **`openmem`** | Default `install-mcp` | `memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget`, `memory_provider_status`, export/import | Active provider (`MEMORY_PROVIDER` / `wizard.conf`): Hindsight, mem0, or Cognee HTTP |
 | **Provider-native** (`mem0`, `cognee`) | `install-mcp --provider-only` | mem0: upstream `@yeyuan98/mem0-mcp` names; Cognee: `cognee_health`, `cognee_search` | Same API as the stack, **different** tool surface |
 | **`notebooklm`** | `install-mcp` when sync on, or `--notebooklm` / `--notebooklm-only` | `notebooklm_list_banks`, `notebooklm_search` | `notebooklm::*` scope on the **active** provider (sync + MCP follow `MEMORY_PROVIDER`) — **not** a memory provider |
 
@@ -22,12 +22,12 @@ mem0, Cognee, or Hindsight retain/recall for coding work. Details: [NotebookLM](
 
 ## When to use which
 
-### Default: unified MCP (`npx personal-memory install-mcp --yes`)
+### Default: unified MCP (`npx openmem install-mcp --yes`)
 
 Use this when you want **one tool contract** (`memory_*`) that follows
-`npx personal-memory switch <id>` without rewriting agent prompts.
+`npx openmem switch <id>` without rewriting agent prompts.
 
-- Merges the `personal-memory` server (unless `--no-unified-mcp`).
+- Merges the `openmem` server (unless `--no-unified-mcp`).
 - Also merges **NotebookLM** MCP when `~/.config/hindsight/notebooklm.yml` has `enabled: true`, or
   you pass **`--notebooklm`** (sets `notebooklmAccess.enabled` and merges the server).
 - For **`MEMORY_PROVIDER=hindsight`**, there is no separate “provider MCP” step — only the unified
@@ -44,7 +44,7 @@ Use when you already have prompts or integrations written for **upstream tool na
 - **Cognee:** read-only `cli/cognee-mcp.mjs` (`COGNEE_API_URL` only in `mcp.json`).
 
 `install-mcp --provider-only` **skips NotebookLM** even if sync is enabled. It still merges the
-**unified** `personal-memory` server by default (same as a plain `install-mcp` for mem0/Cognee unless
+**unified** `openmem` server by default (same as a plain `install-mcp` for mem0/Cognee unless
 you also pass `--no-unified-mcp`). `switch <id> --yes` runs `install-mcp --provider-only` to refresh
 native mem0/Cognee entries after a provider change.
 
@@ -66,12 +66,12 @@ Force NotebookLM when sync is off: **`--notebooklm`** (enables access flag and m
 ## Flags reference
 
 ```sh
-npx personal-memory install-mcp --yes          # unified + NotebookLM if sync enabled
-npx personal-memory install-mcp --yes --notebooklm
-npx personal-memory install-mcp --yes --notebooklm-only
-MEMORY_PROVIDER=mem0 npx personal-memory install-mcp --yes --provider-only
-npx personal-memory install-mcp --yes --no-unified-mcp
-npx personal-memory install-mcp --dry-run
+npx openmem install-mcp --yes          # unified + NotebookLM if sync enabled
+npx openmem install-mcp --yes --notebooklm
+npx openmem install-mcp --yes --notebooklm-only
+MEMORY_PROVIDER=mem0 npx openmem install-mcp --yes --provider-only
+npx openmem install-mcp --yes --no-unified-mcp
+npx openmem install-mcp --dry-run
 ```
 
 | Flag | Effect |
@@ -81,7 +81,7 @@ npx personal-memory install-mcp --dry-run
 | `--notebooklm` | Enable NotebookLM agent access + merge `notebooklm` MCP |
 | `--notebooklm-only` | Only NotebookLM step |
 | `--provider-only` | Install mem0/Cognee native MCP for active provider; skip NotebookLM |
-| `--no-unified-mcp` | Do not merge `personal-memory` unified server |
+| `--no-unified-mcp` | Do not merge `openmem` unified server |
 
 **Provider resolution:** `MEMORY_PROVIDER` → `~/.config/hindsight/wizard.conf` → `hindsight`.
 

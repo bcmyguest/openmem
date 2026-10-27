@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Setup wizard entry (./setup in a checkout; `personal-memory setup` when packaged).
+ * Setup wizard entry (./setup in a checkout; `openmem setup` when packaged).
  *
  * REPO is the mutable stack root (PM_STACK_ROOT, default: the checkout): compose project
  * dir, .env, generated files and docker build context. PM_PACKAGE_ROOT is the read-only

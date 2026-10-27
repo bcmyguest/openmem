@@ -59,7 +59,7 @@ docker compose stop indexer
 docker compose run --rm --no-deps indexer-state-init
 docker run --rm --user "$HOST_UID:$HOST_GID" \
   -v "$HOME/.cache/hindsight-project-index:/src:ro" \
-  -v personal-memory_indexer-state:/dst personal-memory-indexer:local \
+  -v personal-memory_indexer-state:/dst openmem-indexer:local \
   cp /src/state.json /dst/
 ```
 

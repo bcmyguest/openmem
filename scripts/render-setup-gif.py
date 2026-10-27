@@ -78,7 +78,7 @@ def capture_log() -> list[str]:
         "HINDSIGHT_CP_PORT": "29999",
     }
     proc = subprocess.run(
-        [node, str(ROOT / "cli" / "personal-memory.mjs"), "setup", "--yes", "--dry-run"],
+        [node, str(ROOT / "cli" / "openmem.mjs"), "setup", "--yes", "--dry-run"],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -88,9 +88,9 @@ def capture_log() -> list[str]:
     raw = re.sub(r"\x1b\[[0-9;]*m", "", raw)
     lines: list[str] = []
     for line in raw.splitlines():
-        line = re.sub(r"/home/[^/]+/personal-memory", "~/personal-memory", line)
+        line = re.sub(r"/home/[^/]+/openmem", "~/openmem", line)
         line = re.sub(r"/tmp/pm-gif-[^/]+/home", "~", line)
-        line = re.sub(r"^personal-memory:\s*", "", line)
+        line = re.sub(r"^openmem:\s*", "", line)
         if line.strip():
             lines.append(line.rstrip())
     return lines[:MAX_LINES]
@@ -129,7 +129,7 @@ def main() -> int:
         print("capture too short", file=sys.stderr)
         return 1
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    prompt = "$ npx personal-memory setup --dry-run"
+    prompt = "$ npx openmem setup --dry-run"
     frames: list[Image.Image] = []
     # Typing the command
     for i in range(1, len(prompt) + 1):

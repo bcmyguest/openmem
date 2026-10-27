@@ -441,7 +441,7 @@ function smokeCtx(name, stub, { keyInFile = KEY, ...extra } = {}) {
   check("smoke: the cleanup lookup is scoped to the wizard's user_id and run_id with top_k 1000", stub.log[3].search === "?user_id=wizard-smoke&run_id=wizard-smoke-doc&top_k=1000");
   check("smoke: X-API-Key sent on authenticated calls, not on /docs", stub.log[0].key === "" && stub.log.slice(1).every((r) => r.key === KEY));
   const retain = stub.log[1].body;
-  check("smoke: retain body is verbatim (infer false) with the fixed ids", retain.infer === false && retain.user_id === "wizard-smoke" && retain.run_id === "wizard-smoke-doc" && retain.agent_id === "personal-memory-wizard" && /heron/.test(retain.messages[0].content));
+  check("smoke: retain body is verbatim (infer false) with the fixed ids", retain.infer === false && retain.user_id === "wizard-smoke" && retain.run_id === "wizard-smoke-doc" && retain.agent_id === "openmem-wizard" && /heron/.test(retain.messages[0].content));
   check("smoke: search body filters on user_id", stub.log[2].body.filters.user_id === "wizard-smoke" && /codename/.test(stub.log[2].body.query));
   check("smoke: the stub is empty afterwards and saw no violations", stub.store.size === 0 && stub.violations.length === 0);
   check("smoke: the key never appears in the output", !text(out).includes(KEY));

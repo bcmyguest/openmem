@@ -14,7 +14,7 @@ Re-runnable: shows current values as defaults and asks before it replaces config
   ./setup --up [--yes]         start the stack using existing wizard.conf
   ./setup --down [--yes]       stop the stack (docker compose down)
 
-PM_PROJECT sets the compose project name (default: personal-memory). MEMORY_PROVIDER selects the
+PM_PROJECT sets the compose project name (default: openmem). MEMORY_PROVIDER selects the
 memory plugin (default: hindsight). PM_WIZARD_ACTION=configure|up|down. Each provider documents its
 own environment variables (model backend, ports) in providers/<id>/. PM_STACK_ROOT and PM_PACKAGE_ROOT
 split the mutable stack directory from the read-only code directory. The last line is
@@ -35,7 +35,7 @@ export function parseWizardFlags(repoRoot, argv) {
     // Read-only code root (wizard/, providers/, scripts/); the stack root is repoRoot.
     packageRoot: process.env.PM_PACKAGE_ROOT ? path.resolve(process.env.PM_PACKAGE_ROOT) : repoRoot,
     home,
-    project: process.env.PM_PROJECT || "personal-memory",
+    project: process.env.PM_PROJECT || "openmem",
     // Shared per-machine config dir: wizard.conf, index.yml, notebooklm.yml. The name predates
     // provider plugins and stays fixed so existing machines keep their config.
     hsDir: path.join(home, ".config/hindsight"),

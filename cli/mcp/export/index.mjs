@@ -17,7 +17,7 @@ export { cogneeDatasetName } from "./cognee-dataset-name.mjs";
  */
 export async function runProviderExport(provider, ctx, args, fetchFn) {
   if (provider === "mem0") {
-    const scopeBank = String(args.bank || "personal-memory-mcp").trim() || "personal-memory-mcp";
+    const scopeBank = String(args.bank || "openmem-mcp").trim() || "openmem-mcp";
     return exportMem0(ctx, { user_id: scopeBank }, fetchFn);
   }
   if (provider === "hindsight") return exportHindsight(ctx, args, fetchFn);

@@ -28,24 +28,24 @@ try {
   installSessionShim({ home, repoRoot: runtimeRoot, agents, dry: false, h: logger });
   installAgentAccess({ home, runtimeRoot, stackRoot, agents, h: logger });
 
-  const script = path.join(runtimeRoot, "cli", "personal-memory-mcp.mjs");
+  const script = path.join(runtimeRoot, "cli", "openmem-mcp.mjs");
   assert.ok(fs.existsSync(script));
   for (const rel of [".claude", ".agents", ".cursor", ".config/opencode"]) {
-    assert.ok(fs.existsSync(path.join(home, rel, "skills", "personal-memory", "SKILL.md")));
+    assert.ok(fs.existsSync(path.join(home, rel, "skills", "openmem", "SKILL.md")));
   }
 
   const claude = JSON.parse(fs.readFileSync(path.join(home, ".claude.json"), "utf8"));
   assert.equal(claude.mcpServers.keep.command, "keep");
-  assert.deepEqual(claude.mcpServers["personal-memory"].args, [script]);
+  assert.deepEqual(claude.mcpServers["openmem"].args, [script]);
   const codexText = fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
   const codex = TOML.parse(codexText);
   assert.equal(codex.mcp_servers.keep.command, "keep");
-  assert.deepEqual(codex.mcp_servers["personal-memory"].args, [script]);
+  assert.deepEqual(codex.mcp_servers["openmem"].args, [script]);
   assert.equal(codex.features.hooks, true);
-  assert.equal((codexText.match(/\[mcp_servers\.personal-memory\]/g) || []).length, 1);
+  assert.equal((codexText.match(/\[mcp_servers\.openmem\]/g) || []).length, 1);
   const opencode = JSON.parse(fs.readFileSync(path.join(home, ".config", "opencode", "opencode.json"), "utf8"));
   assert.equal(opencode.mcp.keep.type, "local");
-  assert.deepEqual(opencode.mcp["personal-memory"].command, ["node", script]);
+  assert.deepEqual(opencode.mcp["openmem"].command, ["node", script]);
   assert.ok(opencode.plugin.includes("other-plugin"));
   assert.ok(opencode.plugin.includes(path.join(runtimeRoot, "cli", "coding-agent", "opencode-plugin.mjs")));
   const claudeHooks = JSON.parse(fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8")).hooks;
@@ -70,14 +70,14 @@ try {
   assert.ok(jsonc.plugin.includes("other-plugin"));
   assert.ok(jsonc.plugin.includes(path.join(runtimeRoot, "cli", "coding-agent", "opencode-plugin.mjs")));
   assert.equal(jsonc.mcp.keep.type, "local");
-  assert.deepEqual(jsonc.mcp["personal-memory"].command, ["node", script]);
+  assert.deepEqual(jsonc.mcp["openmem"].command, ["node", script]);
   assert.equal(fs.existsSync(path.join(jsoncDir, "opencode.json")), false);
 
   fs.writeFileSync(jsoncFile, '{"mcp":{"old":{}},"mcp":{"active":{}},"plugin":[]}\n');
   installAgentAccess({ home: jsoncHome, runtimeRoot, stackRoot, agents: ["opencode"], h: logger });
   const effectiveJsonc = JSON.parse(fs.readFileSync(jsoncFile, "utf8"));
   assert.ok(effectiveJsonc.mcp.active);
-  assert.deepEqual(effectiveJsonc.mcp["personal-memory"].command, ["node", script]);
+  assert.deepEqual(effectiveJsonc.mcp["openmem"].command, ["node", script]);
 
   const explicitHome = path.join(home, "explicit-codex");
   fs.mkdirSync(path.join(explicitHome, ".codex"), { recursive: true });
@@ -92,9 +92,9 @@ try {
   const noNewline = TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8"));
   assert.equal(noNewline.model, "gpt-6");
   assert.equal(noNewline.features.hooks, true);
-  fs.writeFileSync(path.join(explicitHome, ".codex", "config.toml"), '[mcp_servers."personal-memory"]\ncommand = "old"\n[mcp_servers."personal-memory".env]\nKEEP = "old"\n');
+  fs.writeFileSync(path.join(explicitHome, ".codex", "config.toml"), '[mcp_servers."openmem"]\ncommand = "old"\n[mcp_servers."openmem".env]\nKEEP = "old"\n');
   installAgentAccess({ home: explicitHome, runtimeRoot, stackRoot, agents: ["codex"], h: logger });
-  assert.deepEqual(TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8")).mcp_servers["personal-memory"].args, [script]);
+  assert.deepEqual(TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8")).mcp_servers["openmem"].args, [script]);
   console.log("agent access installs stable runtime, skills, MCP, and hooks");
 } finally {
   fs.rmSync(home, { recursive: true, force: true });

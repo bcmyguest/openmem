@@ -30,7 +30,7 @@ there was nothing to process, never on an error.
 Document text: Cognee deduplicates an add by content hash within a dataset (and owner), so two documents with
 different `doc_id` and identical bytes would collapse into one row (the second add keeps the first's metadata, and
 deleting either removes the shared content). The uploaded text is therefore `content` plus a footer line
-`<!-- personal-memory:doc:<first 16 hex of sha256(doc_id)> -->`, which makes every document's bytes unique and
+`<!-- openmem:doc:<first 16 hex of sha256(doc_id)> -->`, which makes every document's bytes unique and
 leaks no id or path text.
 
 Delete: a bank with no dataset (looked up by name, never created) has nothing to delete. A 404 on listing (dataset
@@ -95,7 +95,7 @@ def upload_name(doc_id: str, content: str) -> str:
 
 def upload_text(doc_id: str, content: str) -> str:
     """`content` plus a per-document footer, so identical texts of two documents never share a content hash."""
-    return f"{content}\n\n<!-- personal-memory:doc:{hashlib.sha256(doc_id.encode()).hexdigest()[:16]} -->\n"
+    return f"{content}\n\n<!-- openmem:doc:{hashlib.sha256(doc_id.encode()).hexdigest()[:16]} -->\n"
 
 
 def metadata_doc_ids(item: Mapping) -> list[str]:

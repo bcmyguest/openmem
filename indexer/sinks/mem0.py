@@ -8,7 +8,7 @@ SHA-256 of the original id (`obsidian::My Vault` -> `obsidian::My_Vault~<8 hex>`
 ids that differ only in whitespace apart, and the mapping is deterministic, so the same bank and document always
 resolve to the same ids. It is applied to every use of the two ids (the lookup, the writes, the deletes). The
 original text of a mapped id is not stored. Every memory also carries the fixed `agent_id`
-`personal-memory-indexer`, for provenance only: lookups filter on `user_id` and `run_id` and never on `agent_id`.
+`openmem-indexer`, for provenance only: lookups filter on `user_id` and `run_id` and never on `agent_id`.
 mem0 has no bank to create (the `user_id` exists once a memory carries it), so `prepare` is a no-op.
 
 Documents. mem0 gives every memory a server-generated id and has no upsert, so the sink resolves a document to its
@@ -67,7 +67,7 @@ from sinks._http import open_url, read_all
 
 URL_ENV = "MEMORY_API_URL"
 KEY_ENV = "MEM0_API_KEY"
-AGENT_ID = "personal-memory-indexer"
+AGENT_ID = "openmem-indexer"
 CHUNK_CHARS = 3000
 MAX_CHUNKS = 900
 LIST_LIMIT = 1000

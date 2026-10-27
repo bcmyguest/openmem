@@ -142,8 +142,15 @@ const HTTP_CASES = [
     route(u, init) {
       if (u === `${C_BASE}/api/v1/add` && init?.method === "POST") {
         const headers = /** @type {Record<string, string>} */ (init.headers);
-        const body = JSON.parse(String(init.body));
-        if (headers["X-Api-Key"] === "cg-key" && body.datasetName === BANK && body.data === "graph text") {
+        const body = init.body;
+        const isForm =
+          typeof FormData !== "undefined" &&
+          body &&
+          typeof body === "object" &&
+          typeof /** @type {{ get?: Function }} */ (body).get === "function";
+        const dataset = isForm ? /** @type {FormData} */ (body).get("datasetName") : null;
+        const raw = isForm ? /** @type {FormData} */ (body).get("raw_data") : null;
+        if (headers["X-Api-Key"] === "cg-key" && dataset === BANK && String(raw) === "graph text") {
           return okJson({ status: "accepted" });
         }
       }

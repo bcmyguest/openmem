@@ -1,4 +1,4 @@
-name: personal-memory
+name: openmem
 
 # Memory provider stack (Hindsight by default) and the project/Obsidian indexer.
 # Set HINDSIGHT_ENV_FILE to use an env file other than ~/.config/hindsight/hindsight.env.
@@ -68,7 +68,7 @@ services:
 
   indexer:
     <<: *indexer-build
-    image: personal-memory-indexer:local
+    image: openmem-indexer:local
     # Host UID/GID from .env, written by scripts/setup.sh. The image needs no passwd entry for this user.
     user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
     # Same absolute paths inside the container so bank and document IDs match host paths.
@@ -96,7 +96,7 @@ services:
   # Named volumes are created root-owned. This one-off root step gives the state volume to the host UID, then exits.
   indexer-state-init:
     <<: *indexer-build
-    image: personal-memory-indexer:local
+    image: openmem-indexer:local
     user: "0:0"
     entrypoint: ["sh", "-c", "chown ${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh} /state"]
     volumes:
@@ -127,7 +127,7 @@ services:
     build:
       context: .
       dockerfile: sync/Dockerfile
-    image: personal-memory-notebooklm:local
+    image: openmem-notebooklm:local
     # Host UID/GID from .env, written by scripts/setup.sh; the bind-mounted login storage must stay host-owned.
     user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
     environment:

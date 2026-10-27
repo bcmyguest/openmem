@@ -132,7 +132,7 @@ def test_mem0_sink_contract():
     assert post["body"] == {
         "messages": [{"role": "user", "content": "first body"}],
         "user_id": BANK,
-        "agent_id": "personal-memory-indexer",
+        "agent_id": "openmem-indexer",
         "run_id": "doc-1",
         "infer": False,
         "metadata": {},
@@ -143,7 +143,7 @@ def test_mem0_sink_contract():
     assert full["body"] == {
         "messages": [{"role": "user", "content": "second body"}],
         "user_id": BANK,
-        "agent_id": "personal-memory-indexer",
+        "agent_id": "openmem-indexer",
         "run_id": "doc-2",
         "infer": False,
         "metadata": {"path": "x.md", "kind": "doc", "tags": ["a", "b"], "context": "Project proj doc source", "timestamp": "2026-01-02T03:04:05Z"},
@@ -171,7 +171,7 @@ def test_mem0_sink_contract():
     assert route.texts(BANK, "doc-1") == []
     assert route.texts(BANK, "doc-2") == ["second body"]
     assert route.texts(AWKWARD_MAPPED, "doc-3") == ["body"]
-    assert all(item["agent_id"] == "personal-memory-indexer" for item in route.memories.values())
+    assert all(item["agent_id"] == "openmem-indexer" for item in route.memories.values())
 
 
 def test_every_post_sends_infer_false():
@@ -552,7 +552,7 @@ def test_reserved_metadata_keys_are_prefixed_and_sink_keys_win():
         mem0(stub.url).retain("b", "d", "x", tags=["t1", "t2"], metadata=caller, context="real", timestamp="ts")
     (item,) = route.records("b", "d")
     assert item["metadata"] == {**{f"meta_{key}": f"v-{key}" for key in RESERVED}, "path": "a.md", "tags": ["t1", "t2"], "context": "real", "timestamp": "ts"}
-    assert item["user_id"] == "b" and item["run_id"] == "d" and item["agent_id"] == "personal-memory-indexer"
+    assert item["user_id"] == "b" and item["run_id"] == "d" and item["agent_id"] == "openmem-indexer"
 
 
 def test_the_stub_drops_reserved_metadata_instead_of_failing():
@@ -803,7 +803,7 @@ def test_cli_with_mem0_sink_indexes_both_banks_and_converges_on_change(tmp_path)
             by_user.setdefault(item["user_id"], []).append(item)
         assert set(by_user) == {"coding-agent::proj", "obsidian::my-vault"}
         assert len(by_user["coding-agent::proj"]) == 2 and len(by_user["obsidian::my-vault"]) == 1
-        assert all(item["agent_id"] == "personal-memory-indexer" and item["run_id"].startswith(("project-index:v1:", "obsidian-index:v1:")) for item in route.memories.values())
+        assert all(item["agent_id"] == "openmem-indexer" and item["run_id"].startswith(("project-index:v1:", "obsidian-index:v1:")) for item in route.memories.values())
         assert any("First version of the readme." in item["memory"] for item in by_user["coding-agent::proj"])
         (note,) = by_user["obsidian::my-vault"]
         assert note["metadata"]["tags"] == ["work", "infra", "ops"] and note["metadata"]["kind"] == "note"

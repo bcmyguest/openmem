@@ -38,7 +38,7 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 export const features = [
   {
     title: 'Pluggable providers',
-    body: 'Hindsight, mem0, Cognee, or the next manifest entry. One wizard and indexer; `npx personal-memory switch` rewires compose and MCP. Data stays on each backend until you export/import yourself.',
+    body: 'Hindsight, mem0, Cognee, or the next manifest. One wizard and indexer; `npx openmem switch` rewires compose and MCP. Data stays on each backend until you export/import yourself.',
   },
   {
     title: 'Setup wizard',
@@ -66,7 +66,7 @@ export const features = [
   },
   {
     title: 'Unified MCP',
-    body: '`install-mcp` registers `personal-memory` with stable `memory_*` tools against the active API. Provider-native MCP (`--provider-only`) and NotebookLM MCP are separate servers.',
+    body: '`install-mcp` registers `openmem` with stable `memory_*` tools against the active API. Provider-native MCP (`--provider-only`) and NotebookLM MCP are separate servers.',
   },
   {
     title: 'Manifest-driven site',
@@ -94,8 +94,8 @@ export const works = [
   'mem0 (URL-only) and Cognee (pinned Docker image) compose profiles with provider wizard hooks and indexer sinks',
   'Indexer for git repositories and Obsidian vaults, with tree-sitter outlines and secret-path masking',
   'Smoke retain and recall, and an idempotent rerun that reports changed=N',
-  'Declarative config.toml and npx personal-memory tasks: up, down, doctor, install-mcp, switch',
-  'Unified personal-memory MCP (memory_add/search/recall/forget, PMM export/import) via install-mcp',
+  'Declarative config.toml and npx openmem tasks: up, down, doctor, install-mcp, switch',
+  'Unified openmem MCP (memory_add/search/recall/forget, PMM export/import) via install-mcp',
   'Opt-in NotebookLM sync; install-mcp also registers the NotebookLM MCP when enabled',
   'Provider-native MCP (mem0/Cognee) still available with install-mcp --provider-only',
 ];

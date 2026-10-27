@@ -14,7 +14,7 @@ feeds:
 ```
 
 ```sh
-npx personal-memory feed-sync
+npx openmem feed-sync
 # checkout: npm run feed-sync
 ```
 
@@ -27,9 +27,9 @@ Network use: feed-sync calls public RSS/OpenAlex URLs from the host (not from CI
 Run sync on a schedule so feeds stay fresh without manual commands:
 
 ```ini
-# ~/.config/systemd/user/personal-memory-feed-sync.timer
+# ~/.config/systemd/user/openmem-feed-sync.timer
 [Unit]
-Description=Refresh personal-memory feed cache
+Description=Refresh openmem feed cache
 
 [Timer]
 OnCalendar=hourly
@@ -40,13 +40,13 @@ WantedBy=timers.target
 ```
 
 ```ini
-# ~/.config/systemd/user/personal-memory-feed-sync.service
+# ~/.config/systemd/user/openmem-feed-sync.service
 [Unit]
-Description=personal-memory feed-sync
+Description=openmem feed-sync
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env npx personal-memory feed-sync
+ExecStart=/usr/bin/env npx openmem feed-sync
 ```
 
-Enable with `systemctl --user enable --now personal-memory-feed-sync.timer`.
+Enable with `systemctl --user enable --now openmem-feed-sync.timer`.

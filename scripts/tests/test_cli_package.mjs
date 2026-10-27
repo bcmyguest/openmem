@@ -120,7 +120,7 @@ const FAKE_V1 = {
   "sync/tests/test_s.py": "x\n",
   "config/index.yml": "sources: []\n",
   "config/notebooklm.yml": "a: 1\n",
-  "config/personal-memory.toml.example": "[memory]\n",
+  "config/openmem.toml.example": "[memory]\n",
   "config/litellm.lemond.yaml": "model_list: []\n",
   "config/machine.env": "SECRET=1\n",
   "config/hindsight.env": "SECRET=1\n",
@@ -142,7 +142,7 @@ const FAKE_V1 = {
   const got = listShippedFiles(p);
   const has = (/** @type {string} */ f) => got.includes(f);
   check("shipped: compose files and Dockerfile build contexts", has("compose.yaml") && has("compose.bench.yaml") && has("indexer/Dockerfile") && has("indexer/watch.py") && has("sync/Dockerfile") && has("bin/hindsight-project-index"));
-  check("shipped: config templates only", has("config/index.yml") && has("config/personal-memory.toml.example") && has("config/litellm.lemond.yaml") && !has("config/machine.env") && !has("config/hindsight.env"));
+  check("shipped: config templates only", has("config/index.yml") && has("config/openmem.toml.example") && has("config/litellm.lemond.yaml") && !has("config/machine.env") && !has("config/hindsight.env"));
   check("shipped: provider compose fragments but not manifests or hooks", has("providers/hindsight/compose.yaml") && !has("providers/hindsight/manifest.json") && !has("providers/hindsight/wizard.mjs"));
   check("shipped: no tests, bytecode, generated files, wizard code", !got.some((f) => /tests\/|__pycache__|\.pyc$/.test(f)) && !has(".env") && !has("compose.override.yaml") && !has("wizard/lib/run-wizard.mjs") && !has("wizard/bin/setup.mjs"));
   check("shipped: no code (scripts/, wizard/) that must run from the package", !got.some((f) => /^(scripts|wizard)\//.test(f)));
@@ -155,7 +155,7 @@ const FAKE_V1 = {
   const pk = tmp("fake-pkg");
   const stack = path.join(tmp("fake-stack"), "stack");
   writeTree(pk, FAKE_V1);
-  const base = { pkgRoot: pk, stackRoot: stack, name: "personal-memory" };
+  const base = { pkgRoot: pk, stackRoot: stack, name: "openmem" };
 
   const dry = syncStack({ ...base, version: "1.0.0", dryRun: true });
   check("sync dry-run reports creations and writes nothing", dry.created.length > 5 && !fs.existsSync(stack));
@@ -241,25 +241,24 @@ const FAKE_V1 = {
 // ---------------------------------------------------------------------------
 check("package name is openmem", pkg.name === "openmem");
 check(
-  "bin includes openmem (+ aliases) and personal-memory compat (+ setup + notebooklm-mcp + cognee-mcp + install-mcp + install-coding-agent + switch-provider), no bare pm",
-  pkg.bin["openmem"] === "cli/personal-memory.mjs" &&
+  "bin is openmem-only (+ setup + mcp + notebooklm-mcp + cognee-mcp + install-mcp + install-coding-agent + switch-provider), no bare pm or personal-memory*",
+  pkg.bin["openmem"] === "cli/openmem.mjs" &&
     pkg.bin["openmem-setup"] === "wizard/bin/setup.mjs" &&
-    pkg.bin["openmem-mcp"] === "cli/personal-memory-mcp.mjs" &&
-    pkg.bin["personal-memory"] === "cli/personal-memory.mjs" &&
-    pkg.bin["personal-memory-setup"] === "wizard/bin/setup.mjs" &&
-    pkg.bin["personal-memory-notebooklm-mcp"] === "cli/notebooklm-mcp.mjs" &&
-    pkg.bin["personal-memory-cognee-mcp"] === "cli/cognee-mcp.mjs" &&
-    pkg.bin["personal-memory-install-mcp"] === "cli/install-memory-mcp.mjs" &&
-    pkg.bin["personal-memory-install-coding-agent"] === "cli/install-coding-agent.mjs" &&
-    pkg.bin["personal-memory-switch-provider"] === "cli/switch-memory-provider.mjs" &&
-    !Object.keys(pkg.bin).includes("pm"),
+    pkg.bin["openmem-mcp"] === "cli/openmem-mcp.mjs" &&
+    pkg.bin["openmem-notebooklm-mcp"] === "cli/notebooklm-mcp.mjs" &&
+    pkg.bin["openmem-cognee-mcp"] === "cli/cognee-mcp.mjs" &&
+    pkg.bin["openmem-install-mcp"] === "cli/install-memory-mcp.mjs" &&
+    pkg.bin["openmem-install-coding-agent"] === "cli/install-coding-agent.mjs" &&
+    pkg.bin["openmem-switch-provider"] === "cli/switch-memory-provider.mjs" &&
+    !Object.keys(pkg.bin).includes("pm") &&
+    !Object.keys(pkg.bin).some((k) => k.startsWith("personal-memory")),
 );
 check("scripts.install-mcp points at install-memory-mcp.mjs", pkg.scripts?.["install-mcp"] === "node cli/install-memory-mcp.mjs");
 check(
   "scripts.switch-provider points at switch-memory-provider.mjs",
   pkg.scripts?.["switch-provider"] === "node cli/switch-memory-provider.mjs",
 );
-check("cli entry is a real file with a node shebang", !fs.lstatSync(path.join(ROOT, "cli/personal-memory.mjs")).isSymbolicLink() && read(path.join(ROOT, "cli/personal-memory.mjs")).startsWith("#!/usr/bin/env node"));
+check("cli entry is a real file with a node shebang", !fs.lstatSync(path.join(ROOT, "cli/openmem.mjs")).isSymbolicLink() && read(path.join(ROOT, "cli/openmem.mjs")).startsWith("#!/usr/bin/env node"));
 check("engines.node >=20.12.0 (the @clack/prompts floor) and publishConfig.access public", pkg.engines?.node === ">=20.12.0" && pkg.publishConfig?.access === "public");
 check("type is module and deps include @clack/prompts + @iarna/toml", pkg.type === "module" && Boolean(pkg.dependencies?.["@clack/prompts"]) && Boolean(pkg.dependencies?.["@iarna/toml"]));
 check("repository/homepage/bugs point at bcmyguest/openmem", /bcmyguest\/openmem/.test(JSON.stringify([pkg.repository, pkg.homepage, pkg.bugs])));
@@ -314,9 +313,9 @@ let inst = run(proj, [...installArgs.slice(0, 1), "--offline", ...installArgs.sl
 if (inst.status !== 0) inst = run(proj, installArgs); // offline cache cold: fall back to online
 check("npm install of the tarball succeeds", inst.status === 0, (inst.stderr || inst.stdout).slice(-600));
 
-const bin = path.join(proj, "node_modules/.bin/personal-memory");
+const bin = path.join(proj, "node_modules/.bin/openmem");
 const installed = path.join(proj, "node_modules", pkg.name);
-check("bin link and installed package exist", fs.existsSync(bin) && fs.existsSync(path.join(installed, "cli/personal-memory.mjs")));
+check("bin link and installed package exist", fs.existsSync(bin) && fs.existsSync(path.join(installed, "cli/openmem.mjs")));
 
 // Scratch environment: stubbed docker/curl, scratch HOME, ports >= 18000, throwaway project name.
 const stubs = path.join(work, "stubs");
@@ -420,7 +419,7 @@ check(
   /docker compose -p pm-test-w4 --profile hindsight up -d/.test(cfg.stdout + cfg.stderr),
   (cfg.stdout + cfg.stderr).slice(-800),
 );
-check("stack root materialized (compose, build contexts, templates, manifest)", ["compose.yaml", "compose.bench.yaml", "indexer/Dockerfile", "indexer/watch.py", "bin/hindsight-project-index", "sync/Dockerfile", "config/index.yml", "config/personal-memory.toml.example", MANIFEST_NAME].every((f) => fs.existsSync(path.join(stackRoot, f))));
+check("stack root materialized (compose, build contexts, templates, manifest)", ["compose.yaml", "compose.bench.yaml", "indexer/Dockerfile", "indexer/watch.py", "bin/hindsight-project-index", "sync/Dockerfile", "config/index.yml", "config/openmem.toml.example", MANIFEST_NAME].every((f) => fs.existsSync(path.join(stackRoot, f))));
 check("stack bin/ keeps the executable bit", (fs.statSync(path.join(stackRoot, "bin/hindsight-project-index")).mode & 0o111) !== 0);
 check("stack root has no code that must stay in the package", !fs.existsSync(path.join(stackRoot, "wizard")) && !fs.existsSync(path.join(stackRoot, "scripts")) && !fs.existsSync(path.join(stackRoot, "providers/hindsight/manifest.json")));
 check("dry-run wrote no generated files into the stack or the package", ["", "../node_modules/" + pkg.name].every((rel) => { const d = path.join(stackRoot, rel); return [".env", ".build-hash", "compose.override.yaml"].every((f) => !fs.existsSync(path.join(d, f))); }));
@@ -432,7 +431,7 @@ check("scratch HOME unchanged by dry-run", homeAfter === homeBefore, `${homeBefo
 const agentHome = path.join(work, "agent-home");
 makeHome(agentHome);
 const agentEnv = cliEnv(agentHome, { PM_STACK_ROOT: path.join(work, "agent-stack") });
-const agentBin = path.join(proj, "node_modules/.bin/personal-memory-install-coding-agent");
+const agentBin = path.join(proj, "node_modules/.bin/openmem-install-coding-agent");
 const agentInstall = cli(agentBin, ["--yes"], agentEnv);
 const agentRuntime = path.join(agentHome, ".local/share/personal-memory/agent-runtime");
 check("packed coding-agent installer succeeds", agentInstall.status === 0, agentInstall.stdout + agentInstall.stderr);
@@ -444,8 +443,13 @@ const agentSettings = [
   path.join(agentHome, ".config/opencode/opencode.json"),
 ];
 check("packed coding-agent installer wires four agents to the stable runtime", agentSettings.every((p) => fs.existsSync(p) && read(p).includes(agentRuntime) && !read(p).includes(installed)));
+const runtimeMentions = Object.fromEntries(agentSettings.map((p) => [p, read(p).split(agentRuntime).length - 1]));
 const agentReinstall = cli(agentBin, ["--yes"], agentEnv);
-check("packed coding-agent reinstall succeeds without duplicate runtime hooks", agentReinstall.status === 0 && agentSettings.every((p) => read(p).split(agentRuntime).length === 2), agentReinstall.stdout + agentReinstall.stderr);
+check(
+  "packed coding-agent reinstall succeeds without duplicate runtime hooks",
+  agentReinstall.status === 0 && agentSettings.every((p) => read(p).split(agentRuntime).length - 1 === runtimeMentions[p]),
+  agentReinstall.stdout + agentReinstall.stderr,
+);
 
 // Generated files, a local edit and a simulated package upgrade.
 fs.writeFileSync(path.join(stackRoot, ".env"), "HOST_UID=1000\n");
@@ -486,9 +490,9 @@ const coj = JSON.parse(co.stdout || "{}");
 check("PM_USE_CHECKOUT=1 uses the package root with no copy", coj.mode === "checkout" && coj.report === null && !fs.existsSync(path.join(work, "unused")) && fs.realpathSync(coj.stackRoot) === fs.realpathSync(installed), co.stdout + co.stderr);
 
 // A git checkout run (this repo): no copy, version and providers work in place.
-const cv = cli(process.execPath, [path.join(ROOT, "cli/personal-memory.mjs"), "--version"], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
-check("checkout: node cli/personal-memory.mjs --version", cv.status === 0 && cv.stdout.trim() === pkg.version, cv.stderr);
-const ci = cli(process.execPath, [path.join(ROOT, "cli/personal-memory.mjs"), "init", "--json"], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
+const cv = cli(process.execPath, [path.join(ROOT, "cli/openmem.mjs"), "--version"], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
+check("checkout: node cli/openmem.mjs --version", cv.status === 0 && cv.stdout.trim() === pkg.version, cv.stderr);
+const ci = cli(process.execPath, [path.join(ROOT, "cli/openmem.mjs"), "init", "--json"], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
 check("checkout: init uses the checkout in place", JSON.parse(ci.stdout || "{}").report === null && fs.realpathSync(JSON.parse(ci.stdout || "{}").stackRoot) === fs.realpathSync(ROOT), ci.stdout + ci.stderr);
 
 // scripts/setup.mjs runs from the package and must write .env into the stack, not the package.

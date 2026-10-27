@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Mise-like task runner for personal-memory (reads ~/.config/personal-memory/config.toml).
+ * Mise-like task runner for openmem (reads ~/.config/personal-memory/config.toml).
  *   ./pm configure | up | down | doctor
- * Packaged installs reach it through `personal-memory <task>`.
+ * Packaged installs reach it through `openmem <task>`.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -65,7 +65,7 @@ const extra = process.argv.slice(3);
 if (spec.script) {
   const script = path.join(pkgRoot, spec.script);
   if (!fs.existsSync(script)) {
-    console.error(`${spec.script} not found; run from a personal-memory checkout or install`);
+    console.error(`${spec.script} not found; run from a openmem checkout or install`);
     process.exit(1);
   }
   const r = spawnSync(process.execPath, [script, ...extra], {
@@ -77,7 +77,7 @@ if (spec.script) {
 }
 
 if (!fs.existsSync(SETUP)) {
-  console.error("setup.mjs not found; run from a personal-memory checkout or install");
+  console.error("setup.mjs not found; run from a openmem checkout or install");
   process.exit(1);
 }
 

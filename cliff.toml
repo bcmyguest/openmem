@@ -38,7 +38,7 @@ postprocessors = [
 
 [remote.github]
 owner = "bcmyguest"
-repo = "personal-memory"
+repo = "openmem"
 
 [git]
 conventional_commits = true

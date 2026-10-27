@@ -32,7 +32,7 @@ def make(url):
     return sinks.get_sink("cognee", url=url)
 
 
-FOOTER = re.compile(r"\n\n<!-- personal-memory:doc:[0-9a-f]{16} -->\n$")
+FOOTER = re.compile(r"\n\n<!-- openmem:doc:[0-9a-f]{16} -->\n$")
 
 
 def plain(document):
@@ -246,7 +246,7 @@ def test_add_multipart_shape_full():
     [upload] = body["files"]
     assert upload["name"] == "data"
     assert upload["content"] == cognee_sink.upload_text("project-index:v1:abc", "body text\nline 2\r\n")
-    assert upload["content"].startswith("body text\nline 2\r\n\n\n<!-- personal-memory:doc:")
+    assert upload["content"].startswith("body text\nline 2\r\n\n\n<!-- openmem:doc:")
     assert "project-index" not in upload["content"].split("<!--")[1]
     assert re.fullmatch(r"[0-9a-f]{16}-[0-9a-f]{8}\.md", upload["filename"])
     assert "project" not in upload["filename"] and "/" not in upload["filename"]
@@ -727,7 +727,7 @@ def test_identical_content_in_two_documents_uploads_distinct_bytes_and_keeps_bot
         sink.retain(BANK, "doc-b", "same words")
         uploads = [r["body"]["files"][0]["content"] for r in stub.requests if r["path"] == "/api/v1/add"]
         assert len(set(uploads)) == 2
-        assert all(u.startswith("same words\n\n<!-- personal-memory:doc:") for u in uploads)
+        assert all(u.startswith("same words\n\n<!-- openmem:doc:") for u in uploads)
         assert not any("doc-a" in u or "doc-b" in u for u in uploads)
         docs = route.state.documents(cognee_sink.dataset_name(BANK))
         assert sorted(d["externalMetadata"]["doc_id"] for d in docs) == ["doc-a", "doc-b"]

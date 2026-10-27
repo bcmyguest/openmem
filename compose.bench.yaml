@@ -2,7 +2,7 @@
 # fabro sandboxes reach it via host.docker.internal:8888. Loopback binding is kept.
 # Needs the hindsight profile (COMPOSE_PROFILES=hindsight in .env, or add --profile hindsight).
 # Not applied. Apply by recreating only the hindsight service:
-#   cd ~/personal-memory && docker compose -f compose.yaml -f compose.override.yaml -f compose.bench.yaml up -d hindsight
+#   cd ~/openmem && docker compose -f compose.yaml -f compose.override.yaml -f compose.bench.yaml up -d hindsight
 # The explicit -f list keeps compose.override.yaml, which compose skips when -f is given.
 services:
   hindsight:

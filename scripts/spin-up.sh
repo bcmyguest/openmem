@@ -1,8 +1,8 @@
 #!/bin/sh
-# personal-memory: test pack/install and optional GitHub release (clean subshell).
+# openmem: test pack/install and optional GitHub release (clean subshell).
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-LOG="${RUN_LOG:-/tmp/personal-memory-spin-$(date +%Y%m%d-%H%M%S).log}"
+LOG="${RUN_LOG:-/tmp/openmem-spin-$(date +%Y%m%d-%H%M%S).log}"
 
 usage() {
   cat <<EOF
@@ -34,8 +34,8 @@ case $target in
       git -C "$ROOT" merge --no-edit origin/wip/revamp
       git -C "$ROOT" push origin main
     fi
-    gh workflow run "Prepare release" --repo bcmyguest/personal-memory -f dry_run=false
-    echo "Prepare release dispatched; watch: gh run list --repo bcmyguest/personal-memory --workflow Release"
+    gh workflow run "Prepare release" --repo bcmyguest/openmem -f dry_run=false
+    echo "Prepare release dispatched; watch: gh run list --repo bcmyguest/openmem --workflow Release"
     ;;
   *)
     echo "unknown: $target" >&2

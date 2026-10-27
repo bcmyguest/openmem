@@ -23,7 +23,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const REQUIRED = [
   "package.json",
   "README.md",
-  "cli/personal-memory.mjs",
+  "cli/openmem.mjs",
   "cli/notebooklm-mcp.mjs",
   "cli/cognee-mcp.mjs",
   "cli/mem0-mcp.mjs",
@@ -47,7 +47,7 @@ export const REQUIRED = [
   "config/notebooklm.yml",
   "config/hindsight.env.example",
   "config/litellm.lemond.yaml",
-  "config/personal-memory.toml.example",
+  "config/openmem.toml.example",
   "scripts/setup.mjs",
   "scripts/gen-masks.mjs",
 ];

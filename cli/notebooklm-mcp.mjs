@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { resolveMcpContext } from "./mcp/context.mjs";
 import { listNotebooklmBanks, searchNotebooklmBank } from "./mcp/notebooklm-provider.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -227,8 +228,7 @@ async function main() {
   await serveStdio(process.stdin, (msg) => handleMessage(msg, access));
 }
 
-const thisFile = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile)) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(`notebooklm-mcp: ${err instanceof Error ? err.message : err}`);
     process.exit(1);

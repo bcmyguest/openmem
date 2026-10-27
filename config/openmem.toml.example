@@ -1,7 +1,7 @@
-# Mise-like declarative config for the personal-memory meta wizard.
+# Mise-like declarative config for the openmem meta wizard.
 #
 #   mkdir -p ~/.config/personal-memory
-#   cp config/personal-memory.toml.example ~/.config/personal-memory/config.toml
+#   cp config/openmem.toml.example ~/.config/personal-memory/config.toml
 #   $EDITOR ~/.config/personal-memory/config.toml
 #   ./setup --yes
 #
@@ -16,7 +16,7 @@
 provider = "hindsight"
 
 [stack]
-project = "personal-memory"
+project = "openmem"
 api_port = 8888
 control_plane_port = 9999
 

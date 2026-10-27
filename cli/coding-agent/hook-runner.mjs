@@ -251,7 +251,7 @@ async function main() {
     });
     if (out && Object.keys(out).length) process.stdout.write(`${JSON.stringify(out)}\n`);
   } catch (err) {
-    console.error(`personal-memory hook: ${err instanceof Error ? err.message : err}`);
+    console.error(`openmem hook: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
 }

@@ -19,7 +19,7 @@ fs.mkdirSync(path.join(home, ".config/hindsight"), { recursive: true });
 fs.writeFileSync(path.join(home, ".config/hindsight/wizard.conf"), "MEMORY_PROVIDER=mem0\n");
 const mcpPath = path.join(home, ".cursor/mcp.json");
 fs.mkdirSync(path.dirname(mcpPath), { recursive: true });
-fs.writeFileSync(mcpPath, JSON.stringify({ mcpServers: { "personal-memory": { command: "node" } } }));
+fs.writeFileSync(mcpPath, JSON.stringify({ mcpServers: { "openmem": { command: "node" } } }));
 
 import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");

@@ -25,8 +25,8 @@ test('external, anchor, and absolute links are untouched', () => {
   const md = '[a](https://x.dev) [b](#top) [c](mailto:a@b.co) [d](//cdn.x/y)';
   assert.equal(rewriteLinks(md, ctx), md);
   assert.equal(
-    rewriteLinks('![diagram](/personal-memory/diagrams/architecture-1.svg)', ctx),
-    '![diagram](/personal-memory/diagrams/architecture-1.svg)',
+    rewriteLinks('![diagram](/openmem/diagrams/architecture-1.svg)', ctx),
+    '![diagram](/openmem/diagrams/architecture-1.svg)',
   );
 });
 

@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { readKey } from "../providers/mem0/lib/env-file.mjs";
 import { MEM0_MCP_NPM_PACKAGE } from "../providers/mem0/lib/mcp-install.mjs";
 import { defaultEnvFile } from "../providers/mem0/lib/state.mjs";
@@ -99,9 +100,7 @@ async function main() {
   process.exit(code);
 }
 
-const isMain =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(`${BIN}: ${err instanceof Error ? err.message : err}`);
     process.exit(1);

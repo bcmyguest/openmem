@@ -2,26 +2,22 @@
 
 **OpenMem** is the product name for this repository (formerly *personal-memory*).
 
-## What it is
-
-An **interface layer** for coding-agent memory:
-
-- **Providers** — swap backends via manifests (`providers/*/`), compose, indexer sinks, and wizard hooks. Hindsight, mem0, and Cognee ship today.
-- **Agent surface** — one skill, unified `memory_*` MCP, and session hooks across Claude Code, Codex, Cursor, and OpenCode.
-- **Portability** — import/export through a format layer. **PMM** (Personal Memory Manifest) is the first format; more formats plug into the same orchestrator (`cli/mcp/portability.mjs`).
-
-OpenMem does not replace Hindsight, mem0, or Cognee. It owns machine plumbing and agent wiring so those engines stay interchangeable.
+For the product idea — memory interface for coding agents, providers, `memory_*`, banks, formats — start with **[Concepts](concepts.md)**.
 
 ## CLI
 
-| Preferred | Alias (compat) |
-| --- | --- |
-| `npx openmem` | `npx personal-memory` |
-| `openmem` | `personal-memory` |
+```sh
+npx openmem
+openmem setup
+openmem doctor
+```
 
-Machine config paths under `~/.config/personal-memory/` and `~/.config/hindsight/` stay as-is for now so existing installs keep working.
+Bins: `openmem`, `openmem-setup`, `openmem-mcp`, `openmem-install-mcp`, `openmem-install-coding-agent`, `openmem-switch-provider`, `openmem-notebooklm-mcp`, `openmem-cognee-mcp`.
+
+Machine config paths under `~/.config/personal-memory/` and `~/.config/hindsight/` stay as-is for now so existing installs keep working. Installers rewrite leftover `personal-memory` MCP server entries to `openmem`.
 
 ## Repo
 
 - GitHub: [bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+- Docs: [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/)
 - npm: `openmem` (package formerly `personal-memory`)

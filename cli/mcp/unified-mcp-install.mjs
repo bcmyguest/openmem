@@ -5,7 +5,7 @@ import { mergeNamedMcpServer } from "../install-memory-mcp.mjs";
 
 /** @param {string} repoRoot */
 export function unifiedMcpScriptPath(repoRoot) {
-  return path.resolve(repoRoot, "cli/personal-memory-mcp.mjs");
+  return path.resolve(repoRoot, "cli/openmem-mcp.mjs");
 }
 
 /**
@@ -34,23 +34,28 @@ export function installUnifiedMcp(opts, h) {
     stackRoot: opts.stackRoot,
   });
   if (opts.dry) {
-    h.info(`[dry-run] merge personal-memory MCP into ${mcpPath}`);
+    h.info(`[dry-run] merge openmem MCP into ${mcpPath}`);
     return { changed: false };
   }
   const mcp = fs.existsSync(mcpPath) ? JSON.parse(fs.readFileSync(mcpPath, "utf8")) : {};
-  const { mcp: next, changed, skipped } = mergeNamedMcpServer(mcp, "personal-memory", entry, {
+  const { mcp: next, changed, skipped } = mergeNamedMcpServer(mcp, "openmem", entry, {
     protect: ["hindsight", "codegraph", "notebooklm", "mem0", "cognee"],
   });
-  if (changed) {
+  const servers = { ...(next.mcpServers && typeof next.mcpServers === "object" ? next.mcpServers : {}) };
+  const droppedLegacy = Boolean(servers["personal-memory"]);
+  if (droppedLegacy) delete servers["personal-memory"];
+  const finalMcp = { ...next, mcpServers: servers };
+  const wrote = Boolean(changed) || droppedLegacy;
+  if (wrote) {
     fs.mkdirSync(path.dirname(mcpPath), { recursive: true });
-    fs.writeFileSync(mcpPath, `${JSON.stringify(next, null, 2)}\n`);
-    h.ok(`personal-memory MCP → ${mcpPath}`);
+    fs.writeFileSync(mcpPath, `${JSON.stringify(finalMcp, null, 2)}\n`);
+    h.ok(`openmem MCP → ${mcpPath}`);
   } else if (skipped) {
-    h.info(`personal-memory MCP ${skipped}`);
+    h.info(`openmem MCP ${skipped}`);
   } else {
-    h.info("personal-memory MCP already configured");
+    h.info("openmem MCP already configured");
   }
-  return { changed: Boolean(changed) };
+  return { changed: wrote };
 }
 
 /** @param {string} [pkgRoot] */

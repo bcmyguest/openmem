@@ -1,15 +1,15 @@
 ---
-name: personal-memory
+name: openmem
 description: Use this device's shared project memory from Claude Code, Codex, Cursor Agent, or OpenCode. Use when recalling past decisions, storing durable findings, correcting stale memory, or checking which memory provider is active.
 ---
 
-# Personal memory
+# OpenMem
 
-The `personal-memory` MCP exposes the same `memory_*` tools to every coding agent. It routes them to the active Hindsight, mem0, or Cognee provider. Session hooks also recall project context and retain supported session transcripts automatically.
+The `openmem` MCP exposes the same `memory_*` tools to every coding agent. It routes them to the active Hindsight, mem0, or Cognee provider. Session hooks also recall project context and retain supported session transcripts automatically.
 
 ## Scope
 
-For project work, pass the project bank explicitly so memories do not land in the MCP default `personal-memory-mcp` scope. Bank resolution uses the longest matching prefix in `index.yml` `banks`, then `~/.config/personal-memory/coding-agent.json` `mapPathToBank`, then the legacy `~/.hindsight/coding-agent.json` mapping. If none matches, it uses `coding-agent::<repository-directory-name>` and preserves the repository name's case. Nested directories resolve to the repository root; linked worktrees use the common repository's identity. Outside a Git repository, the current directory name is used.
+For project work, pass the project bank explicitly so memories do not land in the MCP default `openmem-mcp` scope. Bank resolution uses the longest matching prefix in `index.yml` `banks`, then `~/.config/personal-memory/coding-agent.json` `mapPathToBank`, then the legacy `~/.hindsight/coding-agent.json` mapping. If none matches, it uses `coding-agent::<repository-directory-name>` and preserves the repository name's case. Nested directories resolve to the repository root; linked worktrees use the common repository's identity. Outside a Git repository, the current directory name is used.
 
 ## Retrieve
 
@@ -26,4 +26,4 @@ For project work, pass the project bank explicitly so memories do not land in th
 Use `memory_provider_status` to identify the active provider when that matters. The provider can change without changing this skill or the tool names.
 # Project scope inspection
 
-Use the `memory_project_scope` MCP tool to inspect which bank a workspace resolves to and whether coding-agent session access is permitted. It accepts an absolute `cwd` and defaults to the MCP server's current working directory. The result reports the active `index.yml` bank mapping and personal-memory `mapPathToBank`; it is local and read-only and does not query a memory provider.
+Use the `memory_project_scope` MCP tool to inspect which bank a workspace resolves to and whether coding-agent session access is permitted. It accepts an absolute `cwd` and defaults to the MCP server's current working directory. The result reports the active `index.yml` bank mapping and openmem `mapPathToBank`; it is local and read-only and does not query a memory provider.

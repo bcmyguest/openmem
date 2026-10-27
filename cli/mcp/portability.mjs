@@ -128,7 +128,7 @@ export async function memoryImport(ctx, data, args, fetchFn, addFn) {
   for (const rec of pmm.records || []) {
     const content = String(rec.content || "").trim();
     if (!content) continue;
-    const bank = String(rec.scope_key || pmm.scope?.bank || pmm.scope?.user_id || "personal-memory-mcp");
+    const bank = String(rec.scope_key || pmm.scope?.bank || pmm.scope?.user_id || "openmem-mcp");
     if (strategy === "skip_duplicates" && ctx.provider === "mem0") {
       if (!mem0Seen.has(bank)) mem0Seen.set(bank, await mem0ExistingKeys(ctx, bank, fetchFn));
       const seen = mem0Seen.get(bank);

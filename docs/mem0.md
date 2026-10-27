@@ -4,13 +4,13 @@ This stack does **not** run mem0 in Docker. You run a [self-hosted mem0 REST ser
 
 **Not** the hosted platform at `https://api.mem0.ai` (different API shape).
 
-## What you run vs what personal-memory runs
+## What you run vs what openmem runs
 
-| You | personal-memory |
+| You | openmem |
 | --- | --- |
 | mem0 server (JWT, Postgres/pgvector, embedder keys) | `MEMORY_SINK=mem0`, `MEM0_API_URL` / `MEM0_INDEXER_URL` in stack env |
 | API key in `~/.config/personal-memory/mem0.env` (mode **600**) | Smoke: docs, retain, search, delete-by-id |
-| Bind server so the indexer container can reach it (see below) | `npx personal-memory install-mcp` registers Cursor MCP |
+| Bind server so the indexer container can reach it (see below) | `npx openmem install-mcp` registers Cursor MCP |
 
 ## URLs
 
@@ -35,8 +35,8 @@ There is no Hindsight-style plugin. Agents use the mem0 SDK, REST, or MCP.
 Mem0’s cloud MCP (`https://mcp.mem0.ai`) is **not** for self-hosted REST. This repo registers [`@yeyuan98/mem0-mcp`](https://www.npmjs.com/package/@yeyuan98/mem0-mcp) via `cli/mem0-mcp.mjs` (reads the key from the env file).
 
 ```sh
-MEMORY_PROVIDER=mem0 npx personal-memory install-mcp --yes
-# or: npx personal-memory install-mcp --yes --provider-only
+MEMORY_PROVIDER=mem0 npx openmem install-mcp --yes
+# or: npx openmem install-mcp --yes --provider-only
 ```
 
 Restart Cursor Agent after install. Existing `hindsight`, `codegraph`, and `notebooklm` servers are left alone.
@@ -44,10 +44,10 @@ Restart Cursor Agent after install. Existing `hindsight`, `codegraph`, and `note
 ## Switch provider
 
 ```sh
-npx personal-memory switch mem0 --yes
-# later: npx personal-memory switch hindsight --yes
+npx openmem switch mem0 --yes
+# later: npx openmem switch hindsight --yes
 ```
 
 Updates active provider config, restarts the stack (unless `--no-stack`), runs MCP install (unless `--no-mcp`). Does **not** migrate memories.
 
-See also [Architecture](architecture.md) and [Provider status](https://bcmyguest.github.io/personal-memory/docs/provider-status/).
+See also [Architecture](architecture.md) and [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).

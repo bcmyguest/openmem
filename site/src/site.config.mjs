@@ -7,9 +7,9 @@
 
 export const site = {
   name: 'OpenMem',
-  tagline: 'Interface layer for coding-agent memory.',
+  tagline: 'Memory interface for coding agents.',
   description:
-    'Pluggable providers (Hindsight, mem0, Cognee), shared wizard and indexer, multi-format import/export. Provider badges on this site come from manifests at build time.',
+    'OpenMem is a memory interface for coding agents — one memory_* API, wizard, and indexer over pluggable providers (Hindsight, mem0, Cognee, …).',
   repoUrl: 'https://github.com/bcmyguest/openmem',
   /** Branch that source links in the docs point at. */
   branch: 'main',

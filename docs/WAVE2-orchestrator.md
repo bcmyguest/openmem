@@ -46,7 +46,7 @@ Sources: docs.mem0.ai "REST API Server" and "Self-Hosted Setup"; `server/main.py
 - **user_id vs agent_id.** Records written with `infer=false` carry both fields on one record; records
   written with `infer=true` carry only one, so `user_id AND agent_id` filters return nothing for them.
   The sink only filters on `user_id` and `run_id`, and writes a fixed `agent_id` of
-  `personal-memory-indexer` for provenance.
+  `openmem-indexer` for provenance.
 - **Metadata keys.** `data, user_id, agent_id, run_id, hash, created_at, updated_at, expiration_date` are
   reserved in the stored payload; the sink prefixes any colliding metadata key with `meta_`.
 - **Search** (used by the wizard smoke): `POST /search` with `{"query", "filters": {"user_id": ...}}`

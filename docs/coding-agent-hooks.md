@@ -2,7 +2,7 @@
 
 Hindsight ships session retain/recall/reflect through
 [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents).
-personal-memory routes session work through the **unified MCP** (`memory_*`) for all three backends.
+openmem routes session work through the **unified MCP** (`memory_*`) for all three backends.
 
 ## Capability matrix
 
@@ -15,16 +15,16 @@ personal-memory routes session work through the **unified MCP** (`memory_*`) for
 | bank / scope | Hindsight banks | mem0 `user_id` | Cognee dataset |
 
 Flags live in `cli/coding-agent/capabilities.mjs`; `doctor wiring` and
-`install-coding-agent` read the same table. `npx personal-memory wiring` prints
+`install-coding-agent` read the same table. `npx openmem wiring` prints
 which session features work for the active provider.
 
 ## Install per agent
 
 ```sh
-npx personal-memory install-coding-agent --yes
+npx openmem install-coding-agent --yes
 ```
 
-- **All providers:** unified MCP and [shared skill](../skills/personal-memory/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
+- **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
 - **Optional:** `--hindsight-plugin` with `MEMORY_PROVIDER=hindsight` also runs `@vectorize-io/hindsight-coding-agents install` (legacy/alternate hook set).
 
 See [MCP install guide](mcp-install-guide.md) and [coding agents](coding-agents.md).
@@ -36,16 +36,16 @@ SessionStart hooks use recall instead of reflect. Hindsight startup recall reque
 
 ## Session scopes
 
-Indexer banks map to provider scopes (`coding-agent::repo`, `obsidian::vault`, mem0 `user_id`, Cognee dataset names). Default MCP scope key: `personal-memory-mcp`. See [coding-agent-scopes.md](coding-agent-scopes.md).
+Indexer banks map to provider scopes (`coding-agent::repo`, `obsidian::vault`, mem0 `user_id`, Cognee dataset names). Default MCP scope key: `openmem-mcp`. See [coding-agent-scopes.md](coding-agent-scopes.md).
 
 Hook access is configured in `~/.config/personal-memory/coding-agent.json`. With no file,
 hooks are enabled for all workspaces and use the bank derived from the workspace name. A
 malformed or unreadable config denies hook access, as does an event with no workspace path.
 Set `disabled: true` to turn hooks off, or set `optInOnly: true` and list allowed absolute
 workspace prefixes in `optInPaths`. Project banks resolve in this order: longest matching
-prefix in active `index.yml` `banks`, longest matching prefix in this personal-memory
+prefix in active `index.yml` `banks`, longest matching prefix in this openmem
 config, then the legacy Hindsight `~/.hindsight/coding-agent.json` mapping. Without
 a match, the literal repository directory name is used in `coding-agent::<name>` (case
 preserved). Nested workspace paths resolve to their Git repository root, and linked
-worktrees share the common repository identity. The personal-memory config owns current
+worktrees share the common repository identity. The openmem config owns current
 access and mapping policy; the legacy mapping remains supported for compatibility.

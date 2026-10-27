@@ -242,7 +242,7 @@ export function readManifest(stackRoot) {
   }
   if (typeof m.schema === "number" && m.schema > MANIFEST_SCHEMA) {
     throw new Error(
-      `${file} was written by a newer personal-memory (schema ${m.schema}); upgrade the CLI`,
+      `${file} was written by a newer openmem (schema ${m.schema}); upgrade the CLI`,
     );
   }
   return m;
@@ -298,7 +298,7 @@ function inspectDisk(abs) {
 export function syncStack({
   pkgRoot,
   stackRoot,
-  name = "personal-memory",
+  name = "openmem",
   version = "0.0.0",
   force = false,
   dryRun = false,
@@ -421,7 +421,7 @@ export function changedCount(r) {
 export function formatReport(r) {
   const lines = [];
   const verb = r.dryRun ? "would be" : "were";
-  lines.push(`stack root: ${r.stackRoot} (personal-memory ${r.version})`);
+  lines.push(`stack root: ${r.stackRoot} (openmem ${r.version})`);
   if (r.created.length) lines.push(`  ${r.created.length} file(s) ${verb} created`);
   if (r.updated.length) lines.push(`  ${r.updated.length} file(s) ${verb} updated: ${r.updated.join(", ")}`);
   if (r.restored.length) lines.push(`  ${r.restored.length} missing file(s) ${verb} restored: ${r.restored.join(", ")}`);
@@ -429,7 +429,7 @@ export function formatReport(r) {
   if (!changedCount(r)) lines.push(`  ${r.unchanged} shipped file(s) up to date`);
   for (const c of r.conflicts) lines.push(`  CONFLICT ${c.path}: ${c.reason}`);
   if (r.conflicts.length) {
-    lines.push("  Resolve by merging by hand, or run: personal-memory init --force (keeps a .bak copy)");
+    lines.push("  Resolve by merging by hand, or run: openmem init --force (keeps a .bak copy)");
   }
   for (const o of r.orphans) lines.push(`  note: ${o} is no longer shipped; left in place`);
   return lines;

@@ -2,7 +2,7 @@
 /**
  * Install memory-related MCP servers into ~/.cursor/mcp.json only.
  *
- *   personal-memory-install-mcp [--yes] [--dry-run] [--notebooklm] [--notebooklm-only] [--provider-only]
+ *   openmem-install-mcp [--yes] [--dry-run] [--notebooklm] [--notebooklm-only] [--provider-only]
  *   npm run install-mcp -- …
  *
  * Provider: MEMORY_PROVIDER → ~/.config/hindsight/wizard.conf → hindsight.
@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { setNotebooklmAccessEnabled } from "../wizard/lib/notebooklm-agent-access.mjs";
 import { envValue } from "../wizard/lib/paths.mjs";
 import { installNotebooklmMcp } from "../providers/hindsight/lib/notebooklm-mcp-install.mjs";
@@ -35,21 +36,21 @@ import { resolveStackRoot } from "./stack.mjs";
 export { mem0McpEntry, mergeMem0McpServer, resolveMem0ApiUrl };
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BIN = "personal-memory-install-mcp";
+const BIN = "openmem-install-mcp";
 const DEFAULT_PROVIDER = "hindsight";
 /** Sibling MCP servers this tool must never rewrite (merge targets mem0/cognee stay off this list). */
 export const PROTECTED_MCP_SERVERS = Object.freeze(["hindsight", "codegraph", "notebooklm"]);
 
 const HELP = `${BIN}: merge MCP servers into ~/.cursor/mcp.json
 
-By default merges the personal-memory unified MCP (memory_add/search/recall/forget on the
+By default merges the openmem unified MCP (memory_add/search/recall/forget on the
 active provider). Also NotebookLM when sync is enabled or --notebooklm. Native mem0/Cognee
 MCP: --provider-only. Skip unified: --no-unified-mcp. Hindsight session memory still uses
 the hindsight-coding-agents plugin.
 
 Usage:
   ${BIN} [flags]
-  npx personal-memory install-mcp [flags]
+  npx openmem install-mcp [flags]
   npm run install-mcp -- [flags]             # checkout
 
 Flags:
@@ -58,7 +59,7 @@ Flags:
   --notebooklm        force NotebookLM MCP + notebooklmAccess.enabled
   --notebooklm-only   only NotebookLM step (skip provider MCP)
   --provider-only     only provider MCP (skip NotebookLM)
-  --no-unified-mcp    skip merging the personal-memory unified MCP server
+  --no-unified-mcp    skip merging the openmem unified MCP server
   -h, --help          this help
 
 Provider resolution: MEMORY_PROVIDER, else wizard.conf, else hindsight.
@@ -297,7 +298,7 @@ export async function runInstallMemoryMcp(opts) {
     else if (provider === "hindsight") plan.push("hindsight note (coding-agents plugin separate)");
     else plan.push(`provider=${provider} (no MCP handler)`);
   }
-  if (!flags.noUnifiedMcp) plan.push("personal-memory unified MCP (memory_add/search/recall/forget)");
+  if (!flags.noUnifiedMcp) plan.push("openmem unified MCP (memory_add/search/recall/forget)");
 
   h.info(`provider=${provider}`);
   h.info(`plan: ${plan.length ? plan.join("; ") : "(nothing)"}`);
@@ -339,7 +340,7 @@ export async function runInstallMemoryMcp(opts) {
   if (doProvider) {
     if (provider === "hindsight") {
       h.info(
-        "hindsight coding-agents plugin is separate: run `personal-memory setup` / `npx @vectorize-io/hindsight-coding-agents install …`",
+        "hindsight coding-agents plugin is separate: run `openmem setup` / `npx @vectorize-io/hindsight-coding-agents install …`",
       );
       didProvider = true;
     } else if (provider === "mem0") {
@@ -420,8 +421,6 @@ async function main(argv) {
   }
 }
 
-const isMain =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   main(process.argv.slice(2));
 }

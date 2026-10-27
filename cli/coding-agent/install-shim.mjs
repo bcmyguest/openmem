@@ -65,10 +65,12 @@ export function installSessionShim(opts) {
         h.info(`[dry-run] register opencode plugin ${opencodePlugin} in ${cfgPath}`);
       } else {
         mergeOpencodeConfig(home, "plugin", (existing) => {
-          const plugins = Array.isArray(existing) ? existing.filter((p) => !String(p).includes("personal-memory")) : [];
+          const plugins = Array.isArray(existing)
+            ? existing.filter((p) => !/openmem|personal-memory/.test(String(p)))
+            : [];
           return [...plugins, opencodePlugin];
         });
-        h.ok(`opencode: registered personal-memory plugin in ${cfgPath}`);
+        h.ok(`opencode: registered openmem plugin in ${cfgPath}`);
       }
       installed.push("opencode");
       continue;

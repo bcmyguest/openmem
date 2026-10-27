@@ -24,7 +24,7 @@ formal M2/M3/C2/C3 reviewer sign-off, coding-agent story, README/operator docs, 
 | Issue | Fix |
 | --- | --- |
 | Obsidian notes not found | Wizard scanned `~/work`; vault lives under `~/work-notes`. Multi-root + explicit vault paths in index wizard; update this host's `index.yml`. |
-| `./setup` only | Package already has `personal-memory setup`; add `npm run setup` and make the checkout `./setup` story match the published CLI. |
+| `./setup` only | Package already has `openmem setup`; add `npm run setup` and make the checkout `./setup` story match the published CLI. |
 
 ## Slices
 
@@ -36,7 +36,7 @@ formal M2/M3/C2/C3 reviewer sign-off, coding-agent story, README/operator docs, 
 | CA-M | mem0 coding-agent + operator docs in provider tree | `providers/mem0/**` (not README) | R-M |
 | CA-C | Cognee coding-agent + Ollama LLM wiring in wizard | `providers/cognee/**` (not README) | R-C |
 | C-LIVE | Cognee live E2E vs real image + Ollama; sink/smoke fixes | `indexer/sinks/cognee.py`, `indexer/tests/test_cognee*`, `providers/cognee/lib/smoke.mjs` | CA-C |
-| M-DX | mem0 DX: toml example, validate polish, smoke edge cases | `providers/mem0/**`, `indexer/tests/test_mem0*`, `config/personal-memory.toml.example` | CA-M |
+| M-DX | mem0 DX: toml example, validate polish, smoke edge cases | `providers/mem0/**`, `indexer/tests/test_mem0*`, `config/openmem.toml.example` | CA-M |
 | I3 | Integrator: README, memory-providers.md, WAVE2/3 ledgers, promote only if C-LIVE green | `README.md`, `docs/*`, manifests | all |
 | F3 | Final secrets review of Wave 3 diff | read-only | I3 |
 
@@ -74,12 +74,12 @@ formal M2/M3/C2/C3 reviewer sign-off, coding-agent story, README/operator docs, 
 
 **Setup**
 
-- Project: `PM_PROJECT=pm-cognee-live` (did not touch `personal-memory` / profile `hindsight`).
+- Project: `PM_PROJECT=pm-cognee-live` (did not touch `openmem` / profile `hindsight`).
 - Image: `cognee/cognee@sha256:29427e968f8b273db0bb7b037a7bb119d7695d960f73a59d649f00c5111a85bd` (1.6.5).
 - Port: `127.0.0.1:8766` (`COGNEE_PORT=8766`).
 - Env: `~/.config/personal-memory/cognee.env` (mode 600) — Ollama block with
   `LLM_PROVIDER=ollama`, `LLM_API_KEY=ollama`, `LLM_MODEL=gemma4:e2b`,
-  embeddings `nomic-embed-text:latest` (pulled into `personal-memory-ollama-1`).
+  embeddings `nomic-embed-text:latest` (pulled into `openmem-ollama-1`).
 - Endpoint reality: CA-C default `http://host.docker.internal:11434` **connection refused**
   from the Cognee container because compose Ollama is published as `127.0.0.1:11434` only.
   Live run used `LLM_ENDPOINT=http://ollama:11434` (+ matching `EMBEDDING_ENDPOINT`) after

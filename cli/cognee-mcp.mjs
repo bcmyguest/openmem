@@ -6,6 +6,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { DEFAULT_PORT } from "../providers/cognee/lib/state.mjs";
 
 export { DEFAULT_PORT };
@@ -251,8 +252,7 @@ async function main() {
   await serveStdio(process.stdin, (msg) => handleMessage(msg, access));
 }
 
-const thisFile = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile)) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(`cognee-mcp: ${err instanceof Error ? err.message : err}`);
     process.exit(1);

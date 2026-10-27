@@ -12,7 +12,7 @@ const supportedNames = providers.filter((p) => p.status === 'supported').map((p)
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
-  'Run Hindsight, mem0, or Cognee locally for coding agents. One wizard and indexer; switch backends with the CLI.';
+  'Memory interface for coding agents: stable memory_* tools over Hindsight, mem0, Cognee, or the next provider.';
 
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
@@ -30,7 +30,8 @@ npx ${site.npm.package} switch mem0 --yes`;
         <span class="whitespace-nowrap">{site.name}</span>
       </a>
       <div class="ml-auto flex items-center gap-1 text-sm">
-        <a href={withBase('docs/getting-started/')} class="rounded-md px-3 py-2 hover:bg-hover">Docs</a>
+        <a href={withBase('docs/concepts/')} class="rounded-md px-3 py-2 hover:bg-hover">Concepts</a>
+        <a href={withBase('docs/getting-started/')} class="hidden rounded-md px-3 py-2 hover:bg-hover sm:inline">Docs</a>
         <a href="#providers" class="hidden rounded-md px-3 py-2 hover:bg-hover sm:inline">Providers</a>
         <a href="#install" class="hidden rounded-md px-3 py-2 hover:bg-hover sm:inline">Install</a>
         <a href={site.repoUrl} class="rounded-md px-3 py-2 hover:bg-hover">Source</a>
@@ -45,13 +46,14 @@ npx ${site.npm.package} switch mem0 --yes`;
   <main id="main">
     <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
       <div class="max-w-3xl">
-        <Badge variant="outline">Local · Docker Compose · Manifest-driven</Badge>
+        <Badge variant="outline">Pluggable providers · one agent surface</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          personal-memory wires up indexing and compose for the memory API you pick. Agents use that provider’s plugin or MCP; this repo is plumbing, not a replacement memory product. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
+          One <code>memory_*</code> surface, wizard, and indexer over pluggable backends — keep using Hindsight, mem0, or Cognee without rewriting agent wiring. OpenMem is the interface, not a memory product. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <Button href="#install" size="lg">Install</Button>
+          <Button href={withBase('docs/concepts/')} size="lg">Concepts</Button>
+          <Button href="#install" variant="outline" size="lg">Install</Button>
           <Button href={withBase('docs/getting-started/')} variant="outline" size="lg">Quickstart</Button>
         </div>
       </div>
@@ -174,7 +176,7 @@ npx ${site.npm.package} switch mem0 --yes`;
                 Command shape you will use after publish. Until then, clone and run <code>npx . setup</code> (same subcommands).
               </p>
             )}
-            <div class="mt-4"><CodeBlock code={npxCommand} label="npx personal-memory commands" copy={site.npm.published} /></div>
+            <div class="mt-4"><CodeBlock code={npxCommand} label="npx openmem commands" copy={site.npm.published} /></div>
           </Card>
           <Card class="min-w-0 bg-panel-raised">
             <h3 class="flex flex-wrap items-center gap-2 font-semibold">
@@ -212,6 +214,7 @@ npx ${site.npm.package} switch mem0 --yes`;
   <footer class="border-t border-line py-10 text-sm text-muted">
     <div class="mx-auto flex max-w-6xl flex-wrap gap-x-6 gap-y-2 px-4 sm:px-6">
       <span>{site.name}</span>
+      <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('docs/concepts/')}>Concepts</a>
       <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('docs/getting-started/')}>Docs</a>
       <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('docs/provider-status/')}>Provider status</a>
       <a class="underline-offset-4 hover:text-ink hover:underline" href={withBase('llms.txt')}>llms.txt</a>

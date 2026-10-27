@@ -11,7 +11,7 @@
 #     provider. This fragment points the indexer at your service and makes it wait for it.
 #   - `litellm` and `hindsight` carry the profile "hindsight" and do not start under any other profile.
 # Keep this fragment small: one service (or a few), its volumes, and the indexer wiring. Never copy the indexer
-# build or image; `personal-memory-indexer:local` is shared.
+# build or image; `openmem-indexer:local` is shared.
 
 services:
   example:

@@ -51,7 +51,7 @@ Synced notebooks land in Hindsight banks named `notebooklm::<slug>`. The coding-
 **Primary paths** (pick one):
 
 1. **Wizard** — when you enable NotebookLM sync in setup (step 6), the wizard asks whether to allow coding agents to query those banks via MCP (`notebooklm_list_banks` / `notebooklm_search`). Default is yes after sync is enabled. On yes it writes `notebooklmAccess.enabled: true` into a **real** `~/.hindsight/coding-agent.json` (if that path was a symlink to the repo template, it is copied to a regular file first so machine settings never land in `config/coding-agent.json`) and merges a `notebooklm` entry into `~/.cursor/mcp.json`.
-2. **`npx personal-memory install-mcp`** — same enable + MCP merge when NotebookLM is already on (`notebooklm.yml` `enabled: true`) or with `--notebooklm` / `--notebooklm-only`. See [Coding agents and MCP](coding-agents.md).
+2. **`npx openmem install-mcp`** — same enable + MCP merge when NotebookLM is already on (`notebooklm.yml` `enabled: true`) or with `--notebooklm` / `--notebooklm-only`. See [Coding agents and MCP](coding-agents.md).
 
 Restart Cursor Agent after either path. Manual JSON remains a fallback if you skipped the prompt or need to change allowlists later:
 
@@ -77,7 +77,7 @@ When `enabled` is true, the wizard or `install-mcp` merges a `notebooklm` entry 
 ```sh
 # after enabling notebooklmAccess (wizard, install-mcp, or hand-edit)
 node cli/notebooklm-mcp.mjs
-# or: personal-memory-notebooklm-mcp
+# or: openmem-notebooklm-mcp
 ```
 
 Enterprise backend (`backend: enterprise`): the documented NotebookLM Enterprise REST API lists recently viewed notebooks only. It returns no source or note text, so this backend syncs notebook metadata only. It is untested against a live Enterprise project.

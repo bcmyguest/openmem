@@ -1,7 +1,7 @@
 ---
 name: update-memory-provider-compatibility
 description: >-
-  Update personal-memory when a memory provider changes API, env vars, compose, or
+  Update openmem when a memory provider changes API, env vars, compose, or
   coding-agent integration. Use for Hindsight upgrades, mem0 API drift, or cross-provider fixes.
 ---
 
