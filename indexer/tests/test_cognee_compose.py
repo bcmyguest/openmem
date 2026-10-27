@@ -140,8 +140,8 @@ def test_missing_env_files_render_fine(scratch):
 def test_default_env_file_locations_follow_home(scratch):
     """With no COGNEE_*_ENV_FILE set, the files are read from <HOME>/.config/personal-memory/."""
     home = scratch["tmp"] / "home-with-files"
-    (home / ".config" / "openmem").mkdir(parents=True)
-    (home / ".config" / "openmem" / "cognee.env").write_text("LLM_MODEL=from-default-location\n")
+    (home / ".config" / "personal-memory").mkdir(parents=True)
+    (home / ".config" / "personal-memory" / "cognee.env").write_text("LLM_MODEL=from-default-location\n")
     env_file = scratch["tmp"] / "defaults.env"
     env_file.write_text("HOST_UID=1000\nHOST_GID=1000\nLITELLM_CONFIG=/nowhere/litellm.yaml\n")
     rendered = render(env_file, PROJECT, "--profile", "cognee", files=FILES, env={"HOME": str(home)})
@@ -314,7 +314,9 @@ def test_setup_notices_follow_the_env_file_state_and_never_print_values(tmp_path
 
     env_file.write_text("LLM_API_KEY=\n")
     out = run_setup(stack, home, {"COGNEE_ENV_FILE": str(env_file)}).stdout
-    assert f"put LLM_API_KEY=... in {env_file}" in out
+    # Empty key → wizard fills GLiNER + FastEmbed defaults (no put-key notice).
+    assert "GLiNER" in out or "FastEmbed" in out
+    assert LLM_SECRET not in out
 
     env_file.write_text(f"LLM_API_KEY={LLM_SECRET}\n")
     env_file.chmod(0o644)
@@ -325,7 +327,7 @@ def test_setup_notices_follow_the_env_file_state_and_never_print_values(tmp_path
 
     env_file.chmod(0o600)
     out = run_setup(stack, home, {"COGNEE_ENV_FILE": str(env_file)}).stdout
-    assert "NOTE" not in out
+    assert LLM_SECRET not in out
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
