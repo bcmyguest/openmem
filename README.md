@@ -3,7 +3,6 @@
 [![npm version](https://img.shields.io/npm/v/openmem.svg)](https://www.npmjs.com/package/openmem)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/score.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
-[![smithery badge](https://smithery.ai/badge/@bcmyguest/openmem-mcp)](https://smithery.ai/server/@bcmyguest/openmem-mcp)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
 
 [![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/card.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
