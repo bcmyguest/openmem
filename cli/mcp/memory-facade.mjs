@@ -24,13 +24,19 @@ export const UNIFIED_MCP_TOOLS = [
   {
     name: "memory_add",
     description:
-      "Store text in the active memory provider (Hindsight bank, mem0 user scope, or Cognee dataset ingest when supported).",
+      "Store text in the active memory provider (Hindsight bank, mem0 user scope, or Cognee dataset ingest when supported). " +
+      "On Hindsight, defaults to async ingest so the MCP returns before LLM extraction finishes (avoids client timeouts).",
     inputSchema: {
       type: "object",
       properties: {
         content: { type: "string", description: "Text to remember" },
         bank: { type: "string", description: "Hindsight bank or mem0 user_id scope (default: personal-memory-mcp)" },
         metadata: { type: "object", description: "Optional provider-specific metadata" },
+        async: {
+          type: "boolean",
+          description:
+            "Hindsight only: queue background ingest (default true). Set false to wait for extraction (slow; may hit MCP timeouts).",
+        },
       },
       required: ["content"],
       additionalProperties: false,
@@ -165,6 +171,16 @@ async function httpJson(url, init, fetchFn = fetch) {
 
 const DEFAULT_BANK = "personal-memory-mcp";
 
+/** Hindsight ingest: default async so Cursor/Claude MCP clients do not time out on extraction. */
+function hindsightMemoryAddAsync(args) {
+  if (args.async === true) return true;
+  if (args.async === false) return false;
+  const env = String(process.env.PM_MEMORY_ADD_ASYNC || "").trim().toLowerCase();
+  if (env === "0" || env === "false" || env === "no") return false;
+  if (env === "1" || env === "true" || env === "yes") return true;
+  return true;
+}
+
 /**
  * @param {ReturnType<import("./context.mjs").resolveMcpContext>} ctx
  * @param {string} name
@@ -267,7 +283,7 @@ async function callHindsight(ctx, name, args, fetchFn) {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items: [{ content }], async: false }),
+        body: JSON.stringify({ items: [{ content }], async: hindsightMemoryAddAsync(args) }),
       },
       fetchFn,
     );
@@ -281,7 +297,8 @@ async function callHindsight(ctx, name, args, fetchFn) {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, ...(args.budget ? { budget: args.budget } : {}),
+          ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}) }),
       },
       fetchFn,
     );

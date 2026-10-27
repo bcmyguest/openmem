@@ -19,7 +19,7 @@ For project work, pass the project bank explicitly so memories do not land in th
 
 ## Store and correct
 
-- Session hooks capture supported conversations. When the user explicitly asks to remember a durable fact, external note, or decision now, call `memory_add` with a concise, self-contained record and the project bank.
+- Session hooks capture supported conversations. When the user explicitly asks to remember a durable fact, external note, or decision now, call `memory_add` with a concise, self-contained record and the project bank. On Hindsight, `memory_add` defaults to **async** ingest (omit `async` or pass `async: true`) so MCP clients do not time out; use `async: false` only when you must wait for extraction.
 - When verified code or current documentation contradicts a memory, call `memory_add` with a correction that states the old claim, the current fact, and the evidence. Do not silently leave a known false record to resurface.
 - `memory_forget` can delete an entire Hindsight bank. Confirm the exact scope before using it for bulk deletion.
 
