@@ -32,14 +32,7 @@ npm install && npx . setup
 
 **Needs:** Docker Compose v2, Node ≥ 20.12, and an LLM route if you use Hindsight (lemond, Ollama, or OpenAI-compatible — set in the wizard).
 
-### Day-2
-
-```sh
-npx @bcmyguest/openmem up
-npx @bcmyguest/openmem down
-npx @bcmyguest/openmem switch mem0 --yes
-npx @bcmyguest/openmem doctor
-```
+Later: `npx @bcmyguest/openmem up` / `down` / `switch <provider> --yes` / `doctor`.
 
 Wizard dry-run (what first setup plans — no writes):
 
