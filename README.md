@@ -2,10 +2,10 @@
 
 [![npm version](https://img.shields.io/npm/v/@bcmyguest/openmem.svg)](https://www.npmjs.com/package/@bcmyguest/openmem)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/score.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
+[![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/score.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem/score)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
 
-[![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/card.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
+[![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) · **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 

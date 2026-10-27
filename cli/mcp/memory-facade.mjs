@@ -14,28 +14,47 @@ const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 export const UNIFIED_MCP_TOOLS = [
   {
     name: "memory_project_scope",
-    description: "Read the local project bank mapping and session access policy for a workspace. Makes no memory-provider calls.",
+    title: "Resolve project bank",
+    description:
+      "Resolve the OpenMem bank / user_id scope and session access policy for a workspace path. " +
+      "Use before memory_add or memory_search when you need the project bank name. " +
+      "Does not call the memory provider HTTP API — local mapping only. " +
+      "Prefer this over guessing bank names; do not use for storing or searching memories.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
-      properties: { cwd: { type: "string", description: "Absolute workspace path (defaults to the MCP process working directory)" } },
+      properties: {
+        cwd: {
+          type: "string",
+          description: "Absolute workspace path (defaults to the MCP process working directory)",
+        },
+      },
       additionalProperties: false,
     },
   },
   {
     name: "memory_add",
+    title: "Store a memory",
     description:
-      "Store text in the active memory provider (Hindsight bank, mem0 user scope, or Cognee dataset ingest when supported). " +
-      "On Hindsight, defaults to async ingest so the MCP returns before LLM extraction finishes (avoids client timeouts).",
+      "Write durable text into the active OpenMem provider (Hindsight bank, mem0 user_id, or Cognee dataset). " +
+      "Use for facts, decisions, and session notes that should persist across turns. " +
+      "Pass bank from memory_project_scope for project work; default scope is openmem-mcp. " +
+      "Not for search or synthesis — use memory_search / memory_recall / memory_reflect. " +
+      "On Hindsight, async ingest is the default so the tool returns before LLM extraction finishes.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        content: { type: "string", description: "Text to remember" },
-        bank: { type: "string", description: "Hindsight bank or mem0 user_id scope (default: openmem-mcp)" },
-        metadata: { type: "object", description: "Optional provider-specific metadata" },
+        content: { type: "string", description: "Plain text to store as a durable memory" },
+        bank: {
+          type: "string",
+          description: "Hindsight bank or mem0 user_id / Cognee dataset scope (default: openmem-mcp)",
+        },
+        metadata: { type: "object", description: "Optional provider-specific metadata object" },
         async: {
           type: "boolean",
           description:
-            "Hindsight only: queue background ingest (default true). Set false to wait for extraction (slow; may hit MCP timeouts).",
+            "Hindsight only: true (default) returns after enqueueing ingest; false waits for extraction (may hit MCP client timeouts).",
         },
       },
       required: ["content"],
@@ -44,13 +63,18 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_search",
-    description: "Semantic or graph search over memories in the active provider.",
+    title: "Search memories",
+    description:
+      "Run a semantic or graph search over stored memories in the active provider and return ranked hits. " +
+      "Use when you need raw matches for a query. Prefer memory_recall for question-shaped context retrieval, " +
+      "and memory_reflect when you need a synthesized answer with evidence. Does not write or delete memories.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string" },
-        bank: { type: "string", description: "Optional bank / user_id scope" },
-        limit: { type: "number", description: "Max results where supported" },
+        query: { type: "string", description: "Search query text" },
+        bank: { type: "string", description: "Optional bank / user_id / dataset scope" },
+        limit: { type: "number", description: "Max hits where the provider supports it" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -58,14 +82,19 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_recall",
+    title: "Recall context for a question",
     description:
-      "Retrieve context for a question (Hindsight recall API; mem0/Cognee use search under the hood).",
+      "Retrieve memory context for a natural-language question. On Hindsight this calls the recall API; " +
+      "on mem0 and Cognee it searches and returns the hits. Use for grounding an answer in stored context. " +
+      "Prefer memory_search for keyword/semantic hit lists; prefer memory_reflect for LLM synthesis of those hits. " +
+      "Read-only — does not store or delete.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string" },
-        bank: { type: "string" },
-        limit: { type: "number" },
+        query: { type: "string", description: "Question or topic to recall context for" },
+        bank: { type: "string", description: "Optional bank / user_id / dataset scope" },
+        limit: { type: "number", description: "Max items where supported" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -73,27 +102,41 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_forget",
-    description: "Delete a memory by id (mem0) or drop an entire Hindsight bank when bank is set without memory_id.",
+    title: "Delete memories",
+    description:
+      "Delete stored memories. Destructive: on mem0 requires memory_id; on Hindsight, bank without memory_id drops that entire bank. " +
+      "Confirm the id or bank with the user before calling. Cognee delete is not exposed here. " +
+      "Not for export — use memory_export first if you need a backup.",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        memory_id: { type: "string", description: "Provider memory id (mem0)" },
-        bank: { type: "string", description: "Hindsight bank to delete, or mem0 user_id scope for bulk delete" },
+        memory_id: { type: "string", description: "Provider memory id (required for mem0 deletes)" },
+        bank: {
+          type: "string",
+          description: "Hindsight bank to drop (when memory_id omitted), or mem0 user_id scope",
+        },
       },
       additionalProperties: false,
     },
   },
   {
     name: "memory_export",
+    title: "Export memories (PMM)",
     description:
-      "Export memories as PMM v1 (json/jsonl). Hindsight lists via /memories/list; mem0 GET /memories; Cognee dataset /data.",
+      "Export memories as Personal Memory Manifest (PMM) v1 JSON or JSONL for backup or cross-provider import. " +
+      "Hindsight lists /memories/list; mem0 GET /memories; Cognee dataset /data. " +
+      "Use before memory_import or openmem switch. Read-only against the provider store; large banks may be heavy — pass bank when possible. " +
+      "Does not change provider selection.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        format: { type: "string", enum: ["json", "jsonl"], description: "Serialization (default json)" },
+        format: { type: "string", enum: ["json", "jsonl"], description: "Serialization format (default json)" },
         bank: {
           type: "string",
-          description: "Hindsight bank, mem0 user_id, or indexer bank for Cognee dataset mapping. Omit on Hindsight to export all banks.",
+          description:
+            "Hindsight bank, mem0 user_id, or indexer bank for Cognee. Omit on Hindsight to export all banks.",
         },
       },
       additionalProperties: false,
@@ -101,12 +144,21 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_import",
-    description: "Import PMM v1 payload into the active provider (best-effort cross-provider).",
+    title: "Import memories (PMM)",
+    description:
+      "Import a PMM v1 payload into the active provider. Best-effort across providers (content + scope_key mapped; embeddings/graphs not preserved). " +
+      "Use after memory_export when migrating or restoring. merge_strategy skip_duplicates (default) avoids re-adding known mem0 ids/fingerprints; " +
+      "overwrite re-imports and may duplicate on backends without upsert. Not a substitute for openmem switch.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        data: { type: "string", description: "Serialized export payload" },
-        merge_strategy: { type: "string", enum: ["skip_duplicates", "overwrite"] },
+        data: { type: "string", description: "Serialized PMM export (json or jsonl text)" },
+        merge_strategy: {
+          type: "string",
+          enum: ["skip_duplicates", "overwrite"],
+          description: "How to treat records that already exist (default skip_duplicates)",
+        },
       },
       required: ["data"],
       additionalProperties: false,
@@ -114,19 +166,28 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_provider_status",
-    description: "Report active MEMORY_PROVIDER and resolved backend URL (no secrets).",
+    title: "Provider status",
+    description:
+      "Report the active MEMORY_PROVIDER id and resolved backend base URL (never secrets or API keys). " +
+      "Use to verify which engine OpenMem is talking to before add/search. Read-only local/config resolution.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
     name: "memory_reflect",
+    title: "Reflect / synthesize an answer",
     description:
-      "Synthesize session context for a question. Hindsight uses recall; mem0/Cognee search then optional LiteLLM synthesis (PM_LLM_URL / stack LiteLLM).",
+      "Synthesize an answer from stored memories for a question. Hindsight uses native reflect with evidence; " +
+      "mem0/Cognee search first, then optional LiteLLM synthesis when PM_LLM_URL / stack LiteLLM is configured. " +
+      "Use when the user wants a reasoned answer, not a raw hit list (memory_search) or plain context dump (memory_recall). " +
+      "Does not permanently store the synthesized answer unless you call memory_add afterward.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string" },
-        bank: { type: "string" },
-        limit: { type: "number" },
+        query: { type: "string", description: "Question to answer from memory" },
+        bank: { type: "string", description: "Optional bank / user_id / dataset scope" },
+        limit: { type: "number", description: "Max evidence items where supported" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -134,10 +195,18 @@ export const UNIFIED_MCP_TOOLS = [
   },
   {
     name: "memory_consolidate",
-    description: "Provider maintenance: Cognee cognify for a bank/dataset; Hindsight notes LiteLLM route; mem0 skips.",
+    title: "Consolidate / cognify",
+    description:
+      "Run provider maintenance that improves searchability of already-ingested data. " +
+      "Cognee: cognify for a bank/dataset. Hindsight: reports LiteLLM route notes. mem0: no-op. " +
+      "Use after bulk memory_add or indexing when the provider needs a graph/index rebuild. " +
+      "Not for reading memories — use memory_search/recall after consolidate completes.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
-      properties: { bank: { type: "string" } },
+      properties: {
+        bank: { type: "string", description: "Bank / dataset to consolidate (required for Cognee cognify)" },
+      },
       additionalProperties: false,
     },
   },
@@ -431,7 +500,7 @@ export async function handleUnifiedMessage(msg, ctx, fetchFn = fetch) {
       result: {
         protocolVersion,
         capabilities: { tools: {} },
-        serverInfo: { name: "openmem", version: "0.1.0" },
+        serverInfo: { name: "openmem", version: "0.6.4" },
       },
     };
   }
