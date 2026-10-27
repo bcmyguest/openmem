@@ -33,18 +33,18 @@ Flip `site.npm.published` to `true` in `site/src/site.config.mjs` in the same ch
 4. Install: `npx -y openmem-mcp`
 5. After indexing, **Claim ownership** (repo already has `glama.json` with maintainer `bcmyguest`)
 
-Expected URL: `https://glama.ai/mcp/servers/@bcmyguest/openmem` (exact slug may vary)
+Listing name on Glama: **openmem-mcp**. Canonical URL (repo slug): `https://glama.ai/mcp/servers/@bcmyguest/openmem`
 
-README already has the Glama score badge for that path. After the listing is live and scored, the badge fills in; until then it may look empty/broken — that is expected.
+README badges use the Glama name (`@bcmyguest/openmem-mcp` score/card images) and link to that canonical page.
 
 ## 3. Smithery
 
 1. Sign in at https://smithery.ai with GitHub `bcmyguest`
 2. https://smithery.ai/new → **Add from GitHub** → `bcmyguest/openmem`
-3. Confirm `smithery.yaml` / `npx -y openmem-mcp`
+3. Name the server **openmem-mcp**; confirm `smithery.yaml` / `npx -y openmem-mcp`
 4. Tags: `memory`, `coding-agents`, `hindsight`, `mem0`, `cognee`, `mcp`
 
-README already has the Smithery badge linking to `@bcmyguest/openmem`. If Smithery assigns a different slug, update the badge URLs in `README.md` to match.
+README Smithery badge targets `@bcmyguest/openmem-mcp`. If Smithery assigns a different slug, update the badge URLs in `README.md` to match.
 
 ## 4. Official MCP Registry
 

@@ -23,8 +23,8 @@ Once on npm: `npx openmem` / `npx openmem-mcp`
 - Repo: https://github.com/bcmyguest/openmem
 - Concepts: https://bcmyguest.github.io/openmem/docs/concepts/
 - Release: https://github.com/bcmyguest/openmem/releases/tag/v0.6.3
-- Glama: https://glama.ai/mcp/servers/@bcmyguest/openmem
-- Smithery: https://smithery.ai/server/@bcmyguest/openmem
+- Glama (openmem-mcp): https://glama.ai/mcp/servers/@bcmyguest/openmem
+- Smithery (openmem-mcp): https://smithery.ai/server/@bcmyguest/openmem-mcp
 
 Inspired in part by how OpenFeature separates flag APIs from vendors — listed under Inspiration in the README. Feedback welcome, especially if you run mem0 or Cognee day-to-day.
 
@@ -33,4 +33,4 @@ Inspired in part by how OpenFeature separates flag APIs from vendors — listed 
 **Short (X / Discord):**
 
 OpenMem — memory interface for coding agents. Stable `memory_*` MCP over Hindsight / mem0 / Cognee. Wizard + indexer + switch. Not a memory engine — the layer in front of them.
-https://github.com/bcmyguest/openmem · https://glama.ai/mcp/servers/@bcmyguest/openmem
+https://github.com/bcmyguest/openmem · https://glama.ai/mcp/servers/@bcmyguest/openmem (openmem-mcp)
