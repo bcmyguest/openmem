@@ -69,7 +69,7 @@ To publish another doc, add an entry to `PAGES` in `scripts/lib/docs.mjs`.
 
 ## Install state and provider status
 
-`src/site.config.mjs` has `npm.published: false`. While it is false, the install section shows `npx openmem` with the label "Available after the first npm release", without a copy button, and the "Up next" list names the release. Flip it to `true` in the same change that publishes the package. The from-source path (`git clone` and `./setup`) is shown as the path that works today.
+`src/site.config.mjs` has `npm.published: false`. While it is false, the install section shows `npx @bcmyguest/openmem` with the label "Available after the first npm release", without a copy button, and the "Up next" list names the release. Flip it to `true` in the same change that publishes the package. The from-source path (`git clone` and `./setup`) is shown as the path that works today.
 
 Provider badges, the self-host column, the "Up next" entries for non-supported providers, the OG image chips, and `llms.txt` all derive from the manifests. A manifest with an unknown `status` fails the build (allowed: `supported`, `experimental`, `planned`).
 

@@ -14,7 +14,7 @@ feeds:
 ```
 
 ```sh
-npx openmem feed-sync
+npx @bcmyguest/openmem feed-sync
 # checkout: npm run feed-sync
 ```
 
@@ -46,7 +46,7 @@ Description=openmem feed-sync
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env npx openmem feed-sync
+ExecStart=/usr/bin/env npx @bcmyguest/openmem feed-sync
 ```
 
 Enable with `systemctl --user enable --now openmem-feed-sync.timer`.

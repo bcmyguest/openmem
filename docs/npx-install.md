@@ -14,12 +14,12 @@ Wizard phases and flags live in the repository: [docs/setup-wizard.md](setup-wiz
 ## Install paths
 
 ```sh
-npx openmem                 # interactive setup, nothing installed globally
-npx openmem setup           # same as the bare command
-npx openmem configure --yes # non-interactive setup and start
-npx openmem up              # start stack
-npx openmem install-mcp --yes
-npx openmem switch mem0 --yes
+npx @bcmyguest/openmem                 # interactive setup, nothing installed globally
+npx @bcmyguest/openmem setup           # same as the bare command
+npx @bcmyguest/openmem configure --yes # non-interactive setup and start
+npx @bcmyguest/openmem up              # start stack
+npx @bcmyguest/openmem install-mcp --yes
+npx @bcmyguest/openmem switch mem0 --yes
 npm i -g openmem            # then: openmem setup | up | down | ...
 # From a git checkout (package not required on the registry):
 git clone https://github.com/bcmyguest/openmem && cd openmem
@@ -27,7 +27,7 @@ npm install && npx . setup          # same wizard; also: npm run setup / ./setup
 ```
 
 No global `pm` command is installed: it collides with Android's `pm`. `./pm` and `npm run pm`
-exist only inside a checkout; prefer `npx openmem …` (or `npx . …` in a checkout).
+exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `npx . …` in a checkout).
 
 ### Commands
 
@@ -136,7 +136,7 @@ until you delete them yourself.
 - `cannot prepare the stack root`: the directory is not writable. Set `PM_STACK_ROOT` to
   a writable path.
 - `read-only ... Run it through the CLI`: you ran `wizard/bin/*.mjs` from inside the npm
-  cache. Use `npx openmem` or set `PM_STACK_ROOT`.
+  cache. Use `npx @bcmyguest/openmem` or set `PM_STACK_ROOT`.
 - `missing dependencies (@clack/prompts ...)`: reinstall the package (`npm i -g
   openmem`), or in a checkout run `npm install` at the checkout root.
 - `... is not valid JSON` for `.pm-stack-manifest.json`: delete the manifest; shipped

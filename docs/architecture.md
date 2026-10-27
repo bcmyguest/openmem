@@ -1,10 +1,10 @@
 # Architecture
 
-openmem’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx openmem switch` rewires the stack without pretending to migrate your data. Setup (`npx openmem`) is install plumbing only — not part of the runtime data path.
+openmem’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx @bcmyguest/openmem switch` rewires the stack without pretending to migrate your data. Setup (`npx @bcmyguest/openmem`) is install plumbing only — not part of the runtime data path.
 
 ## Runtime data flow
 
-Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx openmem`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).
+Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx @bcmyguest/openmem`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).
 
 ```mermaid
 flowchart TB
@@ -123,12 +123,12 @@ Adding a provider means a new manifest + hooks + sink driver; agents can keep us
 | Provider secret files | e.g. `~/.config/personal-memory/mem0.env` (never committed; not written to `mcp.json`) |
 | `~/.config/hindsight/index.yml` | What the indexer watches |
 
-`npx openmem switch <id>` updates provider selection and restarts compose; it does **not** migrate memories ([export/import](memory-portability.md) is for that).
+`npx @bcmyguest/openmem switch <id>` updates provider selection and restarts compose; it does **not** migrate memories ([export/import](memory-portability.md) is for that).
 
 ### Example: unified MCP on mem0
 
-1. `npx openmem switch mem0 --yes` — compose and env point the indexer and unified MCP at `MEM0_API_URL`.
-2. `npx openmem install-mcp --yes` — merges the `openmem` server into `~/.cursor/mcp.json` (NotebookLM MCP only if you enabled sync or pass `--notebooklm`).
+1. `npx @bcmyguest/openmem switch mem0 --yes` — compose and env point the indexer and unified MCP at `MEM0_API_URL`.
+2. `npx @bcmyguest/openmem install-mcp --yes` — merges the `openmem` server into `~/.cursor/mcp.json` (NotebookLM MCP only if you enabled sync or pass `--notebooklm`).
 3. The agent calls `memory_add` with `{ content: "…", bank: "my-project" }`. The facade sends `POST /memories` with `user_id=my-project` and `infer: false`.
 
 `install-mcp --provider-only` is a **different** stdio server: same mem0 API, but upstream mem0 tool names from `@yeyuan98/mem0-mcp`. NotebookLM MCP is **different again** — search over notebooks synced into Hindsight, not a substitute for mem0/Cognee/Hindsight memory.
@@ -145,7 +145,7 @@ The `openmem` MCP server delegates each tool to the **active** provider:
 | `memory_consolidate` | LiteLLM / Hindsight consolidate routes | Skipped (no equivalent) | `POST /api/v1/cognify` |
 | `memory_forget` | `DELETE /v1/default/banks/{bank}` (bank scope) | `DELETE /memories/{id}` | Not exposed yet |
 | `memory_provider_status` | Returns provider id + loopback URL | Same | Same |
-| `memory_export` / `memory_import` | PMM envelope; mem0 list/add — see [Memory portability](memory-portability.md) | | |
+| `memory_export` / `memory_import` | PMM envelope; mem0 list/add — see [Portable memory (PMM)](memory-portability.md) | | |
 
 Default scope key for MCP-created rows: bank / `user_id` **`openmem-mcp`** unless the tool passes `bank`.
 
@@ -170,7 +170,7 @@ The indexer does not watch your editor — it watches **configured sources** on 
 | Git repo | Poll every `poll_seconds` (default 60): `HEAD` + tracked-file status | Tree-sitter outlines + text for changed files → **retain** on the active sink |
 | Obsidian vault | inotify; re-index after `vault_quiet_seconds` (default 30) without edits | Vault documents → provider-specific banks |
 | Notes / papers / bookmarks | `notes.paths`, `papers.paths`, `bookmarks.paths`; inotify on `.md` (bookmarks also `.html`, `.txt`) | Markdown (and bookmark exports) → `notes::`, `papers::`, `bookmarks::` banks |
-| Feed cache | `feeds.out_dir` after `npx openmem feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
+| Feed cache | `feeds.out_dir` after `npx @bcmyguest/openmem feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
 | New sources under scan roots | Re-list every `relist_seconds` (default 600) | Picked up without restarting the stack |
 
 Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Full source list and examples: [index-sources.md](index-sources.md) · [sources-feeds.md](sources-feeds.md) · [sources-zotero.md](sources-zotero.md) · [sources-readwise.md](sources-readwise.md). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed.
@@ -193,7 +193,7 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 | `memory_consolidate` | Cognee cognify; Hindsight notes; mem0 skip |
 | `memory_forget` | Delete by id (mem0) or drop a Hindsight bank |
 | `memory_provider_status` | Active provider and loopback URL (no secrets) |
-| `memory_export` / `memory_import` | PMM portable format — [Memory portability](memory-portability.md) (mem0 beta) |
+| `memory_export` / `memory_import` | PMM portable format — [Portable memory (PMM)](memory-portability.md) |
 
 **Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) with `--hindsight-plugin` adds a second hook set on Hindsight stacks.
 
@@ -209,10 +209,11 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 
 ## Related
 
-- [Memory portability](memory-portability.md) — PMM export/import
+- [Portable memory (PMM)](memory-portability.md) — export/import
+- [MCP setup](mcp-setup.md) — unified and provider-native MCP
 - [Provider status](provider-status.md) — manifest status and ports
 - [mem0 operator guide](mem0.md) — URL-only mem0 setup
 - [Cognee operator guide](cognee.md) — loopback container + LLM env
 - [Configuration file](openmem-config.md) — `config.toml` for provider and stack defaults
 
-Developer docs (wizard phases, hooks, manual compose, [indexer sinks](indexer-sinks.md), [MCP install modes](mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](memory-providers.md).
+Contributor-only guides (wizard phases, hooks, manual compose, [indexer sinks](indexer-sinks.md), [pluggable providers](memory-providers.md)) live under `docs/` in git and are not all published on the site. Day-to-day MCP install is on [MCP setup](mcp-setup.md).

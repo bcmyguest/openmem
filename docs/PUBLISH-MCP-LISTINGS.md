@@ -1,11 +1,12 @@
 # Publish OpenMem MCP listings
 
-Do this **after** `openmem@0.6.1` (or later) is on npm and `main` has `glama.json` / `server.json`.
+Do this **after** `@bcmyguest/openmem@0.6.1` (or later) is on npm and `main` has `glama.json` / `server.json`.
 
-Install command for listings (npm package is `openmem`; MCP bin is `openmem-mcp`):
+Install commands (npm package `@bcmyguest/openmem`; CLI bin `openmem`; MCP bin `openmem-mcp`):
 
 ```text
-npx -y openmem
+npx -y @bcmyguest/openmem
+npx -y -p @bcmyguest/openmem openmem-mcp
 ```
 
 One-line pitch:
@@ -15,24 +16,24 @@ One-line pitch:
 ## 1. npm (required for most registries)
 
 ```sh
-# First publish of the `openmem` package (Trusted Publisher not set yet):
+# First publish of the `@bcmyguest/openmem` package (Trusted Publisher not set yet):
 npm login
 npm publish --access public
 
 # Later versions: push tag vX.Y.Z → .github/workflows/release.yml
-# npm Trusted Publisher: package openmem, repo bcmyguest/openmem, workflow release.yml
+# npm Trusted Publisher: package @bcmyguest/openmem, repo bcmyguest/openmem, workflow release.yml
 ```
 
 Flip `site.npm.published` to `true` in `site/src/site.config.mjs` in the same change that lands the first npm release.
 
-Do **not** publish as `openmem-mcp` — that name is already taken on npm by an unrelated package. Our MCP entrypoint is the `openmem-mcp` bin inside `openmem`.
+Do **not** publish unscoped `openmem` (blocked as too similar to `open-mem`) or `openmem-mcp` / `openmemory` (taken). Package is `@bcmyguest/openmem`; MCP entrypoint is the `openmem-mcp` bin.
 
 ## 2. Glama
 
 1. Open https://glama.ai/mcp/servers → **Add MCP Server**
 2. GitHub URL: `https://github.com/bcmyguest/openmem`
 3. Name: **openmem-mcp** · Description: the pitch above · Type: **stdio**
-4. Install: `npx -y openmem` (runs the package; MCP binary is `openmem-mcp`)
+4. Install (stdio MCP): `npx -y -p @bcmyguest/openmem openmem-mcp`
 5. After indexing, **Claim ownership** (repo already has `glama.json` with maintainer `bcmyguest`)
 
 Listing name on Glama: **openmem-mcp**. Canonical URL (repo slug): `https://glama.ai/mcp/servers/@bcmyguest/openmem`

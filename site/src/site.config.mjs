@@ -22,7 +22,7 @@ export const site = {
    */
   npm: {
     published: false,
-    package: 'openmem',
+    package: '@bcmyguest/openmem',
   },
   /** Commands that work from a checkout today (same CLI shape as npx). */
   sourceInstall: {

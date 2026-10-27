@@ -239,7 +239,7 @@ const FAKE_V1 = {
 // ---------------------------------------------------------------------------
 // Package metadata
 // ---------------------------------------------------------------------------
-check("package name is openmem", pkg.name === "openmem");
+check("package name is @bcmyguest/openmem", pkg.name === "@bcmyguest/openmem");
 check(
   "bin is openmem-only (+ setup + mcp + notebooklm-mcp + cognee-mcp + install-mcp + install-coding-agent + switch-provider), no bare pm or personal-memory*",
   pkg.bin["openmem"] === "cli/openmem.mjs" &&

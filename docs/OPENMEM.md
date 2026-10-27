@@ -7,7 +7,7 @@ For the product idea — memory interface for coding agents, providers, `memory_
 ## CLI
 
 ```sh
-npx openmem
+npx @bcmyguest/openmem
 openmem setup
 openmem doctor
 ```

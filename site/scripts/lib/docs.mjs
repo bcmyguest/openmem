@@ -49,6 +49,14 @@ export const PAGES = [
     description: 'Runtime data flow, how changes update memory, and MCP access per provider.',
   },
   {
+    slug: 'mcp-setup',
+    kind: 'doc',
+    source: 'docs/mcp-setup.md',
+    group: 'Start',
+    title: 'MCP setup',
+    description: 'Install unified memory_* MCP, optional provider-native servers, and NotebookLM.',
+  },
+  {
     slug: 'provider-status',
     kind: 'manifest',
     group: 'Providers',
@@ -79,7 +87,7 @@ export const PAGES = [
     group: 'Providers',
     optional: true,
     title: 'mem0',
-    description: 'Self-hosted mem0 REST URL, API key file, and Cursor MCP install.',
+    description: 'Self-hosted mem0 REST with OpenMem indexer, unified memory_* MCP, and PMM portability.',
   },
   {
     slug: 'cognee',
@@ -96,7 +104,7 @@ export const PAGES = [
     source: 'docs/memory-portability.md',
     group: 'Reference',
     optional: true,
-    title: 'Memory portability',
+    title: 'Portable memory (PMM)',
     description: 'PMM export/import format and unified MCP memory_export / memory_import behavior.',
   },
   {

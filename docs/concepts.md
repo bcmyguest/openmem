@@ -27,16 +27,15 @@ OpenMem is **not** a memory engine. It is the layer that sits between coding age
 
 One active provider at a time. `openmem switch` rewires the stack; it does not pretend to migrate your data. Portability is explicit through the format layer (PMM today).
 
-```text
-Coding agents
-     │
-     ▼
-OpenMem surface  (memory_* · skill · session hooks · wizard · indexer)
-     │
-     ├── Hindsight
-     ├── mem0
-     ├── Cognee
-     └── …next provider manifest
+```mermaid
+flowchart TB
+  AG[Coding agents]
+  OM["OpenMem surface<br/>memory_* · skill · session hooks · wizard · indexer"]
+  AG --> OM
+  OM --> HS[Hindsight]
+  OM --> M0[mem0]
+  OM --> CG[Cognee]
+  OM --> NX["…next provider manifest"]
 ```
 
 ## Why an interface layer?
@@ -85,7 +84,7 @@ Resolution order: longest matching `index.yml` bank prefix → `~/.config/person
 
 ### Formats
 
-Import/export goes through a **format layer**, not a provider-specific dump. **PMM** (Personal Memory Manifest) is the first format; more formats plug into the same orchestrator. See [Memory portability](memory-portability.md).
+Import/export goes through a **format layer**, not a provider-specific dump. **PMM** (Personal Memory Manifest) is the first format; more formats plug into the same orchestrator. See [Portable memory (PMM)](memory-portability.md).
 
 ### Session hooks and skill
 
@@ -106,7 +105,8 @@ A shared **indexer** watches git repos, Obsidian vaults, notes trees, and feed c
 | Doc | Use when |
 | --- | --- |
 | [Quickstart](quickstart.md) | First install |
+| [MCP setup](mcp-setup.md) | Unified `memory_*` MCP, native mem0/Cognee, NotebookLM |
+| [Portable memory (PMM)](memory-portability.md) | Export/import between providers |
 | [Architecture](architecture.md) | Runtime data paths |
 | [Provider status](provider-status.md) | Which backends ship |
-| [Memory portability](memory-portability.md) | PMM export/import |
-| [OpenMem rename notes](OPENMEM.md) | CLI names and path compat |
+| [mem0](mem0.md) · [Hindsight](hindsight.md) · [Cognee](cognee.md) | Provider operator guides |

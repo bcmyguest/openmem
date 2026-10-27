@@ -4,7 +4,7 @@ The wizard is a Node program (`wizard/bin/setup.mjs`). It is exposed as:
 
 | How you run it | When |
 | --- | --- |
-| `npx openmem` / `npx openmem setup` | Normal install ([Install with npx](npx-install.md)) |
+| `npx @bcmyguest/openmem` / `npx @bcmyguest/openmem setup` | Normal install ([Install with npx](npx-install.md)) |
 | `npx . setup` / `npm run setup` / `./setup` | Git checkout (stack root stays in the repo) |
 
 Interactive runs use [@clack/prompts](https://github.com/bombshell-dev/clack). `--yes` and `--dry-run` skip Clack.
@@ -22,9 +22,9 @@ Before provider questions, pick what the run should do (Clack or `PM_WIZARD_ACTI
 Non-interactive shortcuts:
 
 ```sh
-npx openmem configure --yes   # setup --yes
-npx openmem up                # wizard --up (after first configure)
-npx openmem down              # wizard --down
+npx @bcmyguest/openmem configure --yes   # setup --yes
+npx @bcmyguest/openmem up                # wizard --up (after first configure)
+npx @bcmyguest/openmem down              # wizard --down
 ```
 
 ## Wizard phases
