@@ -22,7 +22,7 @@ Once on npm: `npx openmem` / `npx openmem-mcp`
 
 - Repo: https://github.com/bcmyguest/openmem
 - Concepts: https://bcmyguest.github.io/openmem/docs/concepts/
-- Release: https://github.com/bcmyguest/openmem/releases/tag/v0.6.2
+- Release: https://github.com/bcmyguest/openmem/releases/tag/v0.6.3
 - Glama: https://glama.ai/mcp/servers/@bcmyguest/openmem
 - Smithery: https://smithery.ai/server/@bcmyguest/openmem
 

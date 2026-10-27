@@ -11,7 +11,7 @@
 /** @typedef {{ id: string, label: string, re: RegExp, secret?: boolean, accept?: (m: RegExpExecArray) => boolean }} Rule */
 
 const PLACEHOLDER_VALUE =
-  /^(?:\.{2,}|\u2026|\*+|x{3,}|<.*|\$.*|val(?:ue)?|your[-_].*|replace[-_]?me|change[-_]?me|example.*|redacted|todo|none|null|true|false)$/i;
+  /^(?:\.{2,}|\u2026|\*+|x{3,}|<.*|\$.*|val(?:ue)?|your[-_].*|replace[-_]?me|change[-_]?me|example.*|redacted|todo|none|null|true|false|ollama)$/i;
 
 /** @type {Rule[]} */
 export const RULES = [

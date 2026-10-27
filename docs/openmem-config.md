@@ -126,7 +126,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 
   ```env
   LLM_PROVIDER=ollama
-  LLM_API_KEY=<ollama>
+  LLM_API_KEY=ollama
   LLM_ENDPOINT=http://host.docker.internal:11434
   EMBEDDING_PROVIDER=ollama
   EMBEDDING_MODEL=nomic-embed-text:latest

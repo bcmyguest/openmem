@@ -36,7 +36,15 @@ test('flags env-style secret assignments but not placeholders', () => {
   assert.deepEqual(rules('TOKEN=abc123'), ['secret-assignment']);
   assert.deepEqual(rules('export HINDSIGHT_API_LLM_API_KEY="abc123"'), ['secret-assignment']);
   assert.deepEqual(rules('API_KEY='), ['secret-assignment']);
-  for (const ok of ['ANTHROPIC_API_KEY=...', 'API_KEY=<your-key>', 'TOKEN=$TOKEN', 'KEY=val', 'API_KEY=replace-me', 'API_KEY=${API_KEY}']) {
+  for (const ok of [
+    'ANTHROPIC_API_KEY=...',
+    'API_KEY=<your-key>',
+    'TOKEN=$TOKEN',
+    'KEY=val',
+    'API_KEY=replace-me',
+    'API_KEY=${API_KEY}',
+    'LLM_API_KEY=ollama', // Cognee/Ollama documented non-secret sentinel
+  ]) {
     assert.deepEqual(rules(ok), [], ok);
   }
   // Starlight wraps fenced lines in <span>; the value must not swallow the markup.
