@@ -18,7 +18,7 @@ export function summary(ctx) {
     "  indexer sink       cognee -> http://cognee:8000 (internal network)",
     "  ingestion is asynchronous: the indexer requests cognify once per changed dataset",
   ];
-  const configFiles = [`  ${ctx.cognee.envFile} (LLM settings, mode 600)`];
+  const configFiles = [`  ${ctx.cognee.envFile} (cognify settings, mode 600)`];
   if (fs.existsSync(ctx.cognee.indexerEnvFile)) {
     configFiles.push(`  ${ctx.cognee.indexerEnvFile} (indexer API key, mode 600)`);
   }
@@ -26,14 +26,29 @@ export function summary(ctx) {
   const env = readEnvFile(ctx.cognee.envFile);
   const ready = isCognifyReady(env.values);
   const provider = (env.values.get("LLM_PROVIDER") || "").toLowerCase();
+  const emb = (env.values.get("EMBEDDING_PROVIDER") || "").toLowerCase();
+  const extractor = (env.values.get("GRAPH_EXTRACTOR") || "").toLowerCase();
+  let readyNote;
+  if (!ready) {
+    readyNote =
+      `Cognee needs a cognify-ready config in ${ctx.cognee.envFile}: ` +
+      "GRAPH_EXTRACTOR=gliner_demo + FastEmbed (default), LLM_PROVIDER=ollama, or LLM_API_KEY; " +
+      "without it documents are stored but not searchable. Then restart with: ./pm up";
+  } else if (extractor === "gliner_demo" || emb === "fastembed") {
+    readyNote =
+      `Cognee builds its graph with local GLiNER + FastEmbed from ${ctx.cognee.envFile}; ` +
+      "change it there, then restart with: ./pm up";
+  } else if (provider === "ollama") {
+    readyNote =
+      `Cognee builds its graph with Ollama from ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`;
+  } else {
+    readyNote =
+      `Cognee builds its graph with the LLM configured in ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`;
+  }
   const notes = [
-    ready
-      ? provider === "ollama"
-        ? `Cognee builds its graph with Ollama (LLM + embeddings) from ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`
-        : `Cognee builds its graph with the LLM configured in ${ctx.cognee.envFile}; change it there, then restart with: ./pm up`
-      : `Cognee needs a cognify-ready LLM config: set LLM_API_KEY in ${ctx.cognee.envFile}, or use LLM_PROVIDER=ollama with matching embeddings; without it documents are stored but not searchable. Then restart with: ./pm up`,
+    readyNote,
     `Graph status: GET ${url}/api/v1/datasets/status`,
-    "The first start downloads a large image and may take several minutes.",
+    "The first start downloads a large image and may take several minutes; GLiNER/FastEmbed add ~800 MB on first cognify.",
     "Deleting a dataset removes its graph and vectors, not just the stored files.",
     `Coding agents: no plugin — call the REST API at ${url} (see /docs); ingest POST /api/v1/add, then cognify, then search.`,
   ];

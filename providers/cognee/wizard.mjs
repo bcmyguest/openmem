@@ -49,9 +49,9 @@ export async function hydrate(ctx) {
 export const resolvePorts = resolveCogneePorts;
 
 /**
- * Step "LLM key": write LLM_API_KEY (and the optional LLM and EMBEDDING settings given
- * as PM_COGNEE_<NAME>) into the operator env file. Never fails for a missing key: documents
- * are stored but not searchable until the key works.
+ * Step "LLM / embeddings": write cognify settings (default GLiNER + FastEmbed, or Ollama /
+ * OpenAI answers given as PM_COGNEE_<NAME>) into the operator env file. Never fails for a
+ * missing cloud key: the default local path is cognify-ready without one.
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */

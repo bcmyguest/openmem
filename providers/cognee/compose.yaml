@@ -10,11 +10,11 @@
 #   - The indexer maps each bank to a Cognee dataset (see indexer/sinks/cognee.py). Ingestion is asynchronous: the
 #     sink adds documents, then its flush() step runs cognify per dataset, so a document is stored first and becomes
 #     searchable only after cognify finishes. Cognify needs a working LLM key (below).
-#   - Secrets stay out of the repo. LLM_API_KEY (and any LLM_* / EMBEDDING_* overrides, e.g. a local model server on
-#     the host through host.docker.internal) go in the cognee env file, created by the operator with mode 600. The
-#     indexer reads a SEPARATE env file, so the indexer receives only COGNEE_API_KEY in its environment, never
-#     LLM_API_KEY. The directory holding cognee.env (~/.config/personal-memory) is masked from the indexer's $HOME
-#     mount by compose.override.yaml once the wizard has created it; until then the read-only $HOME mount can see it.
+#   - Cognify defaults to local GLiNER + FastEmbed (no API key) in cognee.env; optional LLM_* / Ollama overrides
+#     go there too (mode 600). HF_HOME / FASTEMBED_CACHE_PATH under /cognee-storage persist model downloads on the
+#     cognee-data volume. The indexer reads a SEPARATE env file (COGNEE_API_KEY only, never LLM_API_KEY). The
+#     directory holding cognee.env (~/.config/personal-memory) is masked from the indexer's $HOME mount by
+#     compose.override.yaml once the wizard has created it; until then the read-only $HOME mount can see it.
 #   - Authentication: ENABLE_BACKEND_ACCESS_CONTROL is pinned to "false" below and overrides the env file, so
 #     REQUIRE_AUTHENTICATION=true in cognee.env alone cannot turn auth on. To enable auth you must change that
 #     compose pin and set REQUIRE_AUTHENTICATION=true; the indexer then needs COGNEE_API_KEY in
@@ -37,6 +37,9 @@ services:
       # Documented single-user mode: no auth, one shared set of databases. Safe here because the only published port
       # is bound to 127.0.0.1 and the indexer reaches the server on the compose network.
       ENABLE_BACKEND_ACCESS_CONTROL: "false"
+      # Persist Hugging Face / FastEmbed / GLiNER model downloads across container recreates (under the data volume).
+      HF_HOME: /cognee-storage/.cache/huggingface
+      FASTEMBED_CACHE_PATH: /cognee-storage/.cache/fastembed
     volumes:
       # /cognee-storage is baked into the image owned by its non-root user (uid 1000), and the image defaults
       # DATA_ROOT_DIRECTORY / SYSTEM_ROOT_DIRECTORY under it. A fresh named volume copies that ownership; a volume

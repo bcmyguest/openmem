@@ -1,6 +1,6 @@
 # Cognee (loopback container)
 
-Self-hosted graph/RAG memory via a pinned `cognee/cognee` image on a loopback port (`COGNEE_PORT`, default **8766**). Auth is off in this stack. LLM keys live in env files under `~/.config/personal-memory/`, not in stack `.env` or `mcp.json`.
+Self-hosted graph/RAG memory via a pinned `cognee/cognee` image on a loopback port (`COGNEE_PORT`, default **8766**). Auth is off in this stack. Cognify defaults to local GLiNER + FastEmbed (no API key); optional LLM keys live in env files under `~/.config/personal-memory/`, not in stack `.env` or `mcp.json`.
 
 ## Coding agents
 

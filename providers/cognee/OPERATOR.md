@@ -1,13 +1,36 @@
 # Cognee operator notes
 
 Self-hosted graph/RAG memory via a pinned `cognee/cognee` image on a loopback
-port (`COGNEE_PORT`, default **8766**). Auth is off in this stack. Secrets
-(`LLM_API_KEY`, optional `COGNEE_API_KEY`) live in env files under
-`~/.config/personal-memory/`, never in the stack `.env`, `wizard.conf`, or
-`mcp.json`.
+port (`COGNEE_PORT`, default **8766**). Auth is off in this stack. Cognify
+defaults to **local GLiNER + FastEmbed** (no API key). Optional secrets
+(`LLM_API_KEY` for OpenAI/Ollama paths, `COGNEE_API_KEY` if you enable auth)
+live in env files under `~/.config/personal-memory/`, never in the stack
+`.env`, `wizard.conf`, or `mcp.json`.
 
 See also [docs/memory-providers.md](../../docs/memory-providers.md) and
 [docs/personal-memory-config.md](../../docs/personal-memory-config.md).
+
+## Cognify defaults (GLiNER + FastEmbed)
+
+Fresh setup / `./setup --yes` with no LLM answers writes:
+
+```env
+GRAPH_EXTRACTOR=gliner_demo
+EMBEDDING_PROVIDER=fastembed
+EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+EMBEDDING_DIMENSIONS=384
+AUTO_FEEDBACK=false
+```
+
+The pinned image already includes `gliner2` and `fastembed`. First cognify
+downloads ~800 MB of models into `HF_HOME` / `FASTEMBED_CACHE_PATH` under the
+`cognee-data` volume (`/cognee-storage/.cache/...`). Changing embedding
+dimensions (for example from Ollama's 768 to FastEmbed's 384) requires
+rebuilding vectors — prune datasets or recreate the `cognee-data` volume.
+
+Overrides: `PM_COGNEE_LLM_PROVIDER=ollama` (Ollama LLM + embeddings), or
+`PM_COGNEE_LLM_API_KEY` / Clack "OpenAI-compatible". `EMBEDDING_PROVIDER=fastembed`
+is allowed with Ollama LLM.
 
 ## Coding agents (no plugin package)
 

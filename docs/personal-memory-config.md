@@ -71,7 +71,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 
   [memory.cognee]
   port = 8766                                         # host port; the container listens on 8000
-  env_file = "~/.config/personal-memory/cognee.env"   # where LLM_API_KEY lives
+  env_file = "~/.config/personal-memory/cognee.env"   # cognify settings (GLiNER/FastEmbed by default)
   ```
 
   `port` is resolved as: `COGNEE_PORT`, then this table, then the stack `.env`, then the port
@@ -86,10 +86,11 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   `~/.config/personal-memory`: that is the directory hidden from the indexer's read-only `$HOME`
   mount, and setup warns about a file elsewhere under `$HOME`.
 
-  Cognee builds its graph with an LLM, so documents are stored but not searchable until
-  cognify can run. `./setup` writes settings into the env file (mode 600 in a mode 700
-  directory), merging into any existing file and replacing only the keys it was given; it prints
-  the path and the key names, never a value. Where the answers come from:
+  Documents are stored but not searchable until cognify can run. **Default cognify path** (no
+  API key): local GLiNER extraction + FastEmbed embeddings. `./setup` / `--yes` with no LLM
+  answers writes that block into the env file (mode 600 in a mode 700 directory), merging into
+  any existing file and replacing only the keys it was given; it prints the path and the key
+  names, never a value. Where the answers come from:
 
   | Variable (environment) | Written to the env file as |
   | --- | --- |
@@ -98,8 +99,23 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   | `PM_COGNEE_EMBEDDING_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_DIMENSIONS` | the same names without `PM_COGNEE_` |
   | `PM_COGNEE_EMBEDDING_API_KEY`; under `--yes` or `--dry-run` also plain `EMBEDDING_API_KEY` | `EMBEDDING_API_KEY` |
   | `PM_COGNEE_HUGGINGFACE_TOKENIZER` | `HUGGINGFACE_TOKENIZER` |
+  | `PM_COGNEE_GRAPH_EXTRACTOR`, `PM_COGNEE_AUTO_FEEDBACK` | `GRAPH_EXTRACTOR`, `AUTO_FEEDBACK` |
 
-  **Local Ollama** (no cloud key): set `PM_COGNEE_LLM_PROVIDER=ollama` (and optionally
+  **Default (GLiNER + FastEmbed)** when no cognify answers are given:
+
+  ```env
+  GRAPH_EXTRACTOR=gliner_demo
+  EMBEDDING_PROVIDER=fastembed
+  EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+  EMBEDDING_DIMENSIONS=384
+  AUTO_FEEDBACK=false
+  ```
+
+  Compose pins `HF_HOME` / `FASTEMBED_CACHE_PATH` under the `cognee-data` volume so model
+  downloads survive container recreates. Changing embedding dimensions requires rebuilding
+  vectors (prune datasets or recreate the volume).
+
+  **Local Ollama** (LLM + Ollama embeddings): set `PM_COGNEE_LLM_PROVIDER=ollama` (and optionally
   `PM_COGNEE_LLM_MODEL=...`). The wizard fills in a complete local block when fields are missing:
 
   ```bash
@@ -110,7 +126,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 
   ```env
   LLM_PROVIDER=ollama
-  LLM_API_KEY=replace-me
+  LLM_API_KEY=ollama
   LLM_ENDPOINT=http://host.docker.internal:11434
   EMBEDDING_PROVIDER=ollama
   EMBEDDING_MODEL=nomic-embed-text:latest
@@ -118,22 +134,22 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   EMBEDDING_DIMENSIONS=768
   ```
 
-  Use the bare Ollama host (`…:11434`), not `…:11434/v1` — Cognee's Ollama path appends
-  `/api/generate` itself. **Host Ollama** (listening on the Docker bridge or all interfaces):
-  `host.docker.internal` is correct. **Compose Ollama** published as `127.0.0.1:11434` only
-  (this repo's default): that address is unreachable via `host.docker.internal` — set
-  `PM_COGNEE_OLLAMA_COMPOSE=1` (or reuse `MEMORY_OLLAMA_IN_COMPOSE=1` from a Hindsight Ollama
-  setup) so the wizard writes `http://ollama:11434`, and attach the Cognee container to the
-  same Docker network as the `ollama` service. Slow local models may need
-  `COGNEE_SKIP_CONNECTION_TEST=true` in `cognee.env`. The interactive setup offers OpenAI key
-  vs Ollama; the OpenAI path uses a hidden prompt. Do not type the key into a non-Clack
-  `./setup` prompt — put `LLM_API_KEY` in `cognee.env` (mode 600) by hand (Ollama accepts any
-  non-empty value), or use the UI / `--yes` with `PM_COGNEE_LLM_API_KEY`. Secret variables
-  (including plain `LLM_API_KEY` /
+  Ollama LLM + FastEmbed is also valid: set `PM_COGNEE_EMBEDDING_PROVIDER=fastembed` (and model /
+  dimensions) alongside `PM_COGNEE_LLM_PROVIDER=ollama`. Use the bare Ollama host (`…:11434`),
+  not `…:11434/v1` — Cognee's Ollama path appends `/api/generate` itself. **Host Ollama**
+  (listening on the Docker bridge or all interfaces): `host.docker.internal` is correct.
+  **Compose Ollama** published as `127.0.0.1:11434` only (this repo's default): that address is
+  unreachable via `host.docker.internal` — set `PM_COGNEE_OLLAMA_COMPOSE=1` (or reuse
+  `MEMORY_OLLAMA_IN_COMPOSE=1` from a Hindsight Ollama setup) so the wizard writes
+  `http://ollama:11434`, and attach the Cognee container to the same Docker network as the
+  `ollama` service. Slow local models may need `COGNEE_SKIP_CONNECTION_TEST=true` in
+  `cognee.env`. The interactive setup offers GLiNER+FastEmbed (default), Ollama, or an OpenAI
+  key (hidden prompt). Do not type the key into a non-Clack `./setup` prompt — put
+  `LLM_API_KEY` in `cognee.env` (mode 600) by hand (Ollama accepts any non-empty value), or use
+  the UI / `--yes` with `PM_COGNEE_LLM_API_KEY`. Secret variables (including plain `LLM_API_KEY` /
   `EMBEDDING_API_KEY` / `COGNEE_API_KEY`) are removed from the wizard's environment before it
-  starts docker. With no cognify-ready config under `--yes` the wizard warns and carries on.
-  Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the summary.
-  Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
+  starts docker. Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the
+  summary. Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
   overrides the env file (see `providers/cognee/compose.yaml`).
 - **`[tasks.*]`** — descriptions for `npx personal-memory` / `./pm` (see `wizard/bin/pm.mjs` and
   `cli/personal-memory.mjs`). Built-in tasks:

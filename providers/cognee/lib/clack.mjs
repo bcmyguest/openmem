@@ -1,11 +1,16 @@
 /**
- * Cognee's Clack setup UI: choose OpenAI-compatible key vs local Ollama, then (for OpenAI)
- * a hidden password prompt. Answers travel to the wizard only as PM_COGNEE_* in the wizard
+ * Cognee's Clack setup UI: choose local GLiNER+FastEmbed (default), Ollama, or an
+ * OpenAI-compatible key. Answers travel to the wizard only as PM_COGNEE_* in the wizard
  * process's own environment (never on a command line, never written anywhere but cognee.env).
  * `configureModelRouting` removes secrets from the environment once read.
  */
 import net from "node:net";
-import { KEY_NAME, OLLAMA_API_KEY, ollamaDefaultsForEnv } from "./llm-env.mjs";
+import {
+  KEY_NAME,
+  OLLAMA_API_KEY,
+  GLINER_FASTEMBED_DEFAULTS,
+  ollamaDefaultsForEnv,
+} from "./llm-env.mjs";
 import { readEnvFile } from "./env-file.mjs";
 import { applyConfig } from "./config.mjs";
 import fs from "node:fs";
@@ -49,7 +54,7 @@ export async function clackSetup(ctx, ui, h) {
   if (stored) {
     if (typeof ui.confirm !== "function") return handoff;
     const replace = await ui.confirm({
-      message: `${state.cognee.envFile} already has an LLM_API_KEY. Replace it?`,
+      message: `${state.cognee.envFile} already has an LLM_API_KEY. Replace cognify settings?`,
       initialValue: false,
     });
     if (ui.isCancel(replace)) {
@@ -59,29 +64,46 @@ export async function clackSetup(ctx, ui, h) {
     if (!replace) return handoff;
   }
 
-  let choice = "openai";
+  let choice = "gliner";
   if (typeof ui.select === "function") {
     const picked = await ui.select({
-      message: "How will Cognee talk to an LLM for cognify?",
+      message: "How should Cognee build its knowledge graph (cognify)?",
       options: [
+        {
+          value: "gliner",
+          label: "Local GLiNER + FastEmbed (default)",
+          hint: "no API key; CPU embeddings (BAAI/bge-small-en-v1.5)",
+        },
+        {
+          value: "ollama",
+          label: "Ollama on this host",
+          hint: "LLM + embeddings via Ollama; host.docker.internal or PM_COGNEE_OLLAMA_COMPOSE=1",
+        },
         {
           value: "openai",
           label: "OpenAI-compatible API key",
           hint: "stored in cognee.env (mode 600)",
         },
-        {
-          value: "ollama",
-          label: "Ollama on this host",
-          hint: "no cloud key; host Ollama via host.docker.internal, or compose via PM_COGNEE_OLLAMA_COMPOSE=1",
-        },
       ],
-      initialValue: "openai",
+      initialValue: "gliner",
     });
     if (ui.isCancel(picked)) {
       ui.cancel("Setup cancelled.");
       process.exit(0);
     }
     choice = String(picked);
+  }
+
+  if (choice === "gliner") {
+    ui.log?.info?.(
+      "Cognee will use local GLiNER extraction and FastEmbed embeddings (first cognify downloads ~800 MB of models).",
+    );
+    handoff.PM_COGNEE_GRAPH_EXTRACTOR = GLINER_FASTEMBED_DEFAULTS.GRAPH_EXTRACTOR;
+    handoff.PM_COGNEE_EMBEDDING_PROVIDER = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_PROVIDER;
+    handoff.PM_COGNEE_EMBEDDING_MODEL = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_MODEL;
+    handoff.PM_COGNEE_EMBEDDING_DIMENSIONS = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_DIMENSIONS;
+    handoff.PM_COGNEE_AUTO_FEEDBACK = GLINER_FASTEMBED_DEFAULTS.AUTO_FEEDBACK;
+    return handoff;
   }
 
   if (choice === "ollama") {
@@ -116,12 +138,20 @@ export async function clackSetup(ctx, ui, h) {
   if (typeof ui.password !== "function") return handoff;
   ui.log.info("Cognee builds its graph with an LLM; the key is stored in cognee.env (mode 600), never in the repo.");
   const key = await ui.password({
-    message: "Cognee LLM_API_KEY (input hidden; press Enter to skip)",
+    message: "Cognee LLM_API_KEY (input hidden; press Enter to skip — falls back to GLiNER + FastEmbed)",
   });
   if (ui.isCancel(key)) {
     ui.cancel("Setup cancelled.");
     process.exit(0);
   }
-  if (String(key ?? "").trim()) handoff.PM_COGNEE_LLM_API_KEY = String(key).trim();
+  if (String(key ?? "").trim()) {
+    handoff.PM_COGNEE_LLM_API_KEY = String(key).trim();
+  } else {
+    handoff.PM_COGNEE_GRAPH_EXTRACTOR = GLINER_FASTEMBED_DEFAULTS.GRAPH_EXTRACTOR;
+    handoff.PM_COGNEE_EMBEDDING_PROVIDER = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_PROVIDER;
+    handoff.PM_COGNEE_EMBEDDING_MODEL = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_MODEL;
+    handoff.PM_COGNEE_EMBEDDING_DIMENSIONS = GLINER_FASTEMBED_DEFAULTS.EMBEDDING_DIMENSIONS;
+    handoff.PM_COGNEE_AUTO_FEEDBACK = GLINER_FASTEMBED_DEFAULTS.AUTO_FEEDBACK;
+  }
   return handoff;
 }

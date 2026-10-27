@@ -120,6 +120,28 @@ export function mergeEnvText(text, updates) {
 }
 
 /**
+ * Remove assignment lines for the given keys (first and duplicate assignments). Other
+ * lines are kept. Used when switching presets so stale values (e.g. EMBEDDING_ENDPOINT
+ * after moving to FastEmbed) do not linger.
+ * @param {string} text
+ * @param {string[]} keys
+ * @returns {string}
+ */
+export function dropEnvKeys(text, keys) {
+  const drop = new Set(keys);
+  for (const key of drop) {
+    if (!KEY_RE.test(key)) throw new Error(`invalid env key: ${key}`);
+  }
+  if (!drop.size) return text.endsWith("\n") || text === "" ? text : `${text}\n`;
+  const lines = text === "" ? [] : text.replace(/\n$/, "").split("\n");
+  const out = lines.filter((raw) => {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(raw);
+    return !(m && drop.has(m[1]));
+  });
+  return out.length ? `${out.join("\n")}\n` : "";
+}
+
+/**
  * Create `dir` (and missing parents) with mode 0700.
  * @param {string} dir
  * @returns {boolean} whether the directory had to be created

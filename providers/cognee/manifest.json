@@ -2,7 +2,7 @@
   "id": "cognee",
   "label": "Cognee",
   "status": "supported",
-  "notes": "Self-hosted graph/RAG memory run as a pinned cognee/cognee image (single container, SQLite + LanceDB + Ladybug) on a loopback port in single-user mode (no authentication). Ingestion is asynchronous: the indexer adds documents, then requests cognify once per changed dataset, so a document is searchable only after the graph is built (OpenAI-compatible LLM_API_KEY, or LLM_PROVIDER=ollama with matching ollama embeddings). No coding-agent plugin — agents use the REST API on the loopback port (/docs).",
+  "notes": "Self-hosted graph/RAG memory run as a pinned cognee/cognee image (single container, SQLite + LanceDB + Ladybug) on a loopback port in single-user mode (no authentication). Ingestion is asynchronous: the indexer adds documents, then requests cognify once per changed dataset, so a document is searchable only after the graph is built. Default cognify path is local GLiNER + FastEmbed (no API key); alternatives are LLM_PROVIDER=ollama or an OpenAI-compatible LLM_API_KEY. No coding-agent plugin — agents use the REST API on the loopback port (/docs).",
   "settings": {
     "nativeDocs": "https://docs.cognee.ai/",
     "nativeConfigPaths": [
@@ -11,7 +11,7 @@
     ],
     "wizardOwns": [
       "compose profile 'cognee', the loopback host port (COGNEE_PORT, default 8766) and the stack .env entries",
-      "LLM_API_KEY and optional LLM_* / EMBEDDING_* settings in cognee.env (mode 600, outside the repo)",
+      "GRAPH_EXTRACTOR / EMBEDDING_* (default GLiNER + FastEmbed) and optional LLM_* settings in cognee.env (mode 600, outside the repo)",
       "the smoke test (health, dataset, multipart add, list, delete; recall is skipped because ingestion is asynchronous)",
       "index.yml sources (shared indexer)",
       "Cognee dataset mapping from indexer banks (the indexer sink maps each bank to a dataset)"
@@ -49,7 +49,7 @@
     "recallMethod": "POST",
     "recallPath": "/api/v1/search",
     "recallBody": "{\"searchType\":\"GRAPH_COMPLETION\",\"query\":\"What is the project codename?\",\"datasets\":[\"wizard_smoke\"]}",
-    "recallHint": "check {compose} logs cognee and LLM_API_KEY",
+    "recallHint": "check {compose} logs cognee and cognify settings (GLiNER/FastEmbed, Ollama, or LLM_API_KEY)",
     "deleteMethod": "DELETE",
     "deletePath": "/api/v1/datasets/{bank}"
   }
