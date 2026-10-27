@@ -239,10 +239,13 @@ const FAKE_V1 = {
 // ---------------------------------------------------------------------------
 // Package metadata
 // ---------------------------------------------------------------------------
-check("package name is personal-memory", pkg.name === "personal-memory");
+check("package name is openmem", pkg.name === "openmem");
 check(
-  "bin includes personal-memory (+ setup + notebooklm-mcp + cognee-mcp + install-mcp + install-coding-agent + switch-provider), no bare pm",
-  pkg.bin["personal-memory"] === "cli/personal-memory.mjs" &&
+  "bin includes openmem (+ aliases) and personal-memory compat (+ setup + notebooklm-mcp + cognee-mcp + install-mcp + install-coding-agent + switch-provider), no bare pm",
+  pkg.bin["openmem"] === "cli/personal-memory.mjs" &&
+    pkg.bin["openmem-setup"] === "wizard/bin/setup.mjs" &&
+    pkg.bin["openmem-mcp"] === "cli/personal-memory-mcp.mjs" &&
+    pkg.bin["personal-memory"] === "cli/personal-memory.mjs" &&
     pkg.bin["personal-memory-setup"] === "wizard/bin/setup.mjs" &&
     pkg.bin["personal-memory-notebooklm-mcp"] === "cli/notebooklm-mcp.mjs" &&
     pkg.bin["personal-memory-cognee-mcp"] === "cli/cognee-mcp.mjs" &&
@@ -259,7 +262,7 @@ check(
 check("cli entry is a real file with a node shebang", !fs.lstatSync(path.join(ROOT, "cli/personal-memory.mjs")).isSymbolicLink() && read(path.join(ROOT, "cli/personal-memory.mjs")).startsWith("#!/usr/bin/env node"));
 check("engines.node >=20.12.0 (the @clack/prompts floor) and publishConfig.access public", pkg.engines?.node === ">=20.12.0" && pkg.publishConfig?.access === "public");
 check("type is module and deps include @clack/prompts + @iarna/toml", pkg.type === "module" && Boolean(pkg.dependencies?.["@clack/prompts"]) && Boolean(pkg.dependencies?.["@iarna/toml"]));
-check("repository/homepage/bugs point at bcmyguest/personal-memory", /bcmyguest\/personal-memory/.test(JSON.stringify([pkg.repository, pkg.homepage, pkg.bugs])));
+check("repository/homepage/bugs point at bcmyguest/openmem", /bcmyguest\/openmem/.test(JSON.stringify([pkg.repository, pkg.homepage, pkg.bugs])));
 {
   const wp = path.join(ROOT, "wizard/package.json");
   if (fs.existsSync(wp)) {

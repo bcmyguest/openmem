@@ -3,7 +3,7 @@
 `personal-memory` is an npm package whose CLI runs the same setup wizard as `./setup` in a
 checkout. The package name lives in one place, the `name` field of `package.json` (the CLI
 command stays `personal-memory` if you switch to a scoped name such as
-`@bcmyguest/personal-memory`).
+`openmem`; older installs may still see `personal-memory`).
 
 Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the compose v2
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
@@ -22,7 +22,7 @@ npx personal-memory install-mcp --yes
 npx personal-memory switch mem0 --yes
 npm i -g personal-memory            # then: personal-memory setup | up | down | ...
 # From a git checkout (package not required on the registry):
-git clone https://github.com/bcmyguest/personal-memory && cd personal-memory
+git clone https://github.com/bcmyguest/openmem && cd openmem
 npm install && npx . setup          # same wizard; also: npm run setup / ./setup
 ```
 
