@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"Implement a bounded transcript reader"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private reasoning"},{"type":"text","text":"I will parse known message rows."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/main.mjs"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"large file result"}]}}

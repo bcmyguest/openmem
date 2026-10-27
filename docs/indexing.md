@@ -37,7 +37,7 @@ A file found this way replaces the default entirely. Keys it omits take the buil
 | `notes.paths`, `papers.paths`, `bookmarks.paths` | Markdown (and bookmark export) directories; see [index-sources.md](index-sources.md). |
 | `feeds.out_dir`, `feeds.rss`, `feeds.openalex_queries` | Feed sync output; requires `npx personal-memory feed-sync`. |
 | `exclude` | Glob patterns on absolute paths. A matching source is skipped. |
-| `banks` | Absolute path prefix to bank id; the longest prefix wins. Applies to all source kinds. Unmatched repos fall back to `~/.hindsight/coding-agent.json` `mapPathToBank`, then `coding-agent::<name>`. |
+| `banks` | Absolute path prefix to bank id; the longest prefix wins. Applies to all source kinds. Unmatched repos fall back to `~/.config/personal-memory/coding-agent.json` `mapPathToBank`, then legacy `~/.hindsight/coding-agent.json`, then `coding-agent::<repository-name>`. |
 | `max_file_kb` | Largest indexed file, in kilobytes (1 KB = 1000 bytes). Default 128. |
 | `skip_dirs` | Directory names not descended into. Dot-prefixed directories are always skipped. |
 | `poll_seconds`, `vault_quiet_seconds`, `relist_seconds` | Watcher timings. |

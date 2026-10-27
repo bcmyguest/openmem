@@ -118,7 +118,7 @@ def test_bank_id_uses_mapping_then_repo_name(indexer, tmp_path, monkeypatch):
     config = tmp_path / "coding-agent.json"
     mapped = tmp_path / "Documents" / "sample-project"
     config.write_text(json.dumps({"mapPathToBank": {str(mapped): "coding-agent::documents-sample-project"}}))
-    monkeypatch.setattr(indexer, "AGENT_CONFIG", config)
+    monkeypatch.setattr(indexer, "PERSONAL_MEMORY_AGENT_CONFIG", config)
 
     assert indexer.bank_id(mapped) == "coding-agent::documents-sample-project"
     assert indexer.bank_id(tmp_path / "adrs") == "coding-agent::adrs"

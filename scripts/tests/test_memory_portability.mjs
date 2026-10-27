@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { assertPmmVersion, buildPmm, memoryImport, parsePmm, memoryExport } from "../../cli/mcp/portability.mjs";
+import { assertPmmVersion, buildPmm, memoryImport, parsePmm, memoryExport, serializePmm } from "../../cli/mcp/portability.mjs";
 import { sortPmmRecords } from "../../cli/mcp/pmm-records.mjs";
 import { cogneeDatasetName } from "../../cli/mcp/export/cognee-dataset-name.mjs";
 
@@ -17,6 +17,8 @@ function check(name, cond, detail = "") {
   check("pmm version", pmm.pmm_version === 1);
   const round = parsePmm(JSON.stringify(pmm));
   check("parse json", round.pmm.source_provider === "mem0");
+  const lines = parsePmm(serializePmm(pmm, "jsonl"));
+  check("jsonl export imports its header and records", lines.pmm.source_provider === "mem0" && lines.pmm.records.length === 1 && lines.pmm.records[0].content === "x");
 }
 
 {
@@ -85,6 +87,41 @@ function check(name, cond, detail = "") {
     fetchFn,
   );
   check("mem0 export records", out.records.length === 1);
+}
+
+{
+  const pmm = buildPmm({
+    provider: "hindsight", scope: { all_banks: true },
+    records: [
+      { id: "same-id", content: "shared fact", scope_key: "bank-a" },
+      { id: "same-id", content: "shared fact", scope_key: "bank-b" },
+    ],
+  });
+  const queried = [];
+  const fetchFn = async (url) => {
+    const bank = new URL(String(url)).searchParams.get("user_id");
+    queried.push(bank);
+    return { ok: true, text: async () => JSON.stringify(bank === "bank-a" ? [{ id: "same-id", memory: "shared fact" }] : []) };
+  };
+  const added = [];
+  const summary = await memoryImport(
+    { provider: "mem0", mem0: { baseUrl: "http://127.0.0.1:1" } },
+    serializePmm(pmm, "jsonl"), { merge_strategy: "skip_duplicates" }, fetchFn,
+    async (_ctx, _tool, args) => { added.push(args.bank); },
+  );
+  check("cross-bank import checks each bank independently", queried.join(",") === "bank-a,bank-b" && added.join(",") === "bank-b" && summary.skipped_count === 1);
+}
+
+{
+  const pmm = buildPmm({ provider: "hindsight", scope: { bank: "bank-a" }, records: [{ content: "must persist", scope_key: "bank-a" }] });
+  let rejected = false;
+  try {
+    await memoryImport(
+      { provider: "cognee" }, JSON.stringify(pmm), {}, async () => { throw new Error("unused"); },
+      async () => ({ isError: true, content: [{ text: "backend rejected write" }] }),
+    );
+  } catch (err) { rejected = String(err).includes("backend rejected write"); }
+  check("import does not report success when memory_add returns an error", rejected);
 }
 
 {

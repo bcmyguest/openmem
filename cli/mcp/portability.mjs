@@ -54,8 +54,10 @@ export function serializePmm(pmm, format) {
 export function parsePmm(data) {
   const trimmed = String(data || "").trim();
   if (!trimmed) throw new Error("import data is empty");
-  if (trimmed.startsWith("{")) {
-    const pmm = JSON.parse(trimmed);
+  let document = null;
+  try { document = JSON.parse(trimmed); } catch { /* JSONL contains multiple JSON objects. */ }
+  if (document && typeof document === "object" && !Array.isArray(document)) {
+    const pmm = document;
     assertPmmVersion(pmm.pmm_version);
     return { pmm: { ...pmm, records: sortPmmRecords(pmm.records || []) } };
   }
@@ -121,23 +123,27 @@ export async function memoryImport(ctx, data, args, fetchFn, addFn) {
   const imported = [];
   /** @type {string[]} */
   const skipped = [];
-  /** @type {{ ids: Set<string>, fingerprints: Set<string> } | null} */
-  let mem0Seen = null;
+  /** @type {Map<string, { ids: Set<string>, fingerprints: Set<string> }>} */
+  const mem0Seen = new Map();
   for (const rec of pmm.records || []) {
     const content = String(rec.content || "").trim();
     if (!content) continue;
     const bank = String(rec.scope_key || pmm.scope?.bank || pmm.scope?.user_id || "personal-memory-mcp");
     if (strategy === "skip_duplicates" && ctx.provider === "mem0") {
-      if (!mem0Seen) mem0Seen = await mem0ExistingKeys(ctx, bank, fetchFn);
+      if (!mem0Seen.has(bank)) mem0Seen.set(bank, await mem0ExistingKeys(ctx, bank, fetchFn));
+      const seen = mem0Seen.get(bank);
       const fp = pmmContentFingerprint(content);
-      if ((rec.id && mem0Seen.ids.has(String(rec.id))) || mem0Seen.fingerprints.has(fp)) {
+      if ((rec.id && seen.ids.has(String(rec.id))) || seen.fingerprints.has(fp)) {
         skipped.push(rec.id ? String(rec.id) : fp.slice(0, 40));
         continue;
       }
-      mem0Seen.fingerprints.add(fp);
-      if (rec.id) mem0Seen.ids.add(String(rec.id));
+      seen.fingerprints.add(fp);
+      if (rec.id) seen.ids.add(String(rec.id));
     }
-    await addFn(ctx, "memory_add", { content, bank }, fetchFn);
+    const result = await addFn(ctx, "memory_add", { content, bank }, fetchFn);
+    if (result?.isError) {
+      throw new Error(`memory import failed in bank ${bank}: ${result.content?.[0]?.text || "memory_add returned an error"}`);
+    }
     imported.push(rec.id ? String(rec.id) : content.slice(0, 40));
   }
   return {
