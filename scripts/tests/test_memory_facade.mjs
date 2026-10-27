@@ -48,7 +48,7 @@ const HTTP_CASES = [
     route(u, init) {
       if (u === `${H_BASE}/v1/default/banks/${encodeURIComponent(BANK)}/memories` && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
-        if (body.items?.[0]?.content === "stored fact" && body.async === false) {
+        if (body.items?.[0]?.content === "stored fact" && body.async === true) {
           return okJson({ queued: 1 });
         }
       }
@@ -56,6 +56,24 @@ const HTTP_CASES = [
     },
     expectResult(parsed) {
       return parsed.provider === "hindsight" && parsed.bank === BANK && parsed.result?.queued === 1;
+    },
+  },
+  {
+    id: "hindsight/memory_add_sync",
+    ctx: { provider: "hindsight", hindsightUrl: H_BASE },
+    tool: "memory_add",
+    args: { content: "sync fact", bank: BANK, async: false },
+    route(u, init) {
+      if (u === `${H_BASE}/v1/default/banks/${encodeURIComponent(BANK)}/memories` && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        if (body.items?.[0]?.content === "sync fact" && body.async === false) {
+          return okJson({ stored: 1 });
+        }
+      }
+      return undefined;
+    },
+    expectResult(parsed) {
+      return parsed.provider === "hindsight" && parsed.result?.stored === 1;
     },
   },
   {

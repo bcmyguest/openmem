@@ -1,5 +1,7 @@
 import { callUnifiedTool } from "../mcp/memory-facade.mjs";
 
+const HOOK_CONTEXT_MAX_CHARS = 8000;
+
 function toolText(result) {
   const t = result?.content?.[0]?.text;
   if (!t) return "";
@@ -13,18 +15,33 @@ function toolText(result) {
   }
 }
 
+function recallText(result, limit) {
+  try {
+    const value = JSON.parse(result?.content?.[0]?.text || "");
+    const hits = value?.result?.results;
+    if (Array.isArray(hits)) {
+      return hits.slice(0, limit)
+        .map((hit) => hit?.text ?? hit?.memory ?? hit?.content ?? "")
+        .filter((item) => typeof item === "string" && item.trim())
+        .join("\n\n")
+        .slice(0, HOOK_CONTEXT_MAX_CHARS);
+    }
+  } catch { /* use generic result text */ }
+  return toolText(result).slice(0, HOOK_CONTEXT_MAX_CHARS);
+}
+
 /** @param {ReturnType<import("../mcp/context.mjs").resolveMcpContext>} ctx */
-export async function sessionRecall(ctx, { query, bank, limit = 10 }, fetchFn = fetch) {
-  const out = await callUnifiedTool(ctx, "memory_recall", { query, bank, limit }, fetchFn);
+export async function sessionRecall(ctx, { query, bank, limit = 10, budget, maxTokens }, fetchFn = fetch) {
+  const out = await callUnifiedTool(ctx, "memory_recall", { query, bank, limit, budget, maxTokens }, fetchFn);
   if (out.isError) throw new Error(toolText(out));
-  return toolText(out);
+  return recallText(out, limit);
 }
 
 /** @param {ReturnType<import("../mcp/context.mjs").resolveMcpContext>} ctx */
 export async function sessionRetain(ctx, { content, bank }, fetchFn = fetch) {
   const text = String(content || "").trim();
   if (!text) return;
-  const out = await callUnifiedTool(ctx, "memory_add", { content: text, bank }, fetchFn);
+  const out = await callUnifiedTool(ctx, "memory_add", { content: text, bank, async: true }, fetchFn);
   if (out.isError) throw new Error(toolText(out));
 }
 

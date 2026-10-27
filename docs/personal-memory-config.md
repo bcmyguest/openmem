@@ -149,6 +149,14 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   - `install-coding-agent` — unified MCP + session hooks (all providers); optional `--hindsight-plugin`; see
     [coding-agent hooks](coding-agent-hooks.md).
 
+## MCP (unified `memory_*` tools)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PM_MEMORY_ADD_ASYNC` | `true` (implicit) | Hindsight `memory_add` sends `async: true` unless the tool passes `async: false`. Async ingest returns in ~200ms and avoids Cursor/Claude MCP `-32001` timeouts while extraction runs in the background. Set `PM_MEMORY_ADD_ASYNC=false` to force synchronous ingest. |
+
+After changing MCP code, re-run `npx personal-memory install-coding-agent --yes` (or copy the repo into `~/.local/share/personal-memory/agent-runtime`) and **restart** the personal-memory MCP server in Cursor.
+
 ## Apply
 
 ```bash
