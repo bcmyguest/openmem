@@ -65,10 +65,10 @@ Updates compose profile, env, and MCP wiring. Does **not** migrate memories betw
 
 ## NotebookLM (opt-in)
 
-NotebookLM sync and MCP are provider-agnostic but were built for Hindsight-first workflows. See [docs/notebooklm.md](https://github.com/bcmyguest/openmem/blob/main/docs/notebooklm.md).
+NotebookLM sync and MCP are provider-agnostic but were built for Hindsight-first workflows. See [docs/notebooklm.md](notebooklm.md).
 
 ## See also
 
 - [Architecture](architecture.md) — indexing and MCP paths
 - [Model configuration](model-configuration.md) — LiteLLM aliases and backends
-- [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/)
+- [Provider status](provider-status.md)

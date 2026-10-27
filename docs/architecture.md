@@ -210,9 +210,9 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 ## Related
 
 - [Memory portability](memory-portability.md) — PMM export/import
-- [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) — manifest status and ports
+- [Provider status](provider-status.md) — manifest status and ports
 - [mem0 operator guide](mem0.md) — URL-only mem0 setup
 - [Cognee operator guide](cognee.md) — loopback container + LLM env
 - [Configuration file](openmem-config.md) — `config.toml` for provider and stack defaults
 
-Developer docs (wizard phases, hooks, manual compose, [indexer sinks](https://github.com/bcmyguest/openmem/blob/main/docs/indexer-sinks.md), [MCP install modes](https://github.com/bcmyguest/openmem/blob/main/docs/mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).
+Developer docs (wizard phases, hooks, manual compose, [indexer sinks](indexer-sinks.md), [MCP install modes](mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](memory-providers.md).

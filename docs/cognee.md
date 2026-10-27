@@ -34,4 +34,4 @@ npx openmem switch cognee --yes
 
 Updates active provider config, restarts the stack (unless `--no-stack`), runs MCP install (unless `--no-mcp`). Does **not** migrate memories.
 
-See also [Architecture](architecture.md), [Hindsight](hindsight.md), and [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).
+See also [Architecture](architecture.md), [Hindsight](hindsight.md), and [Provider status](provider-status.md).

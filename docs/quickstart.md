@@ -11,7 +11,7 @@ Get from zero to a running stack in one wizard run. **Choose your memory provide
 | LLM for Hindsight (default provider) | lemond, Ollama, or OpenAI-compatible — wizard wires LiteLLM |
 | git, curl | Wizard preflight |
 
-Default stack is [Hindsight](https://bcmyguest.github.io/openmem/docs/hindsight/). Other providers: wizard or `npx openmem providers` ([provider status](https://bcmyguest.github.io/openmem/docs/provider-status/)).
+Default stack is [Hindsight](hindsight.md). Other providers: wizard or `npx openmem providers` ([provider status](provider-status.md)).
 
 ## 1. Run the wizard
 

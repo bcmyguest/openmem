@@ -9,7 +9,7 @@ Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the co
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
 bash dependency in the CLI (macOS ships bash 3.2).
 
-Wizard phases and flags live in the repository: [docs/setup-wizard.md](https://github.com/bcmyguest/openmem/blob/main/docs/setup-wizard.md). Runtime architecture: [architecture.md](architecture.md).
+Wizard phases and flags live in the repository: [docs/setup-wizard.md](setup-wizard.md). Runtime architecture: [architecture.md](architecture.md).
 
 ## Install paths
 

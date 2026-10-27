@@ -59,9 +59,11 @@ Hand-written and committed: `src/content/docs/docs/getting-started.md`, the land
 
 For each doc source the sync step drops the H1 (Starlight renders the title from frontmatter), adds frontmatter, and rewrites relative links:
 
-- a link to another published doc becomes a site page link;
-- a link to any other file or directory in the repository becomes a GitHub `blob` or `tree` URL on `site.branch`;
+- a link to another published doc (or a manifest page such as provider-status) becomes a site page link;
+- a link to any other file or directory in the repository becomes a GitHub `blob` or `tree` URL on `site.branch` (contributor-only material that is not on the site);
 - a link to a path that does not exist fails the build.
+
+Public README / announcement links should use the docs site (`https://bcmyguest.github.io/openmem/…`), not GitHub blob URLs.
 
 To publish another doc, add an entry to `PAGES` in `scripts/lib/docs.mjs`.
 

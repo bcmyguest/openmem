@@ -7,13 +7,13 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/card.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
 
-**npm:** [openmem](https://www.npmjs.com/package/openmem) · **MCP:** `npx -y openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [openmem](https://www.npmjs.com/package/openmem) · **MCP:** `npx -y openmem` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
 **OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API and ops surface over pluggable backends (Hindsight, mem0, Cognee, …), with shared wizard, indexer, and import/export formats (PMM first).
 
 > Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
-**Read first:** [Concepts](docs/concepts.md) · [docs site](https://bcmyguest.github.io/openmem/docs/concepts/)
+**Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/)
 
 ## Quickstart
 
@@ -45,7 +45,7 @@ Wizard dry-run (what first setup plans — no writes):
 
 ![Setup dry-run: npx openmem setup --dry-run](https://bcmyguest.github.io/openmem/setup-demo.gif)
 
-Full guide: [docs/quickstart.md](docs/quickstart.md) · [docs site](https://bcmyguest.github.io/openmem/docs/getting-started/) · [rebrand notes](docs/OPENMEM.md)
+Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/)
 
 ## Architecture
 
@@ -106,7 +106,7 @@ flowchart TB
 | Agents → MCP / hooks → provider | `install-coding-agent` installs the shared skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode |
 | Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
 
-On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [coding-agent hooks](docs/coding-agent-hooks.md) for the current limits.
+On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for MCP and hooks limits.
 
 ## Providers and portability
 
@@ -129,7 +129,7 @@ OpenMem is not affiliated with these projects; they shape the problem or the pat
 | **[Cognee](https://github.com/topoteretes/cognee)** | Supported memory provider. |
 | **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks. |
 
-More setup analogues (Chezmoi, Home Assistant integrations, …): [docs/memory-providers.md](docs/memory-providers.md).
+More setup analogues (Chezmoi, Home Assistant integrations, …): [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).
 
 ## License
 
