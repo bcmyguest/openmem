@@ -7,7 +7,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "openmem",
+      "identifier": "@bcmyguest/openmem",
       "version": "0.6.3",
       "transport": {
         "type": "stdio"

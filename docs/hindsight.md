@@ -37,19 +37,19 @@ Shipped route templates live in `config/litellm.lemond.yaml` and `config/litellm
 **Default (all providers):** unified `memory_*` MCP plus in-repo session hooks:
 
 ```sh
-npx openmem install-coding-agent --yes
+npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
 **Optional:** also install the upstream Hindsight plugin hooks:
 
 ```sh
-npx openmem install-coding-agent --yes --hindsight-plugin
+npx @bcmyguest/openmem install-coding-agent --yes --hindsight-plugin
 ```
 
 MCP without session hooks:
 
 ```sh
-npx openmem install-mcp --yes
+npx @bcmyguest/openmem install-mcp --yes
 ```
 
 Restart Cursor Agent after MCP changes.
@@ -57,8 +57,8 @@ Restart Cursor Agent after MCP changes.
 ## Switch provider
 
 ```sh
-npx openmem switch mem0 --yes
-# return: npx openmem switch hindsight --yes
+npx @bcmyguest/openmem switch mem0 --yes
+# return: npx @bcmyguest/openmem switch hindsight --yes
 ```
 
 Updates compose profile, env, and MCP wiring. Does **not** migrate memories between backends.

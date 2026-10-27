@@ -23,7 +23,7 @@ Today the indexer **ships** git repos, Obsidian vaults, markdown directory trees
 | **Readwise** | Reader / highlight export | `readwise::` | Official export → markdown dir |
 | **Hypothesis** | Annotation export | `hypothesis::` | Web annotation JSON → indexer adapter |
 | **Pinboard / Linkwarden / Karakeep** | Bookmark API or export | `bookmarks::` | Overlap with `bookmarks.paths` |
-| **RSS / arXiv feed** | `npx openmem feed-sync` | `feed::*` | Shipped; see [sources-feeds.md](sources-feeds.md) |
+| **RSS / arXiv feed** | `npx @bcmyguest/openmem feed-sync` | `feed::*` | Shipped; see [sources-feeds.md](sources-feeds.md) |
 | **Email** | mbox / selective forward | `mail::` | High privacy risk; opt-in only |
 | **Slack / Discord export** | JSON dump dirs | `chat::` | Enterprise exports only |
 | **NotebookLM** | Already optional Hindsight profile | `notebooklm::*` | Not a generic source type |

@@ -18,7 +18,7 @@ npm install && npx . setup
 npx . install-coding-agent --yes
 ```
 
-Once on npm: `npx openmem` / `npx openmem-mcp`
+Once on npm: `npx @bcmyguest/openmem` / `npx openmem-mcp`
 
 - Repo: https://github.com/bcmyguest/openmem
 - Docs: https://bcmyguest.github.io/openmem/

@@ -1,8 +1,10 @@
-# Memory export and import
+# Portable memory (PMM)
 
-Portable **export/import** lets you inspect what a provider stores, move data when you change backends, and satisfy “give me my data” requests. There is **no** industry-standard memory file format yet; openmem defines a small **PMM** (Personal Memory Manifest) envelope so tools and future providers can converge.
+OpenMem’s **portability layer** moves memories between providers without baking in a vendor dump format. **PMM** (Personal Memory Manifest) is the first interchange format: export what a backend stores, import into another (or the same) provider, and keep a portable copy for backup or “give me my data” requests.
 
-Status: **`memory_export` / `memory_import`** on the unified MCP are **beta**. PMM v1 is stable; adapters live under `cli/mcp/export/` (orchestrator: `cli/mcp/portability.mjs`).
+`npx @bcmyguest/openmem switch` rewires the stack only — it does **not** migrate content. Use export → switch → import (or re-index) when you change backends.
+
+Status: **`memory_export` / `memory_import`** on the unified MCP are **beta**. PMM v1 is stable; adapters live under `cli/mcp/export/` (orchestrator: `cli/mcp/portability.mjs`). MCP install: [MCP setup](mcp-setup.md).
 
 ## PMM format (version 1)
 
@@ -42,14 +44,20 @@ openmem stays a **meta orchestrator**: PMM shape and import live in `cli/mcp/por
 
 ## Unified MCP tools
 
-On the `openmem` MCP server (see [Architecture](architecture.md)):
+On the `openmem` MCP server ([MCP setup](mcp-setup.md), [Architecture](architecture.md)):
 
 ```text
 memory_export   { format?: "json"|"jsonl", bank?: string, user_id?: string }
 memory_import   { data: string, merge_strategy?: "skip_duplicates"|"overwrite" }
 ```
 
-Restart Cursor Agent after `npx openmem install-mcp --yes`.
+Example flow (Cursor Agent / any host with the unified server):
+
+1. `memory_export` with `format: "json"` and optional `bank`
+2. `npx @bcmyguest/openmem switch <other> --yes`
+3. `memory_import` with the exported JSON and `merge_strategy: "skip_duplicates"`
+
+Restart Cursor Agent after `npx @bcmyguest/openmem install-mcp --yes`.
 
 ## Provider behavior
 

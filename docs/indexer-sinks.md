@@ -119,4 +119,4 @@ fails. Hindsight has no flush. Details: [Pluggable memory providers — Optional
 
 - [Indexing](indexing.md) — sources, `index.yml`, watcher timings
 - [Architecture](architecture.md) — unified MCP mapping to the same backends
-- [MCP install guide](mcp-install-guide.md) — Cursor servers vs indexer sinks
+- [MCP setup](mcp-setup.md) — Cursor servers vs indexer sinks

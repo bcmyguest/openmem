@@ -1,13 +1,13 @@
 # OpenMem
 
-[![npm version](https://img.shields.io/npm/v/openmem.svg)](https://www.npmjs.com/package/openmem)
+[![npm version](https://img.shields.io/npm/v/@bcmyguest/openmem.svg)](https://www.npmjs.com/package/@bcmyguest/openmem)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/score.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
 
 [![openmem-mcp](https://glama.ai/mcp/servers/@bcmyguest/openmem-mcp/badges/card.svg)](https://glama.ai/mcp/servers/@bcmyguest/openmem)
 
-**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [openmem](https://www.npmjs.com/package/openmem) · **MCP:** `npx -y openmem` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) · **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
 **OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API and ops surface over pluggable backends (Hindsight, mem0, Cognee, …), with shared wizard, indexer, and import/export formats (PMM first).
 
@@ -19,9 +19,9 @@
 
 | Step | Command |
 | --- | --- |
-| 1. Wizard | `npx openmem` |
-| 2. Check | `npx openmem doctor` |
-| 3. Coding agents | `npx openmem install-coding-agent --yes` |
+| 1. Wizard | `npx @bcmyguest/openmem` |
+| 2. Check | `npx @bcmyguest/openmem doctor` |
+| 3. Coding agents | `npx @bcmyguest/openmem install-coding-agent --yes` |
 
 **Checkout instead of npx:**
 
@@ -35,15 +35,15 @@ npm install && npx . setup
 ### Day-2
 
 ```sh
-npx openmem up
-npx openmem down
-npx openmem switch mem0 --yes
-npx openmem doctor
+npx @bcmyguest/openmem up
+npx @bcmyguest/openmem down
+npx @bcmyguest/openmem switch mem0 --yes
+npx @bcmyguest/openmem doctor
 ```
 
 Wizard dry-run (what first setup plans — no writes):
 
-![Setup dry-run: npx openmem setup --dry-run](https://bcmyguest.github.io/openmem/setup-demo.gif)
+![Setup dry-run: npx @bcmyguest/openmem setup --dry-run](https://bcmyguest.github.io/openmem/setup-demo.gif)
 
 Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/)
 
@@ -96,7 +96,7 @@ flowchart TB
   PMCP -->|loopback HTTP| PROV
   NLMCP -->|loopback HTTP| PROV
 
-  W["npx openmem\nsetup · install-mcp"] -.->|configure| compose
+  W["npx @bcmyguest/openmem\nsetup · install-mcp"] -.->|configure| compose
   W -.->|mcp.json| UMCP
 ```
 
@@ -110,9 +110,10 @@ On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and re
 
 ## Providers and portability
 
-- **Providers** — manifests under `providers/` (Hindsight, mem0, Cognee). Add another with a compose fragment, indexer sink, and wizard hooks.
-- **Formats** — `memory_export` / `memory_import` speak **PMM** today; more interchange formats belong in the same portability layer.
-- **Switch** — `npx openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
+- **Providers** — manifests under `providers/` ([Hindsight](https://bcmyguest.github.io/openmem/docs/hindsight/), [mem0](https://bcmyguest.github.io/openmem/docs/mem0/), [Cognee](https://bcmyguest.github.io/openmem/docs/cognee/)). Add another with a compose fragment, indexer sink, and wizard hooks.
+- **MCP** — unified `memory_*` plus optional native/NotebookLM servers: [MCP setup](https://bcmyguest.github.io/openmem/docs/mcp-setup/).
+- **Portable memory** — `memory_export` / `memory_import` speak **PMM**: [Portable memory](https://bcmyguest.github.io/openmem/docs/memory-portability/).
+- **Switch** — `npx @bcmyguest/openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
 
 Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.
 

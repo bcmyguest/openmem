@@ -15,19 +15,19 @@ openmem routes session work through the **unified MCP** (`memory_*`) for all thr
 | bank / scope | Hindsight banks | mem0 `user_id` | Cognee dataset |
 
 Flags live in `cli/coding-agent/capabilities.mjs`; `doctor wiring` and
-`install-coding-agent` read the same table. `npx openmem wiring` prints
+`install-coding-agent` read the same table. `npx @bcmyguest/openmem wiring` prints
 which session features work for the active provider.
 
 ## Install per agent
 
 ```sh
-npx openmem install-coding-agent --yes
+npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
 - **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
 - **Optional:** `--hindsight-plugin` with `MEMORY_PROVIDER=hindsight` also runs `@vectorize-io/hindsight-coding-agents install` (legacy/alternate hook set).
 
-See [MCP install guide](mcp-install-guide.md) and [coding agents](coding-agents.md).
+See [MCP setup](mcp-setup.md) and [coding agents](coding-agents.md).
 
 Claude Code Stop retention parses ordinary message and tool-use rows. Codex Stop retention is best effort because Codex does not guarantee a stable transcript format. Cursor Stop retention has a bounded adapter for the observed local agent-transcripts JSONL shape (top-level user/assistant role and `message.content` parts). Live Cursor Hook `transcript_path` linkage to that format remains unverified; unknown row shapes are skipped. Cursor recall and explicit `memory_add` remain available. OpenCode retention uses its plugin's session messages API.
 
