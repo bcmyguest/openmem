@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
 import { SHIM_HARNESSES } from "./hook-harnesses.mjs";
-import { sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
+import { sessionRecall, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
 
@@ -202,9 +202,10 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
   let context = "";
 
   if (phase === "sessionStart") {
-    context = await sessionReflectOrSearch(
+    context = await sessionRecall(
       ctx,
-      { query: "What should I know about this project and recent decisions?", bank, limit: 12 },
+      { query: "What should I know about this project and recent decisions?", bank, limit: 8,
+        budget: "low", maxTokens: 1200 },
       fetchFn,
     );
   } else if (phase === "prompt") {

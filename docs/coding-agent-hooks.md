@@ -31,6 +31,9 @@ See [MCP install guide](mcp-install-guide.md) and [coding agents](coding-agents.
 
 Claude Code Stop retention parses ordinary message and tool-use rows. Codex Stop retention is best effort because Codex does not guarantee a stable transcript format. Cursor Stop retention has a bounded adapter for the observed local agent-transcripts JSONL shape (top-level user/assistant role and `message.content` parts). Live Cursor Hook `transcript_path` linkage to that format remains unverified; unknown row shapes are skipped. Cursor recall and explicit `memory_add` remain available. OpenCode retention uses its plugin's session messages API.
 
+Hindsight Stop hooks submit retains with `async: true` so model extraction runs after the hook returns. A successful queue response advances the transcript cursor; later extraction failures must be checked through Hindsight operations. MCP `memory_add` defaults to async; pass `async: false` to wait for extraction.
+SessionStart hooks use recall instead of reflect. Hindsight startup recall requests `budget: low` and `max_tokens: 1200`; all hook recall output is limited to eight hits and 8000 characters. Explicit `memory_reflect` remains available through the MCP.
+
 ## Session scopes
 
 Indexer banks map to provider scopes (`coding-agent::repo`, `obsidian::vault`, mem0 `user_id`, Cognee dataset names). Default MCP scope key: `personal-memory-mcp`. See [coding-agent-scopes.md](coding-agent-scopes.md).
