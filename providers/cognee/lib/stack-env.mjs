@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { envValue } from "../../../wizard/lib/paths.mjs";
+import { isCognifyReady, providerMismatchWarning } from "./llm-env.mjs";
+import { parseEnvText } from "./env-file.mjs";
 
 const DEFAULT_PORT = "8766";
 
@@ -97,41 +99,6 @@ export function prepareStackEnv({ repo, home = process.env.HOME || "", env }) {
   return { entries, drop, report };
 }
 
-/** True when the file has a KEY= line with a non-empty value (quotes and blanks do not count). */
-function hasValue(text, key) {
-  for (const raw of text.split("\n")) {
-    const line = raw.trim().replace(/^export\s+/, "");
-    if (!line.startsWith(`${key}=`)) continue;
-    const value = line.slice(key.length + 1).trim().replace(/^(["'])(.*)\1$/, "$2").trim();
-    if (value) return true;
-  }
-  return false;
-}
-
-/** @param {string} text @param {string} key */
-function valueOf(text, key) {
-  for (const raw of text.split("\n")) {
-    const line = raw.trim().replace(/^export\s+/, "");
-    if (!line.startsWith(`${key}=`)) continue;
-    return line.slice(key.length + 1).trim().replace(/^(["'])(.*)\1$/, "$2").trim();
-  }
-  return "";
-}
-
-/**
- * Cognify-ready: a real key, or Ollama with matching embeddings (LLM_API_KEY=ollama counts).
- * @param {string} text
- */
-function cognifyReadyFromText(text) {
-  if (!hasValue(text, "LLM_API_KEY")) return false;
-  const llm = (valueOf(text, "LLM_PROVIDER") || "openai").toLowerCase();
-  const emb = (valueOf(text, "EMBEDDING_PROVIDER") || "openai").toLowerCase();
-  if (llm === "ollama") {
-    return emb === "ollama" && (hasValue(text, "EMBEDDING_ENDPOINT") || hasValue(text, "EMBEDDING_MODEL"));
-  }
-  return true;
-}
-
 /**
  * Printed after the .env is written. Names the env file, never its contents.
  * @param {{ repo?: string, home: string, env: NodeJS.ProcessEnv }} opts
@@ -146,17 +113,13 @@ export function setupNotices({ repo, home, env }) {
   } catch {
     // missing or unreadable: same notice as an empty file
   }
-  if (!cognifyReadyFromText(text)) {
-    const llm = valueOf(text, "LLM_PROVIDER").toLowerCase();
-    const emb = valueOf(text, "EMBEDDING_PROVIDER").toLowerCase();
-    if (llm && emb && llm !== emb) {
-      notices.push(
-        `NOTE: LLM_PROVIDER=${llm} but EMBEDDING_PROVIDER=${emb} in ${file}: Cognee needs matching providers.`,
-      );
-    }
+  const values = parseEnvText(text);
+  if (!isCognifyReady(values)) {
+    const mismatch = providerMismatchWarning(values);
+    if (mismatch) notices.push(`NOTE: ${mismatch} in ${file}.`);
     notices.push(
-      `NOTE: Cognee needs a cognify-ready LLM config: put LLM_API_KEY=... in ${file} (mode 600), ` +
-        "or set LLM_PROVIDER=ollama with matching ollama embeddings. " +
+      `NOTE: Cognee needs a cognify-ready config in ${file}: default is GRAPH_EXTRACTOR=gliner_demo ` +
+        "with FastEmbed embeddings, or LLM_PROVIDER=ollama, or LLM_API_KEY. " +
         "Documents are stored but not searchable until cognify works.",
     );
   }

@@ -1,9 +1,9 @@
 /**
  * Cognee checks that run after the meta wizard's provider-neutral validation: the operator
- * env files (mode, LLM key / Ollama cognify readiness), the stack .env (port present, no
- * secret assignment lines), and the compose fragment. A missing LLM key is a warning-class
- * check (documents are stored but not searchable); an env file that is unreadable or open
- * to group/other is an error.
+ * env files (mode, GLiNER/FastEmbed / Ollama / LLM-key cognify readiness), the stack .env
+ * (port present, no secret assignment lines), and the compose fragment. A missing cognify
+ * config is a warning-class check (documents are stored but not searchable); an env file
+ * that is unreadable or open to group/other is an error.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -33,7 +33,7 @@ export function validateCognee(ctx, h) {
   const file = ctx.cognee.envFile;
   const env = readEnvFile(file);
   if (!env.exists) {
-    checks.push("LLM_API_KEY missing: documents are stored but not searchable");
+    checks.push("cognify config missing: documents are stored but not searchable");
   } else if (env.error) {
     errors.push(`${file} is not readable (${env.error})`);
   } else {
@@ -42,16 +42,20 @@ export function validateCognee(ctx, h) {
     const mismatch = providerMismatchWarning(env.values);
     if (mismatch) checks.push(mismatch);
     if (isCognifyReady(env.values)) {
-      const provider = (env.values.get("LLM_PROVIDER") || "openai").toLowerCase();
-      checks.push(
-        provider === "ollama"
-          ? "cognee.env is cognify-ready (ollama + embeddings)"
-          : "cognee.env has LLM_API_KEY",
-      );
+      const provider = (env.values.get("LLM_PROVIDER") || "").toLowerCase();
+      const emb = (env.values.get("EMBEDDING_PROVIDER") || "").toLowerCase();
+      const extractor = (env.values.get("GRAPH_EXTRACTOR") || "").toLowerCase();
+      if (extractor === "gliner_demo" || emb === "fastembed") {
+        checks.push("cognee.env is cognify-ready (gliner + fastembed)");
+      } else if (provider === "ollama") {
+        checks.push("cognee.env is cognify-ready (ollama + embeddings)");
+      } else {
+        checks.push("cognee.env has LLM_API_KEY");
+      }
     } else if (env.values.get("LLM_API_KEY")) {
       checks.push("LLM_API_KEY set but cognify not ready (check LLM/EMBEDDING providers)");
     } else {
-      checks.push("LLM_API_KEY missing: documents are stored but not searchable");
+      checks.push("cognify config missing: documents are stored but not searchable");
     }
   }
 

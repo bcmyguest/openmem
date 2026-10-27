@@ -92,6 +92,8 @@ def test_healthcheck_targets_the_health_route(scratch):
 def test_single_user_mode_and_data_paths(scratch):
     service = cognee(scratch, "--profile", "cognee")["services"]["cognee"]
     assert service["environment"]["ENABLE_BACKEND_ACCESS_CONTROL"] == "false"
+    assert service["environment"]["HF_HOME"] == "/cognee-storage/.cache/huggingface"
+    assert service["environment"]["FASTEMBED_CACHE_PATH"] == "/cognee-storage/.cache/fastembed"
     # The image defaults both root directories under /cognee-storage, owned by its uid 1000; do not override them.
     assert "DATA_ROOT_DIRECTORY" not in service["environment"]
     assert "SYSTEM_ROOT_DIRECTORY" not in service["environment"]

@@ -302,13 +302,23 @@ await withEnv({}, async () => {
   } catch {
     threw = true;
   }
+  const body = fs.existsSync(envFileOf(home)) ? fs.readFileSync(envFileOf(home), "utf8") : "";
   check("llm: --yes without a key does not die", !threw);
   check(
-    "llm: --yes without a key warns that documents are not searchable",
-    lines.some((l) => l.kind === "warn" && l.msg.includes("documents will be stored but not searchable until LLM_API_KEY works (cognify needs it)")),
+    "llm: --yes without a key writes GLiNER + FastEmbed defaults",
+    body.includes("GRAPH_EXTRACTOR=gliner_demo\n") &&
+      body.includes("EMBEDDING_PROVIDER=fastembed\n") &&
+      body.includes("EMBEDDING_MODEL=BAAI/bge-small-en-v1.5\n") &&
+      body.includes("EMBEDDING_DIMENSIONS=384\n") &&
+      body.includes("AUTO_FEEDBACK=false\n") &&
+      !body.includes("LLM_API_KEY="),
+    body,
+  );
+  check(
+    "llm: --yes GLiNER default is cognify-ready (no missing-config warning)",
+    !lines.some((l) => l.kind === "warn" && /not searchable/.test(l.msg)),
     text(),
   );
-  check("llm: no env file is created without answers", !fs.existsSync(envFileOf(home)));
 });
 
 await withEnv({ PM_COGNEE_LLM_MODEL: "local-model", PM_COGNEE_LLM_PROVIDER: "ollama" }, async () => {
@@ -342,6 +352,30 @@ await withEnv({ PM_COGNEE_LLM_PROVIDER: "ollama", PM_COGNEE_EMBEDDING_PROVIDER: 
   check(
     "llm: warns when LLM and embedding providers disagree",
     lines.some((l) => l.kind === "warn" && /LLM_PROVIDER=ollama but EMBEDDING_PROVIDER=openai/.test(l.msg)),
+  );
+});
+await withEnv({ PM_COGNEE_LLM_PROVIDER: "ollama", PM_COGNEE_EMBEDDING_PROVIDER: "fastembed" }, async () => {
+  const home = tmp("llm-ollama-fastembed");
+  const { h, lines, text } = makeHelpers({ saveWizardConf: () => {} });
+  const ctx = makeCtx(home);
+  await wiz.init(ctx, h);
+  await wiz.configureModelRouting(ctx, h);
+  const body = fs.readFileSync(envFileOf(home), "utf8");
+  check(
+    "llm: ollama + fastembed writes FastEmbed model/dims without forcing GLiNER extraction",
+    body.includes("LLM_PROVIDER=ollama\n") &&
+      body.includes("LLM_API_KEY=ollama\n") &&
+      body.includes("EMBEDDING_PROVIDER=fastembed\n") &&
+      body.includes("EMBEDDING_MODEL=BAAI/bge-small-en-v1.5\n") &&
+      body.includes("EMBEDDING_DIMENSIONS=384\n") &&
+      !body.includes("GRAPH_EXTRACTOR=") &&
+      !body.includes("EMBEDDING_ENDPOINT="),
+    body,
+  );
+  check(
+    "llm: ollama + fastembed does not warn about provider mismatch",
+    !lines.some((l) => l.kind === "warn" && /EMBEDDING_PROVIDER=fastembed/.test(l.msg)),
+    text(),
   );
 });
 
@@ -410,12 +444,17 @@ await withEnv({}, async () => {
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
   check("llm: interactive run never calls helpers.ask for the key (it echoes)", prompts.length === 0);
+  const body = fs.existsSync(envFileOf(home)) ? fs.readFileSync(envFileOf(home), "utf8") : "";
   check(
-    "llm: ... and prints put-in-file instructions instead",
-    lines.some((l) => l.kind === "info" && /put LLM_API_KEY=/.test(l.msg) && /mode 600/.test(l.msg)),
+    "llm: interactive without answers writes GLiNER + FastEmbed defaults",
+    body.includes("GRAPH_EXTRACTOR=gliner_demo\n") && body.includes("EMBEDDING_PROVIDER=fastembed\n"),
+    body || text(),
+  );
+  check(
+    "llm: interactive GLiNER default skips the put-LLM_API_KEY hint",
+    !lines.some((l) => l.kind === "info" && /put LLM_API_KEY=/.test(l.msg)),
     text(),
   );
-  check("llm: no env file without a key or Clack hand-off", !fs.existsSync(envFileOf(home)));
 });
 
 // beforeStack.
@@ -477,7 +516,7 @@ await withEnv({}, async () => {
   fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
   fs.writeFileSync(path.join(home, ".config/personal-memory/cognee-indexer.env"), "COGNEE_API_KEY=k\n");
   check("summary: ... and listed once it does", wiz.summary(ctx).configFiles.some((l) => l.includes("cognee-indexer.env")));
-  check("summary: notes cover cognify config, graph status, first start, delete and REST agents", /cognify-ready|LLM_API_KEY|Ollama/.test(all) && /api\/v1\/datasets\/status/.test(all) && /large image/.test(all) && /graph and vectors/.test(all) && /REST API/.test(all));
+  check("summary: notes cover cognify config, graph status, first start, delete and REST agents", /cognify-ready|GLiNER|FastEmbed|LLM_API_KEY|Ollama/.test(all) && /api\/v1\/datasets\/status/.test(all) && /large image/.test(all) && /graph and vectors/.test(all) && /REST API/.test(all));
   check("summary: no secret text", !all.includes("COGNEE_API_KEY=k"));
   check("summary: log services", s.logServices.join() === "cognee,indexer");
 });
@@ -530,10 +569,28 @@ await withEnv({}, async () => {
     log: { info: () => {}, warn: () => {} },
   };
   const handoff = await wiz.clackSetup({ repoRoot: path.join(home, "stack"), home, pmMerged: {} }, ui, h);
-  check("clackSetup: offers OpenAI vs Ollama then a hidden password prompt", choices.length === 1 && /Ollama|LLM/.test(choices[0]) && asked.length === 1 && /hidden/.test(asked[0]));
+  check("clackSetup: offers GLiNER/Ollama/OpenAI then a hidden password for OpenAI", choices.length === 1 && /GLiNER|cognify|Ollama/.test(choices[0]) && asked.length === 1 && /hidden/.test(asked[0]));
   check("clackSetup: hands the key over as PM_COGNEE_LLM_API_KEY and skips the wizard's own step", handoff.PM_COGNEE_LLM_API_KEY === SECRET && handoff.WIZARD_SKIP_BACKEND_STEP === "1");
   const empty = await wiz.clackSetup({ repoRoot: home, home, pmMerged: {} }, { ...ui, password: async () => "" }, h);
-  check("clackSetup: an empty answer hands over no key", empty.PM_COGNEE_LLM_API_KEY === undefined && empty.WIZARD_SKIP_BACKEND_STEP === "1");
+  check(
+    "clackSetup: empty OpenAI key falls back to GLiNER + FastEmbed handoff",
+    empty.PM_COGNEE_LLM_API_KEY === undefined &&
+      empty.PM_COGNEE_GRAPH_EXTRACTOR === "gliner_demo" &&
+      empty.PM_COGNEE_EMBEDDING_PROVIDER === "fastembed" &&
+      empty.WIZARD_SKIP_BACKEND_STEP === "1",
+  );
+  const glinerUi = { ...ui, select: async () => "gliner" };
+  const gliner = await wiz.clackSetup({ repoRoot: home, home, pmMerged: {} }, glinerUi, h);
+  check(
+    "clackSetup: GLiNER choice hands over FastEmbed settings (no password)",
+    gliner.PM_COGNEE_GRAPH_EXTRACTOR === "gliner_demo" &&
+      gliner.PM_COGNEE_EMBEDDING_PROVIDER === "fastembed" &&
+      gliner.PM_COGNEE_EMBEDDING_MODEL === "BAAI/bge-small-en-v1.5" &&
+      gliner.PM_COGNEE_EMBEDDING_DIMENSIONS === "384" &&
+      gliner.PM_COGNEE_AUTO_FEEDBACK === "false" &&
+      gliner.PM_COGNEE_LLM_API_KEY === undefined &&
+      gliner.WIZARD_SKIP_BACKEND_STEP === "1",
+  );
   const ollamaUi = { ...ui, select: async () => "ollama" };
   const ollama = await wiz.clackSetup({ repoRoot: home, home, pmMerged: {} }, ollamaUi, h);
   check(
@@ -604,11 +661,19 @@ await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
 });
 await withEnv({ LLM_API_KEY: "plain-llm-secret" }, async () => {
   const home = tmp("b1-noplain");
-  const { h, lines } = makeHelpers({ saveWizardConf: () => {} });
+  const { h, text } = makeHelpers({ saveWizardConf: () => {} });
   const ctx = makeCtx(home, { yes: false, skipBackendStep: true });
   await wiz.init(ctx, h);
   await wiz.configureModelRouting(ctx, h);
-  check("skipBackendStep alone never reads the plain LLM_API_KEY", !fs.existsSync(envFileOf(home)) && lines.some((l) => l.kind === "warn") && process.env.LLM_API_KEY === undefined);
+  const body = fs.existsSync(envFileOf(home)) ? fs.readFileSync(envFileOf(home), "utf8") : "";
+  check(
+    "skipBackendStep alone never reads the plain LLM_API_KEY (writes GLiNER defaults instead)",
+    process.env.LLM_API_KEY === undefined &&
+      !body.includes("plain-llm-secret") &&
+      body.includes("GRAPH_EXTRACTOR=gliner_demo\n") &&
+      body.includes("EMBEDDING_PROVIDER=fastembed\n"),
+    body || text(),
+  );
 });
 
 // Escapes: a second run changes nothing for a value that needed quoting.
@@ -629,7 +694,7 @@ await withEnv({ PM_COGNEE_LLM_API_KEY: 'p"w$d\\' }, async () => {
 
 // env-file helpers.
 {
-  const { parseEnvText, mergeEnvText, formatValue, writePrivateFile, writeTarget } = envFileLib;
+  const { parseEnvText, mergeEnvText, dropEnvKeys, formatValue, writePrivateFile, writeTarget } = envFileLib;
   const values = parseEnvText("export A=1\r\nB='two words'\r\n# C=3\r\nD=\"q\\\"x\\\\y\\$z\"\r\n\r\nE = spaced\r\n");
   check("parseEnvText: export prefix, CRLF, quotes and double-quote unescaping", values.get("A") === "1" && values.get("B") === "two words" && !values.has("C") && values.get("D") === 'q"x\\y$z' && values.get("E") === "spaced");
   check("formatValue: a trailing backslash is never single-quoted", formatValue("abc\\").startsWith('"') && formatValue("abc\\") === '"abc\\\\"');
@@ -652,6 +717,10 @@ await withEnv({ PM_COGNEE_LLM_API_KEY: 'p"w$d\\' }, async () => {
     badKey = true;
   }
   check("mergeEnvText: an invalid key name is refused", badKey);
+  check(
+    "dropEnvKeys: removes assignment lines and keeps neighbours",
+    dropEnvKeys("KEEP=1\nEMBEDDING_ENDPOINT=http://x\nAFTER=2\n", ["EMBEDDING_ENDPOINT"]) === "KEEP=1\nAFTER=2\n",
+  );
 
   // Symlinks keep their target.
   const dir = tmp("symlink");
@@ -1047,11 +1116,21 @@ async function validation(arrange) {
 }
 {
   const v = await validation((_h, ctx) => fs.writeFileSync(ctx.cognee.envFile, "LLM_MODEL=x\n", { mode: 0o600 }));
-  check("validate: a missing LLM key is a warning-class check, not an error", v.errors.length === 0 && v.checks.includes("LLM_API_KEY missing: documents are stored but not searchable"), JSON.stringify(v));
+  check("validate: a missing cognify config is a warning-class check, not an error", v.errors.length === 0 && v.checks.includes("cognify config missing: documents are stored but not searchable"), JSON.stringify(v));
 }
 {
   const v = await validation((_h, ctx) => fs.rmSync(ctx.cognee.envFile));
-  check("validate: no cognee.env is the same warning-class check", v.errors.length === 0 && v.checks.includes("LLM_API_KEY missing: documents are stored but not searchable"));
+  check("validate: no cognee.env is the same warning-class check", v.errors.length === 0 && v.checks.includes("cognify config missing: documents are stored but not searchable"));
+}
+{
+  const v = await validation((_h, ctx) => {
+    fs.writeFileSync(
+      ctx.cognee.envFile,
+      "GRAPH_EXTRACTOR=gliner_demo\nEMBEDDING_PROVIDER=fastembed\nEMBEDDING_MODEL=BAAI/bge-small-en-v1.5\nEMBEDDING_DIMENSIONS=384\nAUTO_FEEDBACK=false\n",
+      { mode: 0o600 },
+    );
+  });
+  check("validate: gliner + fastembed is cognify-ready", v.errors.length === 0 && v.checks.some((c) => /cognify-ready \(gliner \+ fastembed\)/.test(c)), JSON.stringify(v));
 }
 {
   const v = await validation((_h, ctx) => fs.chmodSync(ctx.cognee.envFile, 0o640));
@@ -1330,10 +1409,14 @@ function runWizard(w, port, args, over = {}) {
   });
   const { code, out } = /** @type {{ code: number | null, out: string }} */ (child);
   check("no key: --yes still exits 0", code === 0, out.split("\n").slice(-15).join("\n"));
-  check("no key: warns that documents are not searchable", /documents will be stored but not searchable until LLM_API_KEY works \(cognify needs it\)/.test(out));
-  check("no key: validation reports the missing key without failing", /LLM_API_KEY missing: documents are stored but not searchable/.test(out) && /memory setup validation passed/.test(out));
-  check("no key: summary tells the operator what to set", /Cognee needs a cognify-ready LLM config/.test(out));
-  check("no key: no cognee.env is created", !fs.existsSync(envFileOf(w.home)));
+  const envBody = fs.existsSync(envFileOf(w.home)) ? fs.readFileSync(envFileOf(w.home), "utf8") : "";
+  check(
+    "no key: writes GLiNER + FastEmbed defaults into cognee.env",
+    envBody.includes("GRAPH_EXTRACTOR=gliner_demo\n") && envBody.includes("EMBEDDING_PROVIDER=fastembed\n"),
+    envBody || out.split("\n").slice(-20).join("\n"),
+  );
+  check("no key: validation passes as cognify-ready", /cognify-ready \(gliner \+ fastembed\)/.test(out) && /memory setup validation passed/.test(out), out.split("\n").slice(-25).join("\n"));
+  check("no key: summary names GLiNER + FastEmbed", /GLiNER \+ FastEmbed/.test(out), out.split("\n").slice(-25).join("\n"));
   await stub.close();
 }
 
