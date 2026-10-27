@@ -3,11 +3,13 @@
 [![npm version](https://img.shields.io/npm/v/openmem.svg)](https://www.npmjs.com/package/openmem)
 [![GitHub](https://img.shields.io/badge/github-bcmyguest%2Fopenmem-blue)](https://github.com/bcmyguest/openmem)
 
-**npm:** [openmem](https://www.npmjs.com/package/openmem) (alias: `personal-memory`) · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+**npm:** [openmem](https://www.npmjs.com/package/openmem) · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
-**OpenMem** is an **interface layer** for coding-agent memory: plug in backends (Hindsight, mem0, Cognee, …), share one wizard and indexer, and move data across **import/export formats** (PMM is one of them). Switch providers without rewriting agent hooks.
+**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API and ops surface over pluggable backends (Hindsight, mem0, Cognee, …), with shared wizard, indexer, and import/export formats (PMM first).
 
-> Formerly **personal-memory**. CLI binaries keep `personal-memory*` names as aliases.
+> Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
+
+**Read first:** [Concepts](docs/concepts.md) · [docs site](https://bcmyguest.github.io/openmem/docs/concepts/)
 
 ## Quickstart
 
@@ -109,6 +111,21 @@ On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and re
 - **Switch** — `npx openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
 
 Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.
+
+## Inspiration and related
+
+OpenMem is not affiliated with these projects; they shape the problem or the pattern.
+
+| | |
+| --- | --- |
+| **[OpenFeature](https://openfeature.dev/)** | Inspiration for a vendor-agnostic interface + pluggable providers (there: feature flags; here: coding-agent memory). |
+| **[mise](https://mise.jdx.dev/) / [asdf](https://asdf-vm.com/)** | One CLI over many backends; declarative config and tasks without replacing each tool’s own settings. |
+| **[Hindsight](https://github.com/vectorize-io/hindsight)** | Default memory provider in this repo. |
+| **[mem0](https://github.com/mem0ai/mem0)** | Supported memory provider. |
+| **[Cognee](https://github.com/topoteretes/cognee)** | Supported memory provider. |
+| **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks. |
+
+More setup analogues (Chezmoi, Home Assistant integrations, …): [docs/memory-providers.md](docs/memory-providers.md).
 
 ## License
 

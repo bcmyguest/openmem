@@ -52,7 +52,7 @@ check("launcher script exists", fs.existsSync(script));
   const url = resolveMem0ApiUrl({ home, stackRoot: stack, env: {} });
   check("resolveMem0ApiUrl ignores key in .env", url === "http://127.0.0.1:18888");
   const envFile = resolveMem0EnvFilePath({ home, stackRoot: stack, env: {} });
-  check("default env file under personal-memory", envFile.endsWith(".config/personal-memory/mem0.env"));
+  check("default env file under openmem", envFile.endsWith(".config/personal-memory/mem0.env"));
 }
 
 {

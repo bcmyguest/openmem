@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { site as brand } from './src/site.config.mjs';
 
 // SITE_URL / BASE_PATH let one build target either host:
-//   GitHub Pages project site (default): SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/
+//   GitHub Pages project site (default): SITE_URL=https://bcmyguest.github.io BASE_PATH=/openmem/
 //   Custom domain at the root:           SITE_URL=https://your.domain BASE_PATH=/
 const siteUrl = process.env.SITE_URL || brand.siteUrl;
 const basePath = process.env.BASE_PATH || brand.basePath;

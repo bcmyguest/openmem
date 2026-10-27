@@ -112,7 +112,7 @@ def test_indexer_is_wired_to_cognee_with_a_hard_healthy_dependency(scratch):
     assert indexer["environment"]["MEMORY_SINK"] == "cognee"
     assert indexer["environment"]["MEMORY_API_URL"] == "http://cognee:8000"
     assert indexer["depends_on"]["cognee"] == {"condition": "service_healthy", "required": True}
-    assert indexer["image"] == "personal-memory-indexer:local"
+    assert indexer["image"] == "openmem-indexer:local"
 
 
 def test_llm_key_reaches_cognee_only_and_the_indexer_gets_only_its_own_key(scratch):
@@ -140,8 +140,8 @@ def test_missing_env_files_render_fine(scratch):
 def test_default_env_file_locations_follow_home(scratch):
     """With no COGNEE_*_ENV_FILE set, the files are read from <HOME>/.config/personal-memory/."""
     home = scratch["tmp"] / "home-with-files"
-    (home / ".config" / "personal-memory").mkdir(parents=True)
-    (home / ".config" / "personal-memory" / "cognee.env").write_text("LLM_MODEL=from-default-location\n")
+    (home / ".config" / "openmem").mkdir(parents=True)
+    (home / ".config" / "openmem" / "cognee.env").write_text("LLM_MODEL=from-default-location\n")
     env_file = scratch["tmp"] / "defaults.env"
     env_file.write_text("HOST_UID=1000\nHOST_GID=1000\nLITELLM_CONFIG=/nowhere/litellm.yaml\n")
     rendered = render(env_file, PROJECT, "--profile", "cognee", files=FILES, env={"HOME": str(home)})

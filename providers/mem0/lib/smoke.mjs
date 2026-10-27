@@ -19,7 +19,7 @@ export const SMOKE_FACT = "Wizard smoke test: the project codename is heron.";
 const RETAIN_BODY = {
   messages: [{ role: "user", content: SMOKE_FACT }],
   user_id: SMOKE_USER,
-  agent_id: "personal-memory-wizard",
+  agent_id: "openmem-wizard",
   run_id: SMOKE_RUN,
   infer: false,
 };

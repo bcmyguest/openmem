@@ -14,22 +14,23 @@ import { installAgentAccess } from "./coding-agent/install-access.mjs";
 import { prepareAgentRuntime } from "./coding-agent/runtime.mjs";
 import { SHIM_AGENT_IDS } from "./coding-agent/hook-harnesses.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
+import { isMainModule } from "./is-main.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
 import { resolveStackRoot } from "./stack.mjs";
 import { runInstallMemoryMcp } from "./install-memory-mcp.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BIN = "personal-memory-install-coding-agent";
+const BIN = "openmem-install-coding-agent";
 
 const HELP = `${BIN}: wire session memory for coding agents
 
 Usage:
-  npx personal-memory install-coding-agent [--yes] [--dry-run] [--agents a,b] [--hindsight-plugin]
+  npx openmem install-coding-agent [--yes] [--dry-run] [--agents a,b] [--hindsight-plugin]
 
 Default agents: ${DEFAULT_AGENT_IDS.join(", ")}
 All known agents: ${CODING_AGENTS.map((a) => a.id).join(", ")}
 
-Every provider gets install-mcp + personal-memory session hooks (SessionStart / prompt / Stop).
+Every provider gets install-mcp + openmem session hooks (SessionStart / prompt / Stop).
 With --hindsight-plugin and MEMORY_PROVIDER=hindsight, also runs hindsight-coding-agents install.
 `;
 
@@ -125,7 +126,7 @@ export async function runInstallCodingAgent(opts) {
 
   for (const agentId of flags.agents) {
     if (shimAgents.includes(agentId)) {
-      opts.h?.info(`  ${agentId}: personal-memory session hooks + unified MCP`);
+      opts.h?.info(`  ${agentId}: openmem session hooks + unified MCP`);
     } else {
       const row = CODING_AGENTS.find((a) => a.id === agentId);
       opts.h?.info(`  ${agentId}: ${row?.sessionPath || "unified MCP memory_*"}`);
@@ -153,8 +154,7 @@ async function main() {
   return typeof out.status === "number" ? out.status : 0;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   main().then(
     (code) => process.exit(code ?? 0),
     (err) => {

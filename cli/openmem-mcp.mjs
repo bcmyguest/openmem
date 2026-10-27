@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Unified personal-memory MCP: stable memory_* tools delegating to the active provider.
+ * Unified openmem MCP: stable memory_* tools delegating to the active provider.
  *
- *   personal-memory-mcp
- *   node cli/personal-memory-mcp.mjs
+ *   openmem-mcp
+ *   node cli/openmem-mcp.mjs
  *
  * Provider: MEMORY_PROVIDER → ~/.config/hindsight/wizard.conf → hindsight.
  * Stack/env resolution matches install-mcp (HINDSIGHT_URL, mem0 URL + key file, Cognee URL).
@@ -11,6 +11,7 @@
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { resolveMcpContext } from "./mcp/context.mjs";
 import { handleUnifiedMessage } from "./mcp/memory-facade.mjs";
 import { serveStdio } from "./mcp/stdio.mjs";
@@ -26,10 +27,9 @@ async function main() {
   await serveStdio(process.stdin, (msg) => handleUnifiedMessage(msg, ctx));
 }
 
-const thisFile = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(thisFile)) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
-    console.error(`personal-memory-mcp: ${err instanceof Error ? err.message : err}`);
+    console.error(`openmem-mcp: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   });
 }

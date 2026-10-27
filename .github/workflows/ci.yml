@@ -70,4 +70,4 @@ jobs:
       - run: pnpm build
         env:
           SITE_URL: https://bcmyguest.github.io
-          BASE_PATH: /personal-memory/
+          BASE_PATH: /openmem/

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import index_config
 
-USER_AGENT = "personal-memory-feed-sync/1.0"
+USER_AGENT = "openmem-feed-sync/1.0"
 
 
 def slugify(name: str) -> str:

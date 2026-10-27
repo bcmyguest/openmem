@@ -2,8 +2,8 @@
 /**
  * Switch the active memory provider (wizard.conf + optional stack restart + MCP).
  *
- *   npx personal-memory switch <hindsight|mem0|cognee> [--yes] [--dry-run] [--no-stack] [--no-mcp]
- *   personal-memory-switch-provider …
+ *   npx openmem switch <hindsight|mem0|cognee> [--yes] [--dry-run] [--no-stack] [--no-mcp]
+ *   openmem-switch-provider …
  *   npx . switch <id> … / ./pm switch <id> …
  *
  * Does not migrate data between providers. No secrets in logs.
@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
 import { resolveStackRoot } from "./stack.mjs";
 import { envValue } from "../wizard/lib/paths.mjs";
@@ -25,7 +26,7 @@ import { envFileProblem } from "../providers/mem0/lib/state.mjs";
 import { urlProblem } from "../providers/mem0/lib/url.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BIN = "personal-memory-switch-provider";
+const BIN = "openmem-switch-provider";
 
 const HELP = `${BIN}: switch the active memory provider
 
@@ -352,8 +353,6 @@ async function main(argv) {
   }
 }
 
-const isMain =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   main(process.argv.slice(2));
 }

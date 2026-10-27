@@ -11,7 +11,7 @@ No plugin package. Agents use REST (`/docs`, `/health`, `/api/v1/add`, `/cognify
 When `MEMORY_PROVIDER=cognee`:
 
 ```sh
-npx personal-memory install-mcp --yes --provider-only
+npx openmem install-mcp --yes --provider-only
 ```
 
 Registers `cli/cognee-mcp.mjs` with `COGNEE_API_URL` only — **never** `COGNEE_API_KEY` in `mcp.json`. If you enable auth, export the key in the agent environment.
@@ -28,10 +28,10 @@ Restart Cursor Agent after install.
 ## Switch provider
 
 ```sh
-npx personal-memory switch cognee --yes
-# later: npx personal-memory switch hindsight --yes
+npx openmem switch cognee --yes
+# later: npx openmem switch hindsight --yes
 ```
 
 Updates active provider config, restarts the stack (unless `--no-stack`), runs MCP install (unless `--no-mcp`). Does **not** migrate memories.
 
-See also [Architecture](architecture.md), [Hindsight](hindsight.md), and [Provider status](https://bcmyguest.github.io/personal-memory/docs/provider-status/).
+See also [Architecture](architecture.md), [Hindsight](hindsight.md), and [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).

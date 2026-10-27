@@ -11,6 +11,9 @@ export function userConfigPath(home) {
 /** @param {string} repoRoot */
 export function projectConfigPaths(repoRoot) {
   return [
+    path.join(repoRoot, "openmem.toml"),
+    path.join(repoRoot, "config/openmem.toml"),
+    // Pre-rebrand filenames still load if present.
     path.join(repoRoot, "personal-memory.toml"),
     path.join(repoRoot, "config/personal-memory.toml"),
   ];
@@ -101,7 +104,7 @@ export function buildPmConfigToml(ctx, sections = {}) {
       doctor: { description: "Validate memory setup on this machine" },
     },
   };
-  return `# Written by ./setup — mise-like config for personal-memory.\n# Docs: docs/personal-memory-config.md\n${TOML.stringify(doc)}`;
+  return `# Written by ./setup — mise-like config for openmem.\n# Docs: docs/openmem-config.md\n${TOML.stringify(doc)}`;
 }
 
 /**
@@ -138,7 +141,7 @@ export function updatePmConfigProvider(home, providerId, opts = {}) {
   };
   doc.memory = memory;
   const header =
-    "# Written by personal-memory — mise-like config.\n# Docs: docs/personal-memory-config.md\n";
+    "# Written by openmem — mise-like config.\n# Docs: docs/openmem-config.md\n";
   fs.writeFileSync(file, `${header}${TOML.stringify(doc)}`, { mode: 0o600 });
   return "updated";
 }

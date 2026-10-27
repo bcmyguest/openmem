@@ -1,15 +1,15 @@
 # Mise-like config (`config.toml`)
 
-personal-memory is a **meta** orchestrator (see [architecture.md](architecture.md) on the site; [memory-providers.md](memory-providers.md) in the repo for contributors). Its
+openmem is a **meta** orchestrator (see [architecture.md](architecture.md) on the site; [memory-providers.md](memory-providers.md) in the repo for contributors). Its
 declarative config is intentionally similar to **[mise](https://mise.jdx.dev/)**:
 
-| mise | personal-memory |
+| mise | openmem |
 | --- | --- |
-| `~/.config/mise/config.toml` + `.mise.toml` | `~/.config/personal-memory/config.toml` + `personal-memory.toml` |
+| `~/.config/mise/config.toml` + `.mise.toml` | `~/.config/personal-memory/config.toml` + `openmem.toml` |
 | `[tools]` plugins | `[memory] provider = "…"` + `providers/*/manifest.json` |
 | `[env]` | Host ports / compose project under `[stack]` |
-| `[tasks]` | `npx personal-memory up` / `down` / `doctor` / `install-mcp` / `switch` |
-| `mise install` applies config | `npx personal-memory configure --yes` applies config |
+| `[tasks]` | `npx openmem up` / `down` / `doctor` / `install-mcp` / `switch` |
+| `mise install` applies config | `npx openmem configure --yes` applies config |
 
 We **do not** replace mise (or mem0/Hindsight native config). You can use both: mise installs
 Node/Docker; this file describes **how agent memory runs on this machine**.
@@ -18,17 +18,17 @@ Node/Docker; this file describes **how agent memory runs on this machine**.
 
 | Path | Purpose |
 | --- | --- |
-| `config/personal-memory.toml.example` | Shipped template; copy to your user config |
+| `config/openmem.toml.example` | Shipped template; copy to your user config |
 | `~/.config/personal-memory/config.toml` | **Primary** user config (gitignored on your machine) |
-| `./personal-memory.toml` | Optional per-checkout overrides (e.g. different ports in a worktree) |
+| `./openmem.toml` | Optional per-checkout overrides (legacy `personal-memory.toml` still loads) |
 | `~/.config/hindsight/wizard.conf` | Last configure run (`MEMORY_PROVIDER`, ports, …); updated when setup applies |
 
 ## Precedence
 
-1. CLI flags (`npx personal-memory setup --up`, `--down`, …)
+1. CLI flags (`npx openmem setup --up`, `--down`, …)
 2. Environment (`MEMORY_PROVIDER`, `PM_BACKEND`, `HINDSIGHT_PORT`, …)
 3. `~/.config/personal-memory/config.toml`
-4. `personal-memory.toml` / `config/personal-memory.toml` in the checkout stack root
+4. `openmem.toml` / `config/openmem.toml` in the checkout stack root (legacy `personal-memory.toml` names still load)
 5. Existing `wizard.conf` (provider, ports, model backend from the last wizard run)
 
 Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your answers still win.
@@ -151,8 +151,8 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
   starts docker. Secrets never go into the stack `.env`, `wizard.conf`, `config.toml` or the
   summary. Authentication is off: `ENABLE_BACKEND_ACCESS_CONTROL` is pinned false in compose and
   overrides the env file (see `providers/cognee/compose.yaml`).
-- **`[tasks.*]`** — descriptions for `npx personal-memory` / `./pm` (see `wizard/bin/pm.mjs` and
-  `cli/personal-memory.mjs`). Built-in tasks:
+- **`[tasks.*]`** — descriptions for `npx openmem` / `./pm` (see `wizard/bin/pm.mjs` and
+  `cli/openmem.mjs`). Built-in tasks:
   - `configure` / `up` / `down` / `doctor` — map to the setup wizard with the matching flags
   - `install-mcp` — runs `cli/install-memory-mcp.mjs` (NotebookLM MCP on Hindsight; mem0/Cognee
     with `--provider-only`; merges into `~/.cursor/mcp.json`)
@@ -171,14 +171,14 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
 | --- | --- | --- |
 | `PM_MEMORY_ADD_ASYNC` | `true` (implicit) | Hindsight `memory_add` sends `async: true` unless the tool passes `async: false`. Async ingest returns in ~200ms and avoids Cursor/Claude MCP `-32001` timeouts while extraction runs in the background. Set `PM_MEMORY_ADD_ASYNC=false` to force synchronous ingest. |
 
-After changing MCP code, re-run `npx personal-memory install-coding-agent --yes` (or copy the repo into `~/.local/share/personal-memory/agent-runtime`) and **restart** the personal-memory MCP server in Cursor.
+After changing MCP code, re-run `npx openmem install-coding-agent --yes` (or copy the repo into `~/.local/share/personal-memory/agent-runtime`) and **restart** the openmem MCP server in Cursor.
 
 ## Apply
 
 ```bash
-cp config/personal-memory.toml.example ~/.config/personal-memory/config.toml
+cp config/openmem.toml.example ~/.config/personal-memory/config.toml
 # edit provider, ports, model backend
-npx personal-memory configure --yes
+npx openmem configure --yes
 # checkout before publish: npx . configure --yes
 ```
 
@@ -188,7 +188,7 @@ the file matches what is running (mise-style source of truth).
 ## Doctor
 
 ```bash
-npx personal-memory doctor
+npx openmem doctor
 ```
 
 Runs the same checks as setup step “Validate memory setup” without mutating the stack.

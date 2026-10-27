@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * personal-memory: npx entry point for the memory-stack setup wizard.
+ * openmem: npx entry point for the memory-stack setup wizard.
  *
- *   personal-memory [setup|configure|up|down|doctor|providers|init|--help|--version]
+ *   openmem [setup|configure|up|down|doctor|providers|init|--help|--version]
  *
  * The wizard code runs from this package (read-only, may be an npx cache). Everything it
  * writes, and the compose files it drives, live in a stable stack root; see cli/stack.mjs.
@@ -17,7 +17,7 @@ import { changedCount, formatReport, resolveStackRoot, syncStack } from "./stack
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "package.json"), "utf8"));
 // The only place the CLI learns the package name; the bin name is a command, not the package.
-const BIN = "personal-memory";
+const BIN = "openmem";
 
 const HELP = `${BIN} ${pkg.version}: set up and run a self-hosted AI memory stack (docker compose).
 

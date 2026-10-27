@@ -57,7 +57,7 @@ process.on("exit", () => {
   };
   const ctx = { provider: "hindsight", hindsightUrl: "http://127.0.0.1:8888" };
   await callUnifiedTool(ctx, "memory_add", { content: "hello" }, fetchFn);
-  check("hindsight memory_add POST", calls[0]?.url?.includes("/banks/personal-memory-mcp/memories"));
+  check("hindsight memory_add POST", calls[0]?.url?.includes("/banks/openmem-mcp/memories"));
   await callUnifiedTool(ctx, "memory_recall", { query: "hi" }, fetchFn);
   check("hindsight recall POST", calls[1]?.url?.includes("/memories/recall"));
 }
@@ -97,10 +97,10 @@ process.on("exit", () => {
     h,
   );
   const mcp = JSON.parse(fs.readFileSync(path.join(home, ".cursor/mcp.json"), "utf8"));
-  check("install writes personal-memory server", Boolean(mcp.mcpServers?.["personal-memory"]));
-  const entry = unifiedMcpEntry({ provider: "mem0", scriptPath: "/x/personal-memory-mcp.mjs", stackRoot: "/s" });
+  check("install writes openmem server", Boolean(mcp.mcpServers?.["openmem"]));
+  const entry = unifiedMcpEntry({ provider: "mem0", scriptPath: "/x/openmem-mcp.mjs", stackRoot: "/s" });
   check("entry sets MEMORY_PROVIDER", entry.env.MEMORY_PROVIDER === "mem0");
 }
 
 if (failed) process.exit(1);
-console.log("all personal-memory MCP tests passed");
+console.log("all openmem MCP tests passed");

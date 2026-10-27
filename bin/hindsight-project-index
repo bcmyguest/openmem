@@ -291,7 +291,7 @@ def save_state(path: Path, state: dict) -> None:
 
 
 def bank_id(repo: Path, config: index_config.Config | None = None) -> str:
-    # Order: index.yml banks, personal-memory mapping, legacy Hindsight mapping, repository name.
+    # Order: index.yml banks, openmem mapping, legacy Hindsight mapping, repository name.
     configured = _config(config).bank_for(repo)
     if configured:
         return configured

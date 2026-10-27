@@ -6,7 +6,7 @@ import { resolveLlmApiKey, resolveLlmChatUrl, resolveLlmModel, synthesizeReflect
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-const DEFAULT_BANK = "personal-memory-mcp";
+const DEFAULT_BANK = "openmem-mcp";
 
 function hitsFromMem0(json) {
   const rows = json?.results || json?.memories || [];

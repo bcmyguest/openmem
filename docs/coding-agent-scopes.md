@@ -8,7 +8,7 @@ One **scope key** is reused across indexer, unified MCP, and (where supported) t
 | mem0 | same bank string | maps to `user_id` | `memory_add` sets `user_id=bank` |
 | Cognee | same bank string | maps to dataset name | See `cognee-dataset-name` in export code |
 
-Default when tools omit `bank`: **`personal-memory-mcp`**.
+Default when tools omit `bank`: **`openmem-mcp`**.
 
 Configure what gets indexed in `~/.config/hindsight/index.yml`. Optional filters in
 `~/.hindsight/coding-agent.json` (`optInPaths`) limit which discovered sources are indexed.

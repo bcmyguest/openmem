@@ -15,7 +15,7 @@ function check(desc, ok) {
 }
 
 const base = {
-  project: "personal-memory",
+  project: "openmem",
   repoRoot: "/tmp",
   memoryProvider: { compose: { profile: "hindsight" } },
   extraComposeProfiles: ["ollama", "notebooklm"],

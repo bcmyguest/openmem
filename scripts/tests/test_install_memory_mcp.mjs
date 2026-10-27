@@ -259,13 +259,13 @@ process.on("exit", () => {
   check("hindsight provider-only", result.provider === "hindsight" && result.didProvider);
   check(
     "hindsight mentions coding-agents plugin separate",
-    logs.some((l) => /coding-agents|personal-memory setup/i.test(l)),
+    logs.some((l) => /coding-agents|openmem setup/i.test(l)),
   );
   const mcpPath = path.join(home, ".cursor/mcp.json");
   check("hindsight provider-only still merges unified MCP", fs.existsSync(mcpPath));
   if (fs.existsSync(mcpPath)) {
     const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
-    check("unified personal-memory server present", Boolean(mcp.mcpServers?.["personal-memory"]));
+    check("unified openmem server present", Boolean(mcp.mcpServers?.["openmem"]));
     check("no mem0 server on hindsight", !mcp.mcpServers?.mem0);
   }
 }
@@ -318,7 +318,7 @@ process.on("exit", () => {
   const home = tmp("cognee-missing");
   const fakeRoot = tmp("cognee-pkg");
   fs.mkdirSync(path.join(fakeRoot, "cli"), { recursive: true });
-  fs.writeFileSync(path.join(fakeRoot, "cli/personal-memory-mcp.mjs"), "// stub\n");
+  fs.writeFileSync(path.join(fakeRoot, "cli/openmem-mcp.mjs"), "// stub\n");
   // no cognee-mcp.mjs
   const logs = [];
   await runInstallMemoryMcp({
@@ -338,7 +338,7 @@ process.on("exit", () => {
   if (fs.existsSync(mcpPath)) {
     const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
     check("no cognee server when script missing", !mcp.mcpServers?.cognee);
-    check("unified present when cognee script missing", Boolean(mcp.mcpServers?.["personal-memory"]));
+    check("unified present when cognee script missing", Boolean(mcp.mcpServers?.["openmem"]));
   }
   check(
     "cognee warns missing script",

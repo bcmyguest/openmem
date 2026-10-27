@@ -8,7 +8,7 @@ live in env files under `~/.config/personal-memory/`, never in the stack
 `.env`, `wizard.conf`, or `mcp.json`.
 
 See also [docs/memory-providers.md](../../docs/memory-providers.md) and
-[docs/personal-memory-config.md](../../docs/personal-memory-config.md).
+[docs/openmem-config.md](../../docs/openmem-config.md).
 
 ## Cognify defaults (GLiNER + FastEmbed)
 
@@ -42,7 +42,7 @@ or the **read-only** stdio MCP shipped in this repo.
 When `MEMORY_PROVIDER=cognee`:
 
 ```sh
-npx personal-memory install-mcp --yes --provider-only
+npx openmem install-mcp --yes --provider-only
 # checkout: npx . install-mcp --yes --provider-only
 # or during setup: coding-agent step registers the same entry
 ```
@@ -60,7 +60,7 @@ Run by hand:
 
 ```sh
 node cli/cognee-mcp.mjs
-# or: personal-memory-cognee-mcp
+# or: openmem-cognee-mcp
 ```
 
 Base URL resolution inside the MCP: `COGNEE_API_URL` / `COGNEE_URL`, else
@@ -72,8 +72,8 @@ v1 MCP is read-only (no add/cognify). Ingest stays with the indexer or curl.
 ### Switch to / from Cognee
 
 ```sh
-npx personal-memory switch cognee --yes
-# later: npx personal-memory switch hindsight --yes
+npx openmem switch cognee --yes
+# later: npx openmem switch hindsight --yes
 # checkout: npx . switch cognee --yes
 ```
 

@@ -1,6 +1,6 @@
-# personal-memory website
+# openmem website
 
-Static landing page and docs for personal-memory, built with [Astro](https://astro.build) and [Starlight](https://starlight.astro.build), managed with pnpm.
+Static landing page and docs for openmem, built with [Astro](https://astro.build) and [Starlight](https://starlight.astro.build), managed with pnpm.
 
 The site states only what the repository records. Provider support is never written by hand: a build step reads `providers/*/manifest.json` and renders the status badges from it, so the site cannot claim a provider the manifests do not declare.
 
@@ -34,12 +34,12 @@ Before merging changes under `docs/` that contain ` ```mermaid ` blocks, run `pn
 Build for the production location, then smoke it:
 
 ```sh
-SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/ pnpm build
-SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/ pnpm preview
-curl -I http://localhost:4321/personal-memory/
+SITE_URL=https://bcmyguest.github.io BASE_PATH=/openmem/ pnpm build
+SITE_URL=https://bcmyguest.github.io BASE_PATH=/openmem/ pnpm preview
+curl -I http://localhost:4321/openmem/
 ```
 
-`SITE_URL` and `BASE_PATH` default to the values in `src/site.config.mjs` (`https://bcmyguest.github.io` and `/personal-memory/`). Use `BASE_PATH=/` for a custom domain at the root.
+`SITE_URL` and `BASE_PATH` default to the values in `src/site.config.mjs` (`https://bcmyguest.github.io` and `/openmem/`). Use `BASE_PATH=/` for a custom domain at the root.
 
 ## Where content comes from
 
@@ -51,7 +51,7 @@ curl -I http://localhost:4321/personal-memory/
 | `src/content/docs/docs/provider-status.md` | the same manifests |
 | `src/content/docs/docs/memory-providers.md` | `../docs/memory-providers.md` |
 | `src/content/docs/docs/provider-wizard-hooks.md` | `../docs/provider-wizard-hooks.md` |
-| `src/content/docs/docs/personal-memory-config.md` | `../docs/personal-memory-config.md` |
+| `src/content/docs/docs/openmem-config.md` | `../docs/openmem-config.md` |
 | `src/content/docs/docs/npx-install.md` | `../docs/npx-install.md`, skipped when the file does not exist |
 | `src/generated/docs.json` | the pages above, in sidebar order (read by `astro.config.ts`) |
 
@@ -67,7 +67,7 @@ To publish another doc, add an entry to `PAGES` in `scripts/lib/docs.mjs`.
 
 ## Install state and provider status
 
-`src/site.config.mjs` has `npm.published: false`. While it is false, the install section shows `npx personal-memory` with the label "Available after the first npm release", without a copy button, and the "Up next" list names the release. Flip it to `true` in the same change that publishes the package. The from-source path (`git clone` and `./setup`) is shown as the path that works today.
+`src/site.config.mjs` has `npm.published: false`. While it is false, the install section shows `npx openmem` with the label "Available after the first npm release", without a copy button, and the "Up next" list names the release. Flip it to `true` in the same change that publishes the package. The from-source path (`git clone` and `./setup`) is shown as the path that works today.
 
 Provider badges, the self-host column, the "Up next" entries for non-supported providers, the OG image chips, and `llms.txt` all derive from the manifests. A manifest with an unknown `status` fails the build (allowed: `supported`, `experimental`, `planned`).
 
@@ -123,7 +123,7 @@ Personal literals (names, user names, machine names) go one per line in `.privac
 One-time, manual, before the first deploy:
 
 1. Repository Settings, Pages, Source: **GitHub Actions**.
-2. Confirm the repository can use Pages. **GitHub Pages on a private repository needs a paid plan (Pro, Team, or Enterprise).** On a free plan the repository must be public first. The site then lives at `https://bcmyguest.github.io/personal-memory/`, and the published site is public even when the repository is private (unless the organization uses Enterprise Cloud access control).
+2. Confirm the repository can use Pages. **GitHub Pages on a private repository needs a paid plan (Pro, Team, or Enterprise).** On a free plan the repository must be public first. The site then lives at `https://bcmyguest.github.io/openmem/`, and the published site is public even when the repository is private (unless the organization uses Enterprise Cloud access control).
 3. Trigger the workflow with "Run workflow" (or push a change under `site/`), and open the URL from the deploy job.
 
 To move to a custom domain, set `SITE_URL` and `BASE_PATH=/` in the workflow `env` and update `src/site.config.mjs`.

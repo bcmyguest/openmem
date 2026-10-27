@@ -35,7 +35,7 @@
     "smokeBank": "wizard-smoke",
     "retainMethod": "POST",
     "retainPath": "/memories",
-    "retainBody": "{\"messages\":[{\"role\":\"user\",\"content\":\"Wizard smoke test: the project codename is heron.\"}],\"user_id\":\"wizard-smoke\",\"agent_id\":\"personal-memory-wizard\",\"run_id\":\"wizard-smoke-doc\",\"infer\":false}",
+    "retainBody": "{\"messages\":[{\"role\":\"user\",\"content\":\"Wizard smoke test: the project codename is heron.\"}],\"user_id\":\"wizard-smoke\",\"agent_id\":\"openmem-wizard\",\"run_id\":\"wizard-smoke-doc\",\"infer\":false}",
     "recallMethod": "POST",
     "recallPath": "/search",
     "recallBody": "{\"query\":\"What is the project codename?\",\"filters\":{\"user_id\":\"wizard-smoke\"}}",

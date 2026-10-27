@@ -11,7 +11,7 @@ import {
 import { configToml, defaultsFromConfig } from "../../providers/hindsight/lib/config.mjs";
 
 const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
-const example = path.join(repo, "config/personal-memory.toml.example");
+const example = path.join(repo, "config/openmem.toml.example");
 let fails = 0;
 function check(desc, ok) {
   if (ok) console.log(`ok    ${desc}`);

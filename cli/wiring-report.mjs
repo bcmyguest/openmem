@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./is-main.mjs";
 import { PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { resolveMcpContext } from "./mcp/context.mjs";
 import { resolveMemoryProvider, shouldInstallNotebooklm } from "./install-memory-mcp.mjs";
@@ -37,8 +38,8 @@ export function buildWiringReport(opts) {
     flags: { notebooklm: false, notebooklmOnly: false, providerOnly: false },
   });
   const issues = [];
-  if (expectUnified && !servers["personal-memory"]) {
-    issues.push("missing unified MCP server `personal-memory` in ~/.cursor/mcp.json (run install-mcp)");
+  if (expectUnified && !servers["openmem"]) {
+    issues.push("missing unified MCP server `openmem` in ~/.cursor/mcp.json (run install-mcp)");
   }
   if (expectProviderNative && !servers[provider]) {
     issues.push(`active provider is ${provider} but mcp.json has no \`${provider}\` entry (optional: install-mcp --provider-only)`);
@@ -75,7 +76,7 @@ export function buildWiringReport(opts) {
     coding_agent: {
       hindsight_plugin: provider === "hindsight" ? "@vectorize-io/hindsight-coding-agents" : null,
       non_hindsight_session:
-        provider !== "hindsight" ? "personal-memory session shim (install-coding-agent) + memory_* MCP" : null,
+        provider !== "hindsight" ? "openmem session shim (install-coding-agent) + memory_* MCP" : null,
       session_capabilities: PROVIDER_CAPABILITIES[provider] ?? {},
     },
     issues,
@@ -121,6 +122,4 @@ function main() {
   process.exit(report.ok ? 0 : 1);
 }
 
-const isMain =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) main();
+if (isMainModule(import.meta.url)) main();

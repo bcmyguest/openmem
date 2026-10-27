@@ -1,7 +1,7 @@
 {
-  "name": "personal-memory-site",
+  "name": "openmem-site",
   "version": "0.0.0",
-  "description": "Static site for personal-memory (Astro + Starlight).",
+  "description": "Static site for openmem (Astro + Starlight).",
   "private": true,
   "type": "module",
   "scripts": {

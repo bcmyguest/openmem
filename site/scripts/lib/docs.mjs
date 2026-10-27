@@ -15,6 +15,15 @@ import { posix } from 'node:path';
  */
 export const PAGES = [
   {
+    slug: 'concepts',
+    kind: 'doc',
+    source: 'docs/concepts.md',
+    group: 'Start',
+    title: 'Concepts',
+    description:
+      'OpenMem as a memory interface for coding agents — providers, memory_* API, banks, and formats.',
+  },
+  {
     slug: 'getting-started',
     kind: 'doc',
     source: 'docs/quickstart.md',
@@ -29,7 +38,7 @@ export const PAGES = [
     group: 'Start',
     optional: true,
     title: 'Install with npx',
-    description: 'Install and run the personal-memory wizard through npx.',
+    description: 'Install and run the openmem wizard through npx.',
   },
   {
     slug: 'architecture',
@@ -91,9 +100,9 @@ export const PAGES = [
     description: 'PMM export/import format and unified MCP memory_export / memory_import behavior.',
   },
   {
-    slug: 'personal-memory-config',
+    slug: 'openmem-config',
     kind: 'doc',
-    source: 'docs/personal-memory-config.md',
+    source: 'docs/openmem-config.md',
     group: 'Reference',
     title: 'Configuration file',
     description: 'The mise-like config.toml: files, precedence, sections, and the pm tasks.',

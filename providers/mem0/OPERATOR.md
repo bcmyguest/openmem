@@ -75,7 +75,7 @@ via the launcher `cli/mem0-mcp.mjs` (loads the key from the env file, then
 `npx -y @yeyuan98/mem0-mcp`).
 
 ```sh
-MEMORY_PROVIDER=mem0 npx personal-memory install-mcp --yes
+MEMORY_PROVIDER=mem0 npx openmem install-mcp --yes
 # checkout: MEMORY_PROVIDER=mem0 npx . install-mcp --yes
 # or accept the coding-agent MCP confirm in setup
 ```
@@ -87,7 +87,7 @@ Shape written (URL and env-file **path** only — never the key value):
   "mcpServers": {
     "mem0": {
       "command": "node",
-      "args": ["/path/to/personal-memory/cli/mem0-mcp.mjs"],
+      "args": ["/path/to/openmem/cli/mem0-mcp.mjs"],
       "env": {
         "MEM0_API_URL": "http://127.0.0.1:18888",
         "MEM0_BASE_URL": "http://127.0.0.1:18888",
@@ -109,8 +109,8 @@ Restart Cursor Agent after install.
 ### Switch to / from mem0
 
 ```sh
-npx personal-memory switch mem0 --yes
-# later: npx personal-memory switch hindsight --yes
+npx openmem switch mem0 --yes
+# later: npx openmem switch hindsight --yes
 # checkout: npx . switch mem0 --yes
 ```
 

@@ -1,10 +1,10 @@
 # Architecture
 
-personal-memory’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx personal-memory switch` rewires the stack without pretending to migrate your data. Setup (`npx personal-memory`) is install plumbing only — not part of the runtime data path.
+openmem’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx openmem switch` rewires the stack without pretending to migrate your data. Setup (`npx openmem`) is install plumbing only — not part of the runtime data path.
 
 ## Runtime data flow
 
-Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx personal-memory`) is not on this diagram; see [How personal-memory interfaces with providers](#how-personal-memory-interfaces-with-providers).
+Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx openmem`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).
 
 ```mermaid
 flowchart TB
@@ -29,7 +29,7 @@ flowchart TB
 
   subgraph host["Host — IDE / coding agents"]
     AG[Coding agents]
-    UMCP["personal-memory MCP\n(memory_*)"]
+    UMCP["openmem MCP\n(memory_*)"]
     SHIM["Session hooks\n(all providers)"]
     PLG["Hindsight plugin\n(optional --hindsight-plugin)"]
     PMCP["Provider MCP\nmem0 or Cognee, optional"]
@@ -56,7 +56,7 @@ flowchart TB
 | --- | --- |
 | **Indexing** | Git, Obsidian, markdown trees, feed cache → indexer → provider HTTP sink (`MEMORY_SINK` from manifest) |
 | **Agents** | Cursor/Claude/Codex → session hooks and/or MCP → same provider API |
-| **Unified MCP** | `install-mcp` registers `personal-memory` on the host; tools delegate to the active provider |
+| **Unified MCP** | `install-mcp` registers `openmem` on the host; tools delegate to the active provider |
 | **LiteLLM** | Optional sidecar on Hindsight stacks; also used for **cross-provider reflect synthesis** when `PM_LLM_URL` / stack LiteLLM is reachable (`memory_reflect` on mem0/Cognee) |
 | **NotebookLM sync** | **Opt-in, any active provider.** Background sync writes into `notebooklm::*` via the same indexer sinks (Hindsight / mem0 / Cognee); not the same as the NotebookLM MCP |
 | **Provider MCP** | Native mem0 or Cognee tool names (`install-mcp --provider-only`); same API as unified MCP, different stdio server |
@@ -64,16 +64,18 @@ flowchart TB
 
 Only **one provider** is active at a time (`MEMORY_PROVIDER`). The indexer uses that provider’s HTTP sink (`MEMORY_SINK` / manifest).
 
-## How personal-memory interfaces with providers
+## How openmem interfaces with providers
 
-personal-memory is a **meta layer**: it does not replace provider APIs. It wires the same plumbing (indexer, compose, wizard, MCP) to **different backends** through manifests and thin adapters.
+Product framing: [Concepts](concepts.md).
+
+openmem is a **meta layer**: it does not replace provider APIs. It wires the same plumbing (indexer, compose, wizard, MCP) to **different backends** through manifests and thin adapters.
 
 ```mermaid
 flowchart TB
   MAN["providers/*/manifest.json"]
   HOOK["providers/*/wizard.mjs"]
 
-  subgraph cli["personal-memory CLI"]
+  subgraph cli["openmem CLI"]
     W[setup / switch / doctor]
     IM[install-mcp]
   end
@@ -86,7 +88,7 @@ flowchart TB
 
   subgraph host["Host runtime"]
     MCPJ["~/.cursor/mcp.json"]
-    UMCP[personal-memory-mcp\nmemory-facade]
+    UMCP[openmem-mcp\nmemory-facade]
     AG[Agents]
   end
 
@@ -107,7 +109,7 @@ flowchart TB
 | **Manifest** | Status, compose services, ports, indexer sink id, smoke HTTP templates | `providers/<id>/manifest.json` |
 | **Wizard hooks** | Provider-specific env, keys, smoke, coding-agent notes | `providers/<id>/wizard.mjs` |
 | **Indexer sink** | Poll/vault → retain/update/delete on the provider API | `indexer/` (driver id in manifest, e.g. `hindsight-rest-v1`, `mem0-rest`) |
-| **Unified MCP** | Stable `memory_*` tools → provider HTTP | `cli/mcp/memory-facade.mjs`, `cli/personal-memory-mcp.mjs` |
+| **Unified MCP** | Stable `memory_*` tools → provider HTTP | `cli/mcp/memory-facade.mjs`, `cli/openmem-mcp.mjs` |
 | **Native agent paths** | Session hooks + optional plugin/MCP | `cli/coding-agent/hook-runner.mjs`; optional Hindsight plugin; `cli/mem0-mcp.mjs`, `cli/cognee-mcp.mjs`, NotebookLM |
 
 Adding a provider means a new manifest + hooks + sink driver; agents can keep using **`memory_*`** once the facade implements that backend.
@@ -121,19 +123,19 @@ Adding a provider means a new manifest + hooks + sink driver; agents can keep us
 | Provider secret files | e.g. `~/.config/personal-memory/mem0.env` (never committed; not written to `mcp.json`) |
 | `~/.config/hindsight/index.yml` | What the indexer watches |
 
-`npx personal-memory switch <id>` updates provider selection and restarts compose; it does **not** migrate memories ([export/import](memory-portability.md) is for that).
+`npx openmem switch <id>` updates provider selection and restarts compose; it does **not** migrate memories ([export/import](memory-portability.md) is for that).
 
 ### Example: unified MCP on mem0
 
-1. `npx personal-memory switch mem0 --yes` — compose and env point the indexer and unified MCP at `MEM0_API_URL`.
-2. `npx personal-memory install-mcp --yes` — merges the `personal-memory` server into `~/.cursor/mcp.json` (NotebookLM MCP only if you enabled sync or pass `--notebooklm`).
+1. `npx openmem switch mem0 --yes` — compose and env point the indexer and unified MCP at `MEM0_API_URL`.
+2. `npx openmem install-mcp --yes` — merges the `openmem` server into `~/.cursor/mcp.json` (NotebookLM MCP only if you enabled sync or pass `--notebooklm`).
 3. The agent calls `memory_add` with `{ content: "…", bank: "my-project" }`. The facade sends `POST /memories` with `user_id=my-project` and `infer: false`.
 
 `install-mcp --provider-only` is a **different** stdio server: same mem0 API, but upstream mem0 tool names from `@yeyuan98/mem0-mcp`. NotebookLM MCP is **different again** — search over notebooks synced into Hindsight, not a substitute for mem0/Cognee/Hindsight memory.
 
 ### Unified MCP → provider HTTP
 
-The `personal-memory` MCP server delegates each tool to the **active** provider:
+The `openmem` MCP server delegates each tool to the **active** provider:
 
 | Unified tool | Hindsight (`HINDSIGHT_URL`) | mem0 (`MEM0_API_URL` + key file) | Cognee (`COGNEE_API_URL`) |
 | --- | --- | --- | --- |
@@ -145,7 +147,7 @@ The `personal-memory` MCP server delegates each tool to the **active** provider:
 | `memory_provider_status` | Returns provider id + loopback URL | Same | Same |
 | `memory_export` / `memory_import` | PMM envelope; mem0 list/add — see [Memory portability](memory-portability.md) | | |
 
-Default scope key for MCP-created rows: bank / `user_id` **`personal-memory-mcp`** unless the tool passes `bank`.
+Default scope key for MCP-created rows: bank / `user_id` **`openmem-mcp`** unless the tool passes `bank`.
 
 ### Native agent paths (optional, alongside unified MCP)
 
@@ -157,7 +159,7 @@ Default scope key for MCP-created rows: bank / `user_id` **`personal-memory-mcp`
 | **Cognee** | `cognee_health`, `cognee_search` | `install-mcp --provider-only` |
 | **NotebookLM** | `notebooklm_list_banks`, `notebooklm_search` | `install-mcp` when sync enabled or `--notebooklm` |
 
-`install-mcp` merges the **unified** `personal-memory` server by default (`--no-unified-mcp` to skip).
+`install-mcp` merges the **unified** `openmem` server by default (`--no-unified-mcp` to skip).
 
 ## How file changes become memory
 
@@ -168,7 +170,7 @@ The indexer does not watch your editor — it watches **configured sources** on 
 | Git repo | Poll every `poll_seconds` (default 60): `HEAD` + tracked-file status | Tree-sitter outlines + text for changed files → **retain** on the active sink |
 | Obsidian vault | inotify; re-index after `vault_quiet_seconds` (default 30) without edits | Vault documents → provider-specific banks |
 | Notes / papers / bookmarks | `notes.paths`, `papers.paths`, `bookmarks.paths`; inotify on `.md` (bookmarks also `.html`, `.txt`) | Markdown (and bookmark exports) → `notes::`, `papers::`, `bookmarks::` banks |
-| Feed cache | `feeds.out_dir` after `npx personal-memory feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
+| Feed cache | `feeds.out_dir` after `npx openmem feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
 | New sources under scan roots | Re-list every `relist_seconds` (default 600) | Picked up without restarting the stack |
 
 Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Full source list and examples: [index-sources.md](index-sources.md) · [sources-feeds.md](sources-feeds.md) · [sources-zotero.md](sources-zotero.md) · [sources-readwise.md](sources-readwise.md). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed.
@@ -177,11 +179,11 @@ Bank prefixes include `coding-agent::`, `obsidian::`, `notes::`, `papers::`, `bo
 
 ## Industry context
 
-There is **no** cross-vendor standard for agent memory APIs. MCP standardizes tool transport, not memory semantics — each product exposes different tool names and shapes. personal-memory’s answer is a **stable facade** on your chosen backend so agents keep the same verbs when you switch providers.
+There is **no** cross-vendor standard for agent memory APIs. MCP standardizes tool transport, not memory semantics — each product exposes different tool names and shapes. openmem’s answer is a **stable facade** on your chosen backend so agents keep the same verbs when you switch providers.
 
-## Unified personal-memory MCP (beta)
+## Unified openmem MCP (beta)
 
-`cli/personal-memory-mcp.mjs` registers as the `personal-memory` server in `~/.cursor/mcp.json` when you run `install-mcp` (unless `--no-unified-mcp`). It delegates to the active provider:
+`cli/openmem-mcp.mjs` registers as the `openmem` server in `~/.cursor/mcp.json` when you run `install-mcp` (unless `--no-unified-mcp`). It delegates to the active provider:
 
 | Tool | Purpose |
 | --- | --- |
@@ -208,9 +210,9 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 ## Related
 
 - [Memory portability](memory-portability.md) — PMM export/import
-- [Provider status](https://bcmyguest.github.io/personal-memory/docs/provider-status/) — manifest status and ports
+- [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) — manifest status and ports
 - [mem0 operator guide](mem0.md) — URL-only mem0 setup
 - [Cognee operator guide](cognee.md) — loopback container + LLM env
-- [Configuration file](personal-memory-config.md) — `config.toml` for provider and stack defaults
+- [Configuration file](openmem-config.md) — `config.toml` for provider and stack defaults
 
-Developer docs (wizard phases, hooks, manual compose, [indexer sinks](https://github.com/bcmyguest/personal-memory/blob/main/docs/indexer-sinks.md), [MCP install modes](https://github.com/bcmyguest/personal-memory/blob/main/docs/mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](https://github.com/bcmyguest/personal-memory/blob/main/docs/memory-providers.md).
+Developer docs (wizard phases, hooks, manual compose, [indexer sinks](https://github.com/bcmyguest/openmem/blob/main/docs/indexer-sinks.md), [MCP install modes](https://github.com/bcmyguest/openmem/blob/main/docs/mcp-install-guide.md)) live in the git repository under `docs/` and are not published on this site. See also [Pluggable memory providers](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).

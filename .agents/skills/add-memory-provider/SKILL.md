@@ -1,7 +1,7 @@
 ---
 name: add-memory-provider
 description: >-
-  Add a new memory provider plugin to personal-memory (providers/*/manifest.json,
+  Add a new memory provider plugin to openmem (providers/*/manifest.json,
   indexer sink, compose, wizard smoke steps). Use when implementing mem0 or another
   non-Hindsight memory backend.
 ---
@@ -49,7 +49,7 @@ the reference implementation under `providers/hindsight/`.
 8. **README** — Link the provider and note coding-agent install differences.
 
 9. **TOML** — Document provider-specific tables under `[memory.<id>]` in
-   [docs/personal-memory-config.md](../../docs/personal-memory-config.md); extend
+   [docs/openmem-config.md](../../docs/openmem-config.md); extend
    `wizard/lib/pm-config.mjs` if new top-level keys are needed.
 
 10. **Sub-wizard** — Add `providers/<id>/wizard.mjs` and `wizardHooks` in the manifest.

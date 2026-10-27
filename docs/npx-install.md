@@ -1,43 +1,43 @@
 # Installing with npx
 
-`personal-memory` is an npm package whose CLI runs the same setup wizard as `./setup` in a
+`openmem` is an npm package whose CLI runs the same setup wizard as `./setup` in a
 checkout. The package name lives in one place, the `name` field of `package.json` (the CLI
-command stays `personal-memory` if you switch to a scoped name such as
-`openmem`; older installs may still see `personal-memory`).
+command stays `openmem` if you switch to a scoped name such as
+`openmem`; older installs may still see `openmem`).
 
 Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the compose v2
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
 bash dependency in the CLI (macOS ships bash 3.2).
 
-Wizard phases and flags live in the repository: [docs/setup-wizard.md](https://github.com/bcmyguest/personal-memory/blob/main/docs/setup-wizard.md). Runtime architecture: [architecture.md](architecture.md).
+Wizard phases and flags live in the repository: [docs/setup-wizard.md](https://github.com/bcmyguest/openmem/blob/main/docs/setup-wizard.md). Runtime architecture: [architecture.md](architecture.md).
 
 ## Install paths
 
 ```sh
-npx personal-memory                 # interactive setup, nothing installed globally
-npx personal-memory setup           # same as the bare command
-npx personal-memory configure --yes # non-interactive setup and start
-npx personal-memory up              # start stack
-npx personal-memory install-mcp --yes
-npx personal-memory switch mem0 --yes
-npm i -g personal-memory            # then: personal-memory setup | up | down | ...
+npx openmem                 # interactive setup, nothing installed globally
+npx openmem setup           # same as the bare command
+npx openmem configure --yes # non-interactive setup and start
+npx openmem up              # start stack
+npx openmem install-mcp --yes
+npx openmem switch mem0 --yes
+npm i -g openmem            # then: openmem setup | up | down | ...
 # From a git checkout (package not required on the registry):
 git clone https://github.com/bcmyguest/openmem && cd openmem
 npm install && npx . setup          # same wizard; also: npm run setup / ./setup
 ```
 
 No global `pm` command is installed: it collides with Android's `pm`. `./pm` and `npm run pm`
-exist only inside a checkout; prefer `npx personal-memory …` (or `npx . …` in a checkout).
+exist only inside a checkout; prefer `npx openmem …` (or `npx . …` in a checkout).
 
 ### Commands
 
 | Command | What it does |
 | --- | --- |
-| `personal-memory` / `setup` | interactive setup; extra flags go to the wizard (`--yes`, `--dry-run`, `--no-smoke`, `--rebuild`) |
+| `openmem` / `setup` | interactive setup; extra flags go to the wizard (`--yes`, `--dry-run`, `--no-smoke`, `--rebuild`) |
 | `configure` | non-interactive setup and start (`setup --yes`) |
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
-| `install-mcp` | merge **personal-memory** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
+| `install-mcp` | merge **openmem** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
 | `install-coding-agent` | `install-mcp` + session hooks for all providers; optional `--hindsight-plugin` runs `@vectorize-io/hindsight-coding-agents` on Hindsight stacks |
 | `wiring` | report `MEMORY_PROVIDER`, API URLs, and `mcp.json` alignment (`--json`) |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
@@ -59,7 +59,7 @@ build contexts relative to its repo root. The CLI therefore keeps a stable, writ
 ${PM_STACK_ROOT:-${XDG_DATA_HOME:-~/.local/share}/personal-memory/stack}
 ```
 
-Layout after `personal-memory init`:
+Layout after `openmem init`:
 
 ```
 stack/
@@ -85,7 +85,7 @@ Per-user config stays where it always was: `~/.config/hindsight/` and
 | `PM_STACK_ROOT` | Mutable stack root = the wizard's `ctx.repoRoot` (compose project dir, `.env`, generated files, docker build context). Overrides the default location. |
 | `PM_USE_CHECKOUT=1` | Use the package directory itself as the stack root and copy nothing. Wins over `PM_STACK_ROOT`. A directory containing `.git` next to `cli/` behaves this way automatically. |
 | `PM_PACKAGE_ROOT` | Read-only code root (provider manifests and hooks, `scripts/setup.mjs`, `wizard/lib`), never written to. Set by the CLI; defaults to the package directory. |
-| `PM_PROJECT` | compose project name (default `personal-memory`). |
+| `PM_PROJECT` | compose project name (default `openmem`). |
 | `XDG_DATA_HOME` | Base for the default stack root (must be absolute). |
 
 `wizard/bin/setup.mjs` and `wizard/bin/pm.mjs` read `PM_STACK_ROOT` and `PM_PACKAGE_ROOT`
@@ -102,7 +102,7 @@ Each command compares the package's shipped files with the stack root using the 
   (atomic write: temp file in the same directory, then rename).
 - Modified by you, or present but not tracked, or a symlink: **kept**, reported as
   `CONFLICT <path>`. The wizard still runs against your version. Merge by hand, or run
-  `personal-memory init --force`, which overwrites it and saves yours as
+  `openmem init --force`, which overwrites it and saves yours as
   `<file>.user-<timestamp>.bak`.
 - No longer shipped: left in place and reported as a note.
 - Generated files (`.env`, `.build-hash`, `compose.override.yaml`, `personal-memory.toml`,
@@ -114,8 +114,8 @@ changed.
 ## Uninstall
 
 ```sh
-personal-memory down                          # stops the stack (docker compose down)
-npm uninstall -g personal-memory              # if installed globally
+openmem down                          # stops the stack (docker compose down)
+npm uninstall -g openmem              # if installed globally
 rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/personal-memory"   # the stack root
 ```
 
@@ -136,9 +136,9 @@ until you delete them yourself.
 - `cannot prepare the stack root`: the directory is not writable. Set `PM_STACK_ROOT` to
   a writable path.
 - `read-only ... Run it through the CLI`: you ran `wizard/bin/*.mjs` from inside the npm
-  cache. Use `npx personal-memory` or set `PM_STACK_ROOT`.
+  cache. Use `npx openmem` or set `PM_STACK_ROOT`.
 - `missing dependencies (@clack/prompts ...)`: reinstall the package (`npm i -g
-  personal-memory`), or in a checkout run `npm install` at the checkout root.
+  openmem`), or in a checkout run `npm install` at the checkout root.
 - `... is not valid JSON` for `.pm-stack-manifest.json`: delete the manifest; shipped
   files that differ from the package are then reported as untracked conflicts instead of
   being overwritten.
@@ -153,10 +153,10 @@ Before the first publish (these are human steps; nothing in this repo does them)
 2. **Public source.** `npm publish --provenance` needs a public GitHub repository.
 3. **Pack gate.** `npm run pack:check` must pass (no operator home paths in shipped files).
 4. **Create the npm package.** Log in with 2FA (`npm login`), then publish `0.1.0` once by
-   hand (`npm publish --access public`). The name `personal-memory` was verified free on
-   2026-10-19 (so was `@bcmyguest/personal-memory`); re-check with `npm view personal-memory`.
+   hand (`npm publish --access public`). The name `openmem` was verified free on
+   2026-10-19 (so was `openmem`); re-check with `npm view openmem`.
 5. **Trusted publishing.** On npmjs.com, package Settings -> Trusted Publisher -> GitHub
-   Actions: owner `bcmyguest`, repository `personal-memory`, workflow `release.yml`.
+   Actions: owner `bcmyguest`, repository `openmem`, workflow `release.yml`.
 6. **Release.** Run the *Prepare release* workflow on `main` (or bump `package.json`, tag
    `vX.Y.Z`, and push the tag). `release.yml` runs CI, then publishes with `--provenance`
    when the version is not already on npm, then creates the GitHub Release.
@@ -166,5 +166,5 @@ Local rehearsal without publishing:
 ```sh
 npm run pack:check
 npm pack --pack-destination /tmp/pm-pack
-cd "$(mktemp -d)" && npx --yes /tmp/pm-pack/personal-memory-*.tgz --version
+cd "$(mktemp -d)" && npx --yes /tmp/pm-pack/openmem-*.tgz --version
 ```

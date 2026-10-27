@@ -16,10 +16,11 @@ const write = (root, files) => {
 const manifest = (id, status, extra = {}) => ({ id, label: id.toUpperCase(), status, ...extra });
 
 const DOCS = {
+  'docs/concepts.md': '# Concepts\n\nBody.\n',
   'docs/quickstart.md': '# Quickstart\n\nBody.\n',
-  'docs/architecture.md': '# Architecture\n\nSee [config](personal-memory-config.md).\n',
+  'docs/architecture.md': '# Architecture\n\nSee [config](openmem-config.md).\n',
   'docs/hindsight.md': '# Hindsight\n\nBody.\n',
-  'docs/personal-memory-config.md': '# Config\n\nBody.\n',
+  'docs/openmem-config.md': '# Config\n\nBody.\n',
   '.agents/s/SKILL.md': 'x',
 };
 
@@ -36,14 +37,15 @@ test('generates pages and rewrites links; an absent optional doc is skipped', ()
   const f = fixture();
   const { pages } = runSync(opts(f));
   assert.deepEqual(pages.map((p) => p.slug), [
+    'concepts',
     'getting-started',
     'architecture',
     'provider-status',
     'hindsight',
-    'personal-memory-config',
+    'openmem-config',
   ]);
   const out = readFileSync(join(f.site, 'src/content/docs/docs/architecture.md'), 'utf8');
-  assert.match(out, /\[config\]\(\.\.\/personal-memory-config\/\)/);
+  assert.match(out, /\[config\]\(\.\.\/openmem-config\/\)/);
   assert.doesNotMatch(out, /^# Architecture/m);
   assert.equal(existsSync(join(f.site, 'src/content/docs/docs/npx-install.md')), false);
 });
@@ -53,7 +55,7 @@ test('picks up docs/npx-install.md when it exists and uses its heading', () => {
   const { pages } = runSync(opts(f));
   assert.equal(pages.find((p) => p.slug === 'npx-install').title, 'Run it with npx');
   const docsJson = JSON.parse(readFileSync(join(f.site, 'src/generated/docs.json'), 'utf8'));
-  assert.deepEqual(docsJson.slice(0, 2).map((p) => p.slug), ['getting-started', 'npx-install']);
+  assert.deepEqual(docsJson.slice(0, 3).map((p) => p.slug), ['concepts', 'getting-started', 'npx-install']);
 });
 
 test('a privacy finding in a published doc fails the build and lists it, without redacting', () => {
@@ -98,7 +100,7 @@ test('a broken relative link fails the build', () => {
 
 test('a missing required doc fails the build', () => {
   const docs = { ...DOCS, 'docs/architecture.md': '# Architecture\n\nBody.\n' };
-  delete docs['docs/personal-memory-config.md'];
+  delete docs['docs/openmem-config.md'];
   assert.throws(() => runSync(opts(fixture({ docs }))), /required doc source is missing/);
 });
 

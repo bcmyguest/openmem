@@ -240,7 +240,7 @@ test_reflect_route() {
     check "custom retain model: override written" [ -f "${ovr}" ]
     check "custom retain model: retain route uses it" [ "$(route_model memory-retain "${ovr}")" = "openai/Custom-Retain-GGUF" ]
     check "custom retain model: consolidate uses it" [ "$(route_model memory-consolidate "${ovr}")" = "openai/Custom-Retain-GGUF" ]
-    check "custom retain model: reflect keeps shipped model" [ "$(route_model memory-reflect "${ovr}")" = "openai/gemma-4-E4B-it-GGUF-Q4_K_M" ]
+    check "custom retain model: reflect keeps shipped model" [ "$(route_model memory-reflect "${ovr}")" = "openai/Nemotron-3.5-Bolt-E4B-GGUF" ]
     check "custom retain model: shipped thinking flag kept" grep -q 'enable_thinking: false' "${ovr}"
 
     rc=0

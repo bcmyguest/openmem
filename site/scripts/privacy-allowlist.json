@@ -10,8 +10,8 @@
     "rule": "docker-host",
     "match": "host.docker.internal",
     "files": [
-      "docs/personal-memory-config.md",
-      "dist/docs/personal-memory-config",
+      "docs/openmem-config.md",
+      "dist/docs/openmem-config",
       "dist/llms-full.txt"
     ],
     "reason": "Documented Docker host alias for mem0 indexer URL rewrite, Cognee+Ollama endpoints, and host-resident LLM; generic compose term, not an operator path."

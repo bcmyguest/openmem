@@ -9,7 +9,7 @@ local model is not yet a promotion bar — see `docs/WAVE3-orchestrator.md`. Man
 
 ## Meta setup wizard (what this is — and is not)
 
-`npm run setup` (checkout), `npx personal-memory setup`, or `./setup` is a **meta** wizard: it
+`npm run setup` (checkout), `npx openmem setup`, or `./setup` is a **meta** wizard: it
 orchestrates **machine-local plumbing** that is the same idea across providers (Docker project,
 ports, indexer sources, smoke “is the API alive?”, coding-agent config file, compose up/down). It does
 **not** replace each provider’s **native** settings UI, CLI, or config format.
@@ -44,10 +44,10 @@ These are the usual analogues people mean by “meta setup”:
 - **`npx skills`-style installers** — discover and install artifacts; each skill or package owns its
   content afterward.
 
-personal-memory sits in that category: **one front door** for “memory on this machine for coding agents,”
+openmem sits in that category: **one front door** for “memory on this machine for coding agents,”
 not a reimplementation of mem0 or Hindsight settings.
 
-Declarative config is **[mise-like](personal-memory-config.md)**: `~/.config/personal-memory/config.toml`
+Declarative config is **[mise-like](openmem-config.md)**: `~/.config/personal-memory/config.toml`
 plus `./pm` tasks — same *shape* as mise (`[tasks]`, merged config files), different domain.
 
 Provider-specific setup runs via **[wizard hooks](provider-wizard-hooks.md)** (`providers/*/wizard.mjs`)
@@ -143,7 +143,7 @@ first step); default action is full **configure and start**.
 
 ### Changing provider later
 
-Prefer **`npx personal-memory switch <id> --yes`** (checkout: `npx . switch <id> --yes`) over a full
+Prefer **`npx openmem switch <id> --yes`** (checkout: `npx . switch <id> --yes`) over a full
 interactive setup re-run when you only need to change backends:
 
 - Updates `MEMORY_PROVIDER` in `~/.config/hindsight/wizard.conf`
@@ -181,7 +181,7 @@ Switching does **not** migrate memories between backends. The NotebookLM compose
   repo ships no mem0 container yet. A mem0 service built from a pinned upstream ref is a follow-up.
   Operator runbook: `providers/mem0/OPERATOR.md`. Coding-agent: wizard `setupCodingAgent` prints
   SDK/MCP steps (no fake `pluginPackage`); register Cursor MCP with
-  `npx personal-memory install-mcp --yes` / `npx personal-memory switch mem0 --yes`.
+  `npx openmem install-mcp --yes` / `npx openmem switch mem0 --yes`.
 - Cognee runs in **docker**: a pinned `cognee/cognee` image on a loopback port with a named volume and
   an optional env file (`~/.config/personal-memory/cognee.env`, mode 600).
   Operator notes: `providers/cognee/OPERATOR.md`. Coding-agent: REST on the loopback port plus a
@@ -230,11 +230,11 @@ See [index-sources.md](index-sources.md), [sources-feeds.md](sources-feeds.md), 
 
 ## Coding-agent session hooks
 
-See [coding-agent-hooks.md](coding-agent-hooks.md), [coding-agent-scopes.md](coding-agent-scopes.md), and `npx personal-memory install-coding-agent`.
+See [coding-agent-hooks.md](coding-agent-hooks.md), [coding-agent-scopes.md](coding-agent-scopes.md), and `npx openmem install-coding-agent`.
 
 ## Site and docs
 
-Published pages sync from `docs/*.md` at build time. If you change mermaid in a synced doc (for example `docs/architecture.md`), run `cd site && pnpm render-diagrams` and commit `site/public/diagrams/*.svg`. Then run `SITE_URL=https://bcmyguest.github.io BASE_PATH=/personal-memory/ pnpm build` in `site/` — the same check as CI and GitHub Pages.
+Published pages sync from `docs/*.md` at build time. If you change mermaid in a synced doc (for example `docs/architecture.md`), run `cd site && pnpm render-diagrams` and commit `site/public/diagrams/*.svg`. Then run `SITE_URL=https://bcmyguest.github.io BASE_PATH=/openmem/ pnpm build` in `site/` — the same check as CI and GitHub Pages.
 
 ## Adding a provider (checklist)
 

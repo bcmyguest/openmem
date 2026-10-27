@@ -63,7 +63,7 @@ export async function exportCognee(ctx, args, fetchFn, env = process.env) {
   const base = ctx.cognee?.baseUrl?.replace(/\/+$/, "");
   if (!base) throw new Error("Cognee API URL not configured");
   const headers = { ...authHeaders(env) };
-  const bank = String(args.bank || "personal-memory-mcp").trim() || "personal-memory-mcp";
+  const bank = String(args.bank || "openmem-mcp").trim() || "openmem-mcp";
   const datasetName = cogneeDatasetName(bank);
 
   const listRes = await fetchFn(`${base}/api/v1/datasets`, { headers });

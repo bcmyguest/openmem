@@ -9,7 +9,7 @@ export const CODING_AGENTS = Object.freeze([
     id: "hermes",
     label: "Hermes",
     hindsightInstall: false,
-    sessionPath: "Unified personal-memory MCP (memory_*) or agent-native MCP; no bundled Hermes plugin in this repo.",
+    sessionPath: "Unified openmem MCP (memory_*) or agent-native MCP; no bundled Hermes plugin in this repo.",
   },
   {
     id: "gemini-cli",

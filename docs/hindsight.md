@@ -4,7 +4,7 @@
 
 Upstream project: [vectorize-io/hindsight](https://github.com/vectorize-io/hindsight).
 
-## What personal-memory runs
+## What openmem runs
 
 | Service | Role |
 | --- | --- |
@@ -37,19 +37,19 @@ Shipped route templates live in `config/litellm.lemond.yaml` and `config/litellm
 **Default (all providers):** unified `memory_*` MCP plus in-repo session hooks:
 
 ```sh
-npx personal-memory install-coding-agent --yes
+npx openmem install-coding-agent --yes
 ```
 
 **Optional:** also install the upstream Hindsight plugin hooks:
 
 ```sh
-npx personal-memory install-coding-agent --yes --hindsight-plugin
+npx openmem install-coding-agent --yes --hindsight-plugin
 ```
 
 MCP without session hooks:
 
 ```sh
-npx personal-memory install-mcp --yes
+npx openmem install-mcp --yes
 ```
 
 Restart Cursor Agent after MCP changes.
@@ -57,18 +57,18 @@ Restart Cursor Agent after MCP changes.
 ## Switch provider
 
 ```sh
-npx personal-memory switch mem0 --yes
-# return: npx personal-memory switch hindsight --yes
+npx openmem switch mem0 --yes
+# return: npx openmem switch hindsight --yes
 ```
 
 Updates compose profile, env, and MCP wiring. Does **not** migrate memories between backends.
 
 ## NotebookLM (opt-in)
 
-NotebookLM sync and MCP are provider-agnostic but were built for Hindsight-first workflows. See [docs/notebooklm.md](https://github.com/bcmyguest/personal-memory/blob/main/docs/notebooklm.md).
+NotebookLM sync and MCP are provider-agnostic but were built for Hindsight-first workflows. See [docs/notebooklm.md](https://github.com/bcmyguest/openmem/blob/main/docs/notebooklm.md).
 
 ## See also
 
 - [Architecture](architecture.md) — indexing and MCP paths
 - [Model configuration](model-configuration.md) — LiteLLM aliases and backends
-- [Provider status](https://bcmyguest.github.io/personal-memory/docs/provider-status/)
+- [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/)

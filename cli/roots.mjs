@@ -31,9 +31,9 @@ export function resolveWizardRoots(binFileUrl) {
   const packaged = derived.split(path.sep).includes("node_modules");
   if (packaged && !process.env.PM_STACK_ROOT) {
     console.error(
-      "personal-memory: this copy lives in an npm package directory, which is read-only and\n" +
+      "openmem: this copy lives in an npm package directory, which is read-only and\n" +
         "may be garbage-collected. Run it through the CLI instead (it sets up a stable stack root):\n" +
-        "  npx personal-memory   |   personal-memory   |   PM_STACK_ROOT=<dir> to choose one",
+        "  npx openmem   |   openmem   |   PM_STACK_ROOT=<dir> to choose one",
     );
     process.exit(1);
   }
@@ -69,7 +69,7 @@ export function ensureWizardDeps(pkgRoot, packaged) {
   if (!missing.length) return;
   if (packaged || !fs.existsSync(path.join(pkgRoot, "package.json"))) {
     console.error(
-      `personal-memory: missing dependencies (${missing.join(", ")}); reinstall the package.`,
+      `openmem: missing dependencies (${missing.join(", ")}); reinstall the package.`,
     );
     process.exit(1);
   }

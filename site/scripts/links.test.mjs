@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { checkLinks } from './lib/links.mjs';
 
-const BASE = '/personal-memory/';
+const BASE = '/openmem/';
 const ORIGIN = 'https://bcmyguest.github.io';
 
 function dist(files) {

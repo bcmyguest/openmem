@@ -78,7 +78,7 @@ selection (still the hindsight sink when `MEMORY_PROVIDER=hindsight`).
 | --- | --- |
 | `bank` | `user_id` (via `scope_id()` — see below) |
 | `doc_id` | `run_id` (same `scope_id` rules) |
-| (fixed) | `agent_id` = `personal-memory-indexer` (provenance only; lookups use `user_id` + `run_id`) |
+| (fixed) | `agent_id` = `openmem-indexer` (provenance only; lookups use `user_id` + `run_id`) |
 
 **`scope_id`:** If the id has no whitespace, it is used as-is. Otherwise whitespace runs become `_`,
 and `~` plus the first 8 hex digits of SHA-256(original) are appended so ids that differ only in

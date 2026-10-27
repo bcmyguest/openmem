@@ -8,9 +8,9 @@ name: Release
 # Provenance requires a public GitHub repository (see docs/npx-install.md).
 #
 # One-time setup: npm lets a trusted publisher be added only to an existing package, so
-# publish 0.1.0 once by hand (`npm publish --access public`), then on npmjs.com:
-# personal-memory -> Settings -> Trusted Publisher -> GitHub Actions: owner bcmyguest,
-# repository personal-memory, workflow release.yml.
+# publish 0.6.1 once by hand (`npm publish --access public`), then on npmjs.com:
+# openmem -> Settings -> Trusted Publisher -> GitHub Actions: owner bcmyguest,
+# repository openmem, workflow release.yml.
 on:
   push:
     tags: ["v*"]
@@ -114,7 +114,7 @@ jobs:
             ### npm
 
             ```shell
-            npx personal-memory@${{ steps.npm.outputs.version }}
+            npx openmem@${{ steps.npm.outputs.version }}
             ```
 
-            Registry: https://www.npmjs.com/package/personal-memory/v/${{ steps.npm.outputs.version }}
+            Registry: https://www.npmjs.com/package/openmem/v/${{ steps.npm.outputs.version }}

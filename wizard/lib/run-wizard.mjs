@@ -253,7 +253,7 @@ async function configureIndex(ctx) {
       return;
     }
   }
-  info("Scan roots cover git repos and Obsidian vaults (.obsidian/). Add notes/papers/bookmarks paths or feeds in index.yml for other markdown trees ([docs/index-sources.md](https://github.com/bcmyguest/personal-memory/blob/main/docs/index-sources.md)).");
+  info("Scan roots cover git repos and Obsidian vaults (.obsidian/). Add notes/papers/bookmarks paths or feeds in index.yml for other markdown trees ([docs/index-sources.md](https://github.com/bcmyguest/openmem/blob/main/docs/index-sources.md)).");
   const rootsCsv = await ask(
     ctx,
     "Root folder(s) to scan, comma-separated",
@@ -308,7 +308,7 @@ async function configureIndex(ctx) {
   });
   const tmp = path.join(os.tmpdir(), `wizard-index-${process.pid}.yml`);
   fs.writeFileSync(tmp, content);
-  await buildService(ctx, "indexer", "personal-memory-indexer:local");
+  await buildService(ctx, "indexer", "openmem-indexer:local");
   const listingR = spawnSync(
     "docker",
     composeArgs(
@@ -501,10 +501,10 @@ async function startStack(ctx) {
   step("7. Start the stack");
   syncExtraProfiles(ctx);
   await runSetupScript(ctx);
-  await buildService(ctx, "indexer", "personal-memory-indexer:local");
+  await buildService(ctx, "indexer", "openmem-indexer:local");
   const wantNotebooklm = (ctx.extraComposeProfiles || []).includes("notebooklm");
   if (wantNotebooklm) {
-    await buildService(ctx, "notebooklm", "personal-memory-notebooklm:local");
+    await buildService(ctx, "notebooklm", "openmem-notebooklm:local");
   }
   // NotebookLM sync shares the stack LLM with smoke retain. Bring the core stack
   // up first (omit notebooklm profile), run smoke, then start NotebookLM.
@@ -668,9 +668,9 @@ async function checkPreflight(ctx) {
 
 function configTomlTip(ctx) {
   const user = path.join(ctx.home, ".config/personal-memory/config.toml");
-  const example = path.join(ctx.repoRoot, "config/personal-memory.toml.example");
+  const example = path.join(ctx.repoRoot, "config/openmem.toml.example");
   if (!fs.existsSync(user) && fs.existsSync(example)) {
-    info(`tip: cp config/personal-memory.toml.example ${user} for declarative defaults`);
+    info(`tip: cp config/openmem.toml.example ${user} for declarative defaults`);
   }
 }
 
