@@ -222,5 +222,36 @@ function check(name, cond, detail = "") {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
+{
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "pm-hook-retain-"));
+  const transcript = path.join(home, "session.jsonl");
+  fs.writeFileSync(transcript, `${JSON.stringify({ message: { role: "user", content: [{ type: "text", text: "Remember the project decision" }] } })}\n`);
+  let retainBody;
+  const fetchFn = async (_url, init) => {
+    retainBody = JSON.parse(init.body);
+    return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, async: true, operation_id: "queued" }) };
+  };
+  await runHook("claude-code", "stop", {
+    home,
+    env: { ...process.env, HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:8888" },
+    repoRoot: ROOT,
+    ev: { cwd: home, session_id: "retain-test", transcript_path: transcript },
+    fetchFn,
+  });
+  check("Claude Stop queues Hindsight extraction", retainBody?.async === true);
+  check("Stop checkpoints after Hindsight accepts the queue", fs.existsSync(path.join(home, ".config/personal-memory/transcript-cursors.json")));
+  fs.writeFileSync(transcript, `${JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Remember the project decision" }] } })}\n`);
+  retainBody = undefined;
+  await runHook("codex", "stop", {
+    home,
+    env: { ...process.env, HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:8888" },
+    repoRoot: ROOT,
+    ev: { cwd: home, session_id: "retain-test-codex", transcript_path: transcript },
+    fetchFn,
+  });
+  check("Codex Stop queues Hindsight extraction", retainBody?.async === true);
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
 if (failed) process.exit(1);
 console.log("all session shim tests passed");

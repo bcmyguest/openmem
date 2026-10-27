@@ -95,9 +95,13 @@ flowchart TB
 | --- | --- |
 | Sources → indexer → provider | Shared watcher; sink from active manifest (`MEMORY_SINK`) |
 | Agents → MCP / hooks → provider | `install-coding-agent` installs the shared **`personal-memory`** skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode |
+| Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
 
 On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [coding-agent hooks](docs/coding-agent-hooks.md) for the current limits.
-| Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
+
+Re-run `npx personal-memory install-coding-agent --yes` after updating the hook code. Claude Code and the other installed agents run a copy in `~/.local/share/personal-memory/agent-runtime`; an older copy can resolve a different, case-sensitive project bank than the indexer.
+On Hindsight, Stop hooks queue transcript extraction and checkpoint after Hindsight accepts the operation. MCP `memory_add` defaults to async; pass `async: false` to block until extraction finishes. Check Hindsight operations for a queued extraction that later fails.
+SessionStart hooks use bounded recall rather than model-backed reflect. On Hindsight they request the low retrieval budget and at most 1200 fact tokens; hook context is capped at 8000 characters.
 
 Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.
 
