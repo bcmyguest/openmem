@@ -24,7 +24,6 @@ Once on npm: `npx openmem` / `npx openmem-mcp`
 - Concepts: https://bcmyguest.github.io/openmem/docs/concepts/
 - Release: https://github.com/bcmyguest/openmem/releases/tag/v0.6.3
 - Glama (openmem-mcp): https://glama.ai/mcp/servers/@bcmyguest/openmem
-- Smithery (openmem-mcp): https://smithery.ai/server/@bcmyguest/openmem-mcp
 
 Inspired in part by how OpenFeature separates flag APIs from vendors — listed under Inspiration in the README. Feedback welcome, especially if you run mem0 or Cognee day-to-day.
 

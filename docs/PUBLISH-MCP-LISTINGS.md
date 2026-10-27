@@ -1,11 +1,11 @@
 # Publish OpenMem MCP listings
 
-Do this **after** `openmem@0.6.1` (or later) is on npm and `main` has `glama.json` / `smithery.yaml` / `server.json`.
+Do this **after** `openmem@0.6.1` (or later) is on npm and `main` has `glama.json` / `server.json`.
 
-Install command for listings:
+Install command for listings (npm package is `openmem`; MCP bin is `openmem-mcp`):
 
 ```text
-npx -y openmem-mcp
+npx -y openmem
 ```
 
 One-line pitch:
@@ -25,28 +25,21 @@ npm publish --access public
 
 Flip `site.npm.published` to `true` in `site/src/site.config.mjs` in the same change that lands the first npm release.
 
+Do **not** publish as `openmem-mcp` — that name is already taken on npm by an unrelated package. Our MCP entrypoint is the `openmem-mcp` bin inside `openmem`.
+
 ## 2. Glama
 
 1. Open https://glama.ai/mcp/servers → **Add MCP Server**
 2. GitHub URL: `https://github.com/bcmyguest/openmem`
-3. Name: **OpenMem** · Description: the pitch above · Type: **stdio**
-4. Install: `npx -y openmem-mcp`
+3. Name: **openmem-mcp** · Description: the pitch above · Type: **stdio**
+4. Install: `npx -y openmem` (runs the package; MCP binary is `openmem-mcp`)
 5. After indexing, **Claim ownership** (repo already has `glama.json` with maintainer `bcmyguest`)
 
 Listing name on Glama: **openmem-mcp**. Canonical URL (repo slug): `https://glama.ai/mcp/servers/@bcmyguest/openmem`
 
 README badges use the Glama name (`@bcmyguest/openmem-mcp` score/card images) and link to that canonical page.
 
-## 3. Smithery
-
-1. Sign in at https://smithery.ai with GitHub `bcmyguest`
-2. https://smithery.ai/new → **Add from GitHub** → `bcmyguest/openmem`
-3. Name the server **openmem-mcp**; confirm `smithery.yaml` / `npx -y openmem-mcp`
-4. Tags: `memory`, `coding-agents`, `hindsight`, `mem0`, `cognee`, `mcp`
-
-README Smithery badge targets `@bcmyguest/openmem-mcp`. If Smithery assigns a different slug, update the badge URLs in `README.md` to match.
-
-## 4. Official MCP Registry
+## 3. Official MCP Registry
 
 ```sh
 # After npm publish (mcpName must match server.json name):
@@ -57,12 +50,12 @@ curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/downlo
 
 Bump `version` in `server.json` (and the packages[].version) whenever you publish a new npm version.
 
-## 5. Community lists (optional)
+## 4. Community lists (optional)
 
 - [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) — PR a Community Servers row
 - [PulseMCP](https://www.pulsemcp.com/) — submit if they take GitHub/npm URLs
 - [mcp.so](https://mcp.so/) — submit repo URL when their form is open
 
-## 6. Announce
+## 5. Announce
 
-Use [docs/ANNOUNCEMENT.md](ANNOUNCEMENT.md) (I-built-a-thing draft). After Glama/Smithery URLs exist, paste them into the post and the README badges.
+Use [docs/ANNOUNCEMENT.md](ANNOUNCEMENT.md) (I-built-a-thing draft). After the Glama URL is live, paste it into the post and confirm the README badges.

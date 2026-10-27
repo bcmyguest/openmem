@@ -60,7 +60,6 @@
     "LICENSE",
     "glama.json",
     "server.json",
-    "smithery.yaml",
     "docs/",
     "!docs/ROADMAP*",
     "!docs/WAVE*",
