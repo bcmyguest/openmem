@@ -11,11 +11,7 @@
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
 
-**npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) 
-
 **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` 
-
-**Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
 **Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/)
 
