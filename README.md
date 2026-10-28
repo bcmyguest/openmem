@@ -7,6 +7,8 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
+**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API over pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/), with a shared wizard, indexer, and import/export format (PMM first).
+
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
 
 **npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) 
@@ -14,10 +16,6 @@
 **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` 
 
 **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
-
-**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API over pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/), with a shared wizard, indexer, and import/export format (PMM first).
-
-> Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
 **Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/)
 
@@ -78,6 +76,8 @@ OpenMem is not affiliated with these projects; they shape the problem or the pat
 | **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks. |
 
 More setup analogues: [Pluggable memory providers](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).
+
+> Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
 ## License
 
