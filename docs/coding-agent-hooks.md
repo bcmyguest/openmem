@@ -24,7 +24,7 @@ which session features work for the active provider.
 npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
-- **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
+- **All providers:** unified MCP and [shared skill](../.agents/skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
 - **Optional:** `--hindsight-plugin` with `MEMORY_PROVIDER=hindsight` also runs `@vectorize-io/hindsight-coding-agents install` (legacy/alternate hook set).
 
 See [MCP setup](mcp-setup.md) and [coding agents](coding-agents.md).

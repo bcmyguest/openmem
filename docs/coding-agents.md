@@ -8,7 +8,7 @@ npx @bcmyguest/openmem install-coding-agent --yes
 # same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli,hermes,gemini-cli,amp,cline
 ```
 
-This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
+This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../.agents/skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
 
 For Codex, installation enables `features.hooks` when unset and preserves an explicit `false`. For OpenCode, the plugin and MCP entry go into the existing `opencode.jsonc` or `opencode.json`; unrelated settings and JSONC comments outside the updated fields are retained.
 

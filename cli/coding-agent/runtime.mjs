@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-const RUNTIME_ITEMS = ["cli", "providers", "wizard", "config", "skills", "package.json"];
+const RUNTIME_ITEMS = ["cli", "providers", "wizard", "config", ".agents/skills/openmem", "package.json"];
 const RUNTIME_DEPS = ["@iarna/toml", "@clack/prompts", "yaml"];
 
 function packageRoot(requireFromSource, name) {
@@ -25,6 +25,7 @@ export function prepareAgentRuntime({ home, repoRoot, stackRoot, dry = false, h 
   const requireFromSource = createRequire(path.join(repoRoot, "package.json"));
   fs.mkdirSync(dest, { recursive: true });
   for (const item of RUNTIME_ITEMS) {
+    fs.mkdirSync(path.dirname(path.join(dest, item)), { recursive: true });
     fs.cpSync(path.join(repoRoot, item), path.join(dest, item), { recursive: true, force: true });
   }
   fs.rmSync(path.join(dest, "cli", "coding-agent", "opencode-plugin"), { recursive: true, force: true });

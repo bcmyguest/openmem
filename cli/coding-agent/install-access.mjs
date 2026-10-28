@@ -41,7 +41,7 @@ function updateCodexToml(text, scriptPath, stackRoot) {
 /** Install one shared skill and the unified MCP in each selected agent's global config. */
 export function installAgentAccess({ home, runtimeRoot, stackRoot, agents, dry = false, h }) {
   const scriptPath = path.join(runtimeRoot, "cli", "openmem-mcp.mjs");
-  const skillSource = path.join(runtimeRoot, "skills", "openmem", "SKILL.md");
+  const skillSource = path.join(runtimeRoot, ".agents", "skills", "openmem", "SKILL.md");
   for (const agent of agents) {
     const skillRel = SKILL_TARGETS[agent];
     if (!skillRel) continue;
