@@ -5,7 +5,7 @@
 ## Source of truth and current state
 
 - This repository and the active machine configuration are authoritative. `git status --short` currently shows uncommitted agent integration work plus a pre-existing untracked `compose.fabro.yaml`; leave that user file alone.
-- `skills/openmem/SKILL.md` and `cli/coding-agent/*` contain the new skill, hooks, runtime installer, and OpenCode plugin. `cli/mcp/memory-facade.mjs` exposes nine `memory_*` tools across Hindsight, mem0, and Cognee.
+- `.agents/skills/openmem/SKILL.md` and `cli/coding-agent/*` contain the new skill, hooks, runtime installer, and OpenCode plugin. `cli/mcp/memory-facade.mjs` exposes nine `memory_*` tools across Hindsight, mem0, and Cognee.
 - The prior session installed the new wiring globally and removed the upstream Hindsight coding-agent wiring from Claude Code, Codex, Cursor Agent, and OpenCode. A live `memory_recall` against the Hindsight backend worked; Claude and OpenCode MCP connection checks and Cursor's nine-tool listing worked. These checks prove connectivity, not Hindsight-level behavior or live session capture.
 - The current Hindsight backend remains active by user choice. “Fully off Hindsight” in this goal means no upstream Hindsight coding-agent plugin or skill is required. Retain the server and data. A read-only local bank listing on 2026-10-22 returned 43 banks and 46,108 reported facts; no backend migration is part of this goal.
 - The machine's legacy `~/.hindsight/coding-agent.json` currently says `optInOnly: true` with an empty `optInPaths` list. Current openmem hooks ignore it. Applying it unchanged would disable device-wide session memory; settle a openmem-owned policy before migrating settings.
