@@ -26,12 +26,14 @@ Network use: feed-sync calls public RSS/OpenAlex URLs from the host (not from CI
 
 ## Schedule feed sync (optional)
 
-Install an hourly job with the current user's native scheduler:
+Install an hourly job with the current user's native scheduler. The GitHub npx source works before the next npm release includes `schedule`:
 
 ```sh
-npx @bcmyguest/openmem schedule install --dry-run
-npx @bcmyguest/openmem schedule install
-npx @bcmyguest/openmem schedule remove
+npx --yes github:bcmyguest/openmem schedule install --dry-run
+npx --yes github:bcmyguest/openmem schedule install
+npx --yes github:bcmyguest/openmem schedule remove
 ```
+
+After that release, `npx @bcmyguest/openmem schedule ...` runs the same command from npm.
 
 OpenMem installs a systemd user timer on Linux, a launchd agent on macOS, or a Task Scheduler task on Windows. The job calls the published npm package through a stable runner in your user config directory. Installation records the Python interpreter with PyYAML, so the job does not depend on your interactive shell's PATH. It runs when your user scheduler is active; the Linux timer catches up after downtime. Re-run `schedule install` if you move or upgrade Node.js or Python.
