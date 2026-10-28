@@ -22,31 +22,16 @@ Then ensure the stack indexer is running. Each run writes markdown files under `
 
 Network use: feed-sync calls public RSS/OpenAlex URLs from the host (not from CI by default).
 
-## Cron / timer (optional)
+`feed-sync` needs Python 3 with PyYAML on the host. On Windows it uses `py -3`, then `python`; on macOS and Linux it uses `python3`, then `python`. Set `PYTHON` to choose a specific executable.
 
-Run sync on a schedule so feeds stay fresh without manual commands:
+## Schedule feed sync (optional)
 
-```ini
-# ~/.config/systemd/user/openmem-feed-sync.timer
-[Unit]
-Description=Refresh openmem feed cache
+Install an hourly job with the current user's native scheduler:
 
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-[Install]
-WantedBy=timers.target
+```sh
+npx @bcmyguest/openmem schedule install --dry-run
+npx @bcmyguest/openmem schedule install
+npx @bcmyguest/openmem schedule remove
 ```
 
-```ini
-# ~/.config/systemd/user/openmem-feed-sync.service
-[Unit]
-Description=openmem feed-sync
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/env npx @bcmyguest/openmem feed-sync
-```
-
-Enable with `systemctl --user enable --now openmem-feed-sync.timer`.
+OpenMem installs a systemd user timer on Linux, a launchd agent on macOS, or a Task Scheduler task on Windows. The job calls the published npm package through a stable runner in your user config directory. Installation records the Python interpreter with PyYAML, so the job does not depend on your interactive shell's PATH. It runs when your user scheduler is active; the Linux timer catches up after downtime. Re-run `schedule install` if you move or upgrade Node.js or Python.

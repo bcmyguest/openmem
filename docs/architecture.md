@@ -1,6 +1,6 @@
 # Architecture
 
-openmem’s job is **not** to be the memory — it is to let you run **whichever memory system you choose** on one machine with shared indexing and setup. A **shared indexer** writes into the active **provider**; **coding agents** reach that API through unified `memory_*` MCP, in-repo **session hooks**, and optional native paths (Hindsight plugin, mem0/Cognee MCP). Only one provider is active at a time; `npx @bcmyguest/openmem switch` rewires the stack without pretending to migrate your data. Setup (`npx @bcmyguest/openmem`) is install plumbing only — not part of the runtime data path.
+OpenMem connects coding agents and a shared indexer to one active [memory provider](provider-status.md). Agents use the stable `memory_*` MCP and session hooks; the indexer writes sources to the same provider. This page shows the full runtime paths and optional integrations. Setup (`npx @bcmyguest/openmem`) configures them but is outside the runtime data path. Switching providers does not migrate memories.
 
 ## Runtime data flow
 
@@ -68,7 +68,7 @@ Only **one provider** is active at a time (`MEMORY_PROVIDER`). The indexer uses 
 
 Product framing: [Concepts](concepts.md).
 
-openmem is a **meta layer**: it does not replace provider APIs. It wires the same plumbing (indexer, compose, wizard, MCP) to **different backends** through manifests and thin adapters.
+OpenMem connects the indexer, Compose, wizard, and MCP to the selected provider through its manifest and adapter. Provider support levels come from [Provider status](provider-status.md).
 
 ```mermaid
 flowchart TB
@@ -118,7 +118,7 @@ Adding a provider means a new manifest + hooks + sink driver; agents can keep us
 
 | Input | Resolves |
 | --- | --- |
-| `MEMORY_PROVIDER` | Active backend (`wizard.conf`, optional `config.toml`) |
+| `MEMORY_PROVIDER` | Active provider (`wizard.conf`, optional `config.toml`) |
 | Stack `.env` | API URLs, ports, `MEMORY_SINK`, indexer → provider URL |
 | Provider secret files | e.g. `~/.config/personal-memory/mem0.env` (never committed; not written to `mcp.json`) |
 | `~/.config/hindsight/index.yml` | What the indexer watches |

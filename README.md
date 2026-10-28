@@ -9,7 +9,7 @@
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) · **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
-**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API and ops surface over pluggable backends (Hindsight, mem0, Cognee, …), with shared wizard, indexer, and import/export formats (PMM first).
+**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API over pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/), with a shared wizard, indexer, and import/export format (PMM first).
 
 > Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
@@ -43,67 +43,18 @@ Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-starte
 ## Architecture
 
 ```mermaid
-flowchart TB
-  subgraph disk["Sources on disk"]
-    GIT[Git repos]
-    OBS[Obsidian vaults]
-    MD[notes · papers · bookmarks]
-    FEED[Feed cache]
-  end
-
-  subgraph compose["Docker Compose — one active provider"]
-    IDX[indexer]
-    PROV[(Provider API)]
-    IDX -->|retain / update| PROV
-    LIT[LiteLLM]
-    NLM[NotebookLM sync]
-    LIT -.->|Hindsight stack + optional reflect synth| PROV
-    NLM -.->|opt-in profile| PROV
-  end
-
-  LIT --> LLM[(lemond · Ollama · OpenAI-compatible)]
-
-  subgraph host["Host — coding agents"]
-    AG[Claude Code · Codex · Cursor Agent · OpenCode]
-    UMCP["OpenMem MCP\n(memory_*)"]
-    SHIM["Session hooks"]
-    PLG["Hindsight plugin\n(optional)"]
-    SKILL["openmem skill"]
-    PMCP[Provider MCP optional]
-    NLMCP[NotebookLM MCP optional]
-  end
-
-  GIT --> IDX
-  OBS --> IDX
-  MD --> IDX
-  FEED --> IDX
-  AG <-->|stdio| UMCP
-  AG <-->|hooks| SHIM
-  AG --> SKILL
-  AG <-->|optional| PLG
-  SHIM --> UMCP
-  AG <-->|stdio| PMCP
-  AG <-->|stdio| NLMCP
-  UMCP -->|loopback HTTP| PROV
-  PLG -->|loopback HTTP| PROV
-  PMCP -->|loopback HTTP| PROV
-  NLMCP -->|loopback HTTP| PROV
-
-  W["npx @bcmyguest/openmem\nsetup · install-mcp"] -.->|configure| compose
-  W -.->|mcp.json| UMCP
+flowchart LR
+  S[Git repos · notes · feeds] --> I[OpenMem indexer]
+  I --> P[(One active memory provider)]
+  A[Coding agents] <--> M["OpenMem MCP · memory_*"]
+  M <--> P
 ```
 
-| Connection | What it is |
-| --- | --- |
-| Sources → indexer → provider | Shared watcher; sink from active manifest (`MEMORY_SINK`) |
-| Agents → MCP / hooks → provider | `install-coding-agent` installs the shared skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode |
-| Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
-
-On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for MCP and hooks limits.
+The indexer and coding agents share one active memory provider. Session hooks use the same `memory_*` MCP. See the [full architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for setup, optional integrations, and provider-specific behavior.
 
 ## Providers and portability
 
-- **Providers** — manifests under `providers/` ([Hindsight](https://bcmyguest.github.io/openmem/docs/hindsight/), [mem0](https://bcmyguest.github.io/openmem/docs/mem0/), [Cognee](https://bcmyguest.github.io/openmem/docs/cognee/)). Add another with a compose fragment, indexer sink, and wizard hooks.
+- **Providers** — [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) lists every provider and its support level from the manifests. Contributor details: [adding a provider](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).
 - **MCP** — unified `memory_*` plus optional native/NotebookLM servers: [MCP setup](https://bcmyguest.github.io/openmem/docs/mcp-setup/).
 - **Portable memory** — `memory_export` / `memory_import` speak **PMM**: [Portable memory](https://bcmyguest.github.io/openmem/docs/memory-portability/).
 - **Switch** — `npx @bcmyguest/openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
@@ -118,12 +69,9 @@ OpenMem is not affiliated with these projects; they shape the problem or the pat
 | --- | --- |
 | **[OpenFeature](https://openfeature.dev/)** | Inspiration for a vendor-agnostic interface + pluggable providers (there: feature flags; here: coding-agent memory). |
 | **[mise](https://mise.jdx.dev/) / [asdf](https://asdf-vm.com/)** | One CLI over many backends; declarative config and tasks without replacing each tool’s own settings. |
-| **[Hindsight](https://github.com/vectorize-io/hindsight)** | Default memory provider in this repo. |
-| **[mem0](https://github.com/mem0ai/mem0)** | Supported memory provider. |
-| **[Cognee](https://github.com/topoteretes/cognee)** | Supported memory provider. |
 | **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks. |
 
-More setup analogues (Chezmoi, Home Assistant integrations, …): [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).
+More setup analogues: [Pluggable memory providers](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).
 
 ## License
 
