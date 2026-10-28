@@ -7,7 +7,10 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
-**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) · **npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) · **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` · **Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
+**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
+**npm:** [@bcmyguest/openmem](https://www.npmjs.com/package/@bcmyguest/openmem) 
+**MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` 
+**Repo:** [github.com/bcmyguest/openmem](https://github.com/bcmyguest/openmem)
 
 **OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API over pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/), with a shared wizard, indexer, and import/export format (PMM first).
 
