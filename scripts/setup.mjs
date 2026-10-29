@@ -20,6 +20,7 @@ import {
   loadManifest,
 } from "../wizard/lib/providers/registry.mjs";
 import { wizardModulePath } from "../wizard/lib/provider-wizard/run-steps.mjs";
+import { contextProxyStackEnvFromPmConfig, loadPmConfig } from "../wizard/lib/pm-config.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(process.env.PM_PACKAGE_ROOT || path.join(scriptDir, ".."));
@@ -52,7 +53,17 @@ try {
   process.exit(1);
 }
 
-const dropRe = new RegExp(`^(${["HOST_UID", "HOST_GID", ...spec.drop].join("|")})=`);
+// Context-proxy settings from config.toml ([context_proxy], [compaction]) for compose; keys the
+// config leaves unset keep any hand-written .env line. Shell env still overrides at `compose up`.
+/** @type {Record<string, string>} */
+let proxyEnv = {};
+try {
+  proxyEnv = contextProxyStackEnvFromPmConfig(loadPmConfig(home, repo).merged);
+} catch (e) {
+  console.warn(`skipped context-proxy settings: ${/** @type {Error} */ (e).message}`);
+}
+
+const dropRe = new RegExp(`^(${["HOST_UID", "HOST_GID", ...spec.drop, ...Object.keys(proxyEnv)].join("|")})=`);
 
 const kept = [];
 if (fs.existsSync(envFile)) {
@@ -64,6 +75,7 @@ const uid = os.userInfo().uid;
 const gid = os.userInfo().gid;
 kept.push(`HOST_UID=${uid}`, `HOST_GID=${gid}`);
 for (const [key, value] of spec.entries) kept.push(`${key}=${value}`);
+for (const [key, value] of Object.entries(proxyEnv)) kept.push(`${key}=${value}`);
 fs.mkdirSync(repo, { recursive: true });
 fs.writeFileSync(tmp, `${kept.filter(Boolean).join("\n")}\n`, { mode: 0o644 });
 fs.renameSync(tmp, envFile);

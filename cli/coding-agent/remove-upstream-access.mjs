@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import TOML from "@iarna/toml";
+import { SILENT, readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
+import { removeTomlPath } from "./toml-edit.mjs";
 
 /** Name the upstream @vectorize-io/hindsight-coding-agents installer gives its MCP server. */
 const UPSTREAM_MCP_NAME = "hindsight";
@@ -14,8 +16,6 @@ const UPSTREAM_SKILL_ROOTS = {
   codex: [".agents", "skills"],
   "cursor-cli": [".cursor", "skills"],
 };
-const CODEX_SERVER_HEADER = /^[ \t]*\[[ \t]*mcp_servers[ \t]*\.[ \t]*(?:hindsight|"hindsight"|'hindsight')[ \t]*(?:\.[^\]]*)?\]/;
-const SILENT = { info: () => {}, ok: () => {}, warn: () => {} };
 
 /** True when an MCP server entry launches the upstream package's mcp-server.js. */
 export function isUpstreamMcpEntry(entry) {
@@ -26,7 +26,7 @@ export function isUpstreamMcpEntry(entry) {
 function readJsonFile(file, h) {
   if (!fs.existsSync(file)) return null;
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return readJson(file);
   } catch (err) {
     h.warn(`skipped ${file}: ${err.message}`);
     return null;
@@ -42,12 +42,17 @@ function removeJsonMcp({ agentId, file, dry, h }) {
     return true;
   }
   delete config.mcpServers[UPSTREAM_MCP_NAME];
-  fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  // Claude Code rewrites ~/.claude.json while it runs; replace it in one rename.
+  writeJson(file, config);
   h.ok(`${agentId}: removed upstream Hindsight MCP server "${UPSTREAM_MCP_NAME}" from ${file}`);
   return true;
 }
 
-/** Codex `[mcp_servers.hindsight]` and its subtables in ~/.codex/config.toml. */
+/**
+ * Codex `[mcp_servers.hindsight]` (with subtables), an inline `hindsight = {…}` under
+ * `[mcp_servers]`, or dotted keys, in ~/.codex/config.toml. Only that entry's text is removed;
+ * the result must re-parse without the entry, else the file is left untouched.
+ */
 function removeCodexMcp({ file, dry, h }) {
   if (!fs.existsSync(file)) return false;
   const text = fs.readFileSync(file, "utf8");
@@ -59,12 +64,19 @@ function removeCodexMcp({ file, dry, h }) {
     return false;
   }
   if (!isUpstreamMcpEntry(parsed?.mcp_servers?.[UPSTREAM_MCP_NAME])) return false;
+  let next;
+  try {
+    next = removeTomlPath(text, ["mcp_servers", UPSTREAM_MCP_NAME]);
+    if (TOML.parse(next)?.mcp_servers?.[UPSTREAM_MCP_NAME] !== undefined) throw new Error("entry still present after the edit");
+  } catch (err) {
+    h.warn(`codex: left ${file} unchanged; remove [mcp_servers.${UPSTREAM_MCP_NAME}] by hand (${err.message})`);
+    return false;
+  }
   if (dry) {
     h.info(`[dry-run] remove upstream Hindsight codex MCP server [mcp_servers.${UPSTREAM_MCP_NAME}] from ${file}`);
     return true;
   }
-  const kept = text.split(/(?=^[ \t]*\[)/m).filter((block) => !CODEX_SERVER_HEADER.test(block));
-  fs.writeFileSync(file, `${kept.join("").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`);
+  writeFileAtomic(file, next);
   h.ok(`codex: removed upstream Hindsight MCP server [mcp_servers.${UPSTREAM_MCP_NAME}] from ${file}`);
   return true;
 }

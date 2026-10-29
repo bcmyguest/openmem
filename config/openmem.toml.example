@@ -49,15 +49,23 @@ integration = "openmem"
 
 # Local LiteLLM context proxy (`install-coding-agent --context-proxy`). When enabled,
 # Claude Code's ANTHROPIC_BASE_URL points at http://127.0.0.1:<port>.
+# trim_at_tokens / compress_over_tokens (and [compaction] max_chars) reach the proxy
+# container through the stack .env (written by ./setup and install-coding-agent) and the
+# OpenCode 2 plugin; the env vars CONTEXT_TRIM_AT_TOKENS, CONTEXT_COMPRESS_OVER_TOKENS and
+# CONTEXT_COMPACTION_MAX_CHARS override them.
 [context_proxy]
 enabled = false
 port = 4100
+trim_at_tokens = 120000     # trim a session once its request exceeds this many tokens
+compress_over_tokens = 4000 # compress tool results larger than this
 
-# OpenCode 2 only: when OpenCode compacts a session, OpenMem's plugin supplies the
+# native (OpenCode 2 only): when OpenCode compacts a session, OpenMem's plugin supplies the
 # smart_compact_search pointer + recall as the summary instead of a model call.
 # false leaves compaction to OpenCode.
+# max_chars: cap on the recall text placed after a trim or compaction pointer.
 [compaction]
 native = true
+max_chars = 12000
 
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]
