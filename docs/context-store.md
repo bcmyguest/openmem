@@ -14,7 +14,7 @@ Root: `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. Di
 | `sessions/<sid>.log.jsonl` | proxy | MCP `smart_compact_search` | Handoff log: one row per trimmed content block, appended at trim time |
 | `blobs/<id>.txt` | proxy | MCP `smart_compact_get` | Full text of a compressed tool result. `id` = first 16 hex chars of SHA-256 of the UTF-8 content. |
 
-`<sid>` is the agent's session id with every character outside `[A-Za-z0-9._-]` replaced by `_`. For Claude Code it is the hook `session_id`, which equals the `x-claude-code-session-id` request header. When the proxy cannot find a session id in a request, it uses `fp-<first 16 hex of SHA-256(system prompt + first user message)>`; such sessions have no registration, so recall injection is skipped but trimming still works.
+`<sid>` is the agent's session id with every character outside `[A-Za-z0-9._-]` replaced by `_`. The proxy reads it, in order, from the `x-openmem-session-id` request header (sent by OpenMem's OpenCode plugin through its `chat.headers` hook), the `x-claude-code-session-id` header (Claude Code; equals the hook `session_id`), then `metadata.user_id` JSON `session_id`. When the proxy cannot find a session id in a request, it uses `fp-<first 16 hex of SHA-256(system prompt + first user message)>`; such sessions have no registration, so recall injection is skipped but trimming still works.
 
 ## Handoff log row
 
