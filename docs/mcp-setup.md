@@ -6,7 +6,10 @@ For why this exists, see [Concepts](concepts.md). Install path: [Quickstart § W
 
 ## Quick path (recommended)
 
+Run the wizard first. The MCP server only forwards `memory_*` calls to a running provider; without the stack and `wizard.conf` it has nothing to talk to.
+
 ```sh
+npx @bcmyguest/openmem            # wizard: provider, stack, smoke test
 npx @bcmyguest/openmem install-coding-agent --yes
 ```
 

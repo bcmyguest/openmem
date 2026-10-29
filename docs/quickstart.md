@@ -52,7 +52,7 @@ curl -fsS http://127.0.0.1:8888/health   # Hindsight default; see wizard output 
 
 ## 3. Wire your coding agent (optional)
 
-**Session memory:** `npx @bcmyguest/openmem install-coding-agent --yes` — unified MCP **plus** session hooks for Claude Code, Codex, OpenCode, Cursor CLI (any active provider). Optional `--hindsight-plugin` adds the upstream Hindsight plugin. Not the same as `install-mcp` alone.
+**Session memory** (after step 1 — MCP and hooks need the running stack): `npx @bcmyguest/openmem install-coding-agent --yes` — unified MCP **plus** session hooks for Claude Code, Codex, OpenCode, Cursor CLI (any active provider). Optional `--hindsight-plugin` adds the upstream Hindsight plugin. Not the same as `install-mcp` alone.
 
 **`install-mcp`** merges the **`openmem` unified MCP** (`memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget` on whichever provider you picked) and, when NotebookLM sync is on, the **NotebookLM MCP**:
 
