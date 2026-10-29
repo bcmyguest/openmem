@@ -239,6 +239,23 @@ try {
   await off.hooks.compaction(leftAlone);
   check("[compaction] native = false skips the result", leftAlone.result === undefined);
   offCleanup();
+
+  // [context_proxy] trim_at_tokens in config.toml reaches the native trim; CONTEXT_TRIM_AT_TOKENS still wins.
+  fs.writeFileSync(path.join(cfgDir, "config.toml"), "[context_proxy]\ntrim_at_tokens = 1\n");
+  const cfgTrim = fakeContext(project);
+  const cfgTrimCleanup = await plugin.setup(cfgTrim.ctx);
+  const byConfig = contextEvent("ses_cfg", [user("a"), assistant("b"), user("c")]);
+  await cfgTrim.hooks.context(byConfig);
+  check("config.toml trim_at_tokens trims", byConfig.messages.length === 2 && byConfig.messages[1].content[0].text.startsWith(ptr("ses_cfg", 1)));
+  cfgTrimCleanup();
+  process.env.CONTEXT_TRIM_AT_TOKENS = "1000000";
+  const envWins = fakeContext(project);
+  const envWinsCleanup = await plugin.setup(envWins.ctx);
+  const byEnv = contextEvent("ses_cfg_env", [user("a"), assistant("b"), user("c")]);
+  await envWins.hooks.context(byEnv);
+  check("CONTEXT_TRIM_AT_TOKENS overrides config.toml", byEnv.messages.length === 3);
+  envWinsCleanup();
+  delete process.env.CONTEXT_TRIM_AT_TOKENS;
   fs.rmSync(path.join(cfgDir, "config.toml"));
 
   // Denied workspace: no memory calls or registration, but /smart-compact and trimming still work.

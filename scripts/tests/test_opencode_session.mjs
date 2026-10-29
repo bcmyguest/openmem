@@ -48,6 +48,8 @@ try {
   await withHome(async (home) => {
     fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
     fs.writeFileSync(path.join(home, ".config/personal-memory/context-proxy.env"), "LITELLM_MASTER_KEY=x\n", { mode: 0o600 });
+    // S6: `[context_proxy] enabled` decides, not the env file (which disabling keeps).
+    fs.writeFileSync(path.join(home, ".config/personal-memory/config.toml"), "[context_proxy]\nenabled = true\n", { mode: 0o600 });
     const plugin = await PersonalMemoryPlugin({ client, directory: home });
     const out = { headers: {} };
     await plugin["chat.headers"]({ sessionID: "ses_abc" }, out);
