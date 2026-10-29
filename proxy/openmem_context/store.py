@@ -10,12 +10,26 @@ DIR_MODE = 0o700
 FILE_MODE = 0o600
 TRIM_STATE_VERSION = 1
 _SID_RE = re.compile(r"[^A-Za-z0-9._-]")
+# ASCII whitespace only, so the hook (JS) and the proxy trim the same characters.
+_SID_TRIM = " \t\n\v\f\r"
 _locks = {}
 _locks_guard = threading.Lock()
 
 
+class InvalidSessionId(ValueError):
+    """The session id is empty after trimming."""
+
+
+class RegistrationNotFound(LookupError):
+    """No readable registration for the session."""
+
+
 def sanitize_sid(sid):
-    return _SID_RE.sub("_", str(sid))
+    """Contract sanitizer (docs/context-store.md): trim, replace characters outside [A-Za-z0-9._-], reject empty."""
+    clean = _SID_RE.sub("_", str(sid).strip(_SID_TRIM))
+    if not clean:
+        raise InvalidSessionId("empty session id")
+    return clean
 
 
 def session_lock(sid):
@@ -61,12 +75,18 @@ class Store:
 
     # Registration (written by the SessionStart hook)
     def registration(self, sid):
+        """Registration dict; raises RegistrationNotFound when it is missing, unreadable or not an object."""
         try:
             with open(self._session_path(sid, ".json"), "rb") as fh:
                 value = json.loads(fh.read().decode("utf-8"))
-        except (OSError, ValueError):
-            return None
-        return value if isinstance(value, dict) else None
+        except (OSError, ValueError) as exc:
+            raise RegistrationNotFound(sid) from exc
+        if not isinstance(value, dict):
+            raise RegistrationNotFound(sid)
+        return value
+
+    def log_path(self, sid):
+        return self._session_path(sid, ".log.jsonl")
 
     # Force flag (written by the prompt hook)
     def force_requested(self, sid):
@@ -98,7 +118,7 @@ class Store:
 
     # Handoff log
     def next_seq(self, sid):
-        path = self._session_path(sid, ".log.jsonl")
+        path = self.log_path(sid)
         try:
             with open(path, "rb") as fh:
                 fh.seek(0, os.SEEK_END)
@@ -130,7 +150,7 @@ class Store:
         for row in rows:
             out.append(json.dumps({"seq": seq, **row}, ensure_ascii=False, separators=(", ", ": ")))
             seq += 1
-        fd = os.open(self._session_path(sid, ".log.jsonl"), os.O_WRONLY | os.O_APPEND | os.O_CREAT, FILE_MODE)
+        fd = os.open(self.log_path(sid), os.O_WRONLY | os.O_APPEND | os.O_CREAT, FILE_MODE)
         with os.fdopen(fd, "ab") as fh:
             fh.write(("\n".join(out) + "\n").encode("utf-8"))
         return len(out)

@@ -40,12 +40,19 @@ class Settings:
     recall_timeout_s: float = DEFAULT_RECALL_TIMEOUT_S
     hindsight_url: str = DEFAULT_HINDSIGHT_URL
     context_dir: Path = Path.home() / ".local" / "share" / "openmem" / "context"
+    # context_dir as the agent sees it; differs when the proxy runs in a container. None means context_dir.
+    host_context_dir: Path | None = None
+
+    @property
+    def pointer_context_dir(self):
+        return self.host_context_dir or self.context_dir
 
     @classmethod
     def from_env(cls, env=None):
         env = os.environ if env is None else env
         state_dir = str(env.get("OPENMEM_STATE_DIR", "")).strip()
         root = Path(state_dir) if state_dir else Path.home() / ".local" / "share" / "openmem"
+        host_state_dir = str(env.get("OPENMEM_HOST_STATE_DIR", "")).strip()
         return cls(
             enabled=str(env.get("CONTEXT_PROXY_ENABLED", "1")).strip().lower() not in ("0", "false", "no", "off"),
             trim_at_tokens=_int(env, "CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
@@ -54,4 +61,5 @@ class Settings:
             recall_timeout_s=_float(env, "CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
             hindsight_url=(str(env.get("HINDSIGHT_URL", "")).strip() or DEFAULT_HINDSIGHT_URL).rstrip("/"),
             context_dir=root / "context",
+            host_context_dir=Path(host_state_dir) / "context" if host_state_dir else None,
         )
