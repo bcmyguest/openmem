@@ -18,8 +18,7 @@ const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
 ${site.sourceInstall.command}`;
 const npxCommand = `npx ${site.npm.package}
-npx ${site.npm.package} up
-npx ${site.npm.package} install-mcp --yes
+npx ${site.npm.package} install-coding-agent --yes
 npx ${site.npm.package} switch mem0 --yes`;
 ---
 <Landing title={title} description={description}>
@@ -170,7 +169,7 @@ npx ${site.npm.package} switch mem0 --yes`;
               {site.npm.published ? <Badge variant="supported">Published</Badge> : <Badge variant="inferred">After first npm release</Badge>}
             </h3>
             {site.npm.published ? (
-              <p class="mt-2 text-sm leading-relaxed text-muted">Day-0 and day-2 commands. <code>install-mcp</code> registers the unified <code>memory_*</code> MCP; Hindsight session memory still uses the coding-agent plugin.</p>
+              <p class="mt-2 text-sm leading-relaxed text-muted">Day-0 and day-2 commands. Run the wizard first; <code>install-coding-agent</code> then registers the unified <code>memory_*</code> MCP and session hooks against that stack.</p>
             ) : (
               <p class="mt-2 text-sm leading-relaxed text-muted">
                 Command shape you will use after publish. Until then, clone and run <code>npx . setup</code> (same subcommands).

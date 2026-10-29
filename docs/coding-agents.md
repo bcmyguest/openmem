@@ -1,5 +1,7 @@
 # Coding agents and MCP
 
+Prerequisite: run the wizard (`npx @bcmyguest/openmem`) so a provider stack is up. The MCP server and hooks only forward to that stack.
+
 One entry point for session wiring on **every** provider (unified MCP + in-repo session hooks):
 
 ```sh
