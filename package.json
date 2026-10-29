@@ -40,7 +40,7 @@
   },
   "files": [
     "cli/",
-    "skills/",
+    ".agents/skills/openmem/",
     "wizard/bin/",
     "wizard/lib/",
     "providers/",

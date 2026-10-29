@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY cli ./cli
-COPY skills ./skills
+COPY .agents/skills/openmem ./.agents/skills/openmem
 COPY wizard ./wizard
 COPY providers ./providers
 COPY config ./config

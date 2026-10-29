@@ -81,6 +81,7 @@ npx @bcmyguest/openmem doctor
 | `up` / `down` | Start or stop the stack (down keeps data volumes) |
 | `switch <id> --yes` | Change provider (no memory migration) |
 | `doctor` | Validate config without the smoke test |
+| `schedule install` | Refresh configured RSS/OpenAlex feeds hourly with the OS scheduler |
 
 In a checkout, use `npx .` instead of `npx @bcmyguest/openmem`.
 
@@ -99,5 +100,6 @@ Secrets and index config: `~/.config/hindsight/` (and optional `~/.config/person
 - [Portable memory (PMM)](memory-portability.md) — export/import
 - [Architecture](architecture.md) — data flow, indexing, MCP by provider
 - [Index sources](index-sources.md) — git, Obsidian, notes/papers/bookmarks, feed cache
+- [Feed sync](sources-feeds.md) — configure RSS/OpenAlex and schedule refreshes
 - [Install with npx](npx-install.md) — upgrades, troubleshooting
 - [Configuration file](openmem-config.md) — declarative `config.toml`
