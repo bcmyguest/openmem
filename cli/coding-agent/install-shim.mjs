@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SHIM_AGENT_IDS, SHIM_HARNESSES, SHIM_MARKER } from "./hook-harnesses.mjs";
 import { SMART_COMPACT_MARKER } from "./context-store.mjs";
+import { SILENT, readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
 
 /** Upstream @vectorize-io/hindsight-coding-agents entries name its package or staged copy. */
@@ -17,7 +18,6 @@ description: Trim this session's context on the next request (OpenMem context pr
 <!-- ${SMART_COMPACT_MARKER} -->
 The OpenMem context proxy will trim this session's earlier context on the next request. Reply with one short line acknowledging this; do not summarize the conversation. After the trim, use \`smart_compact_search\` with this session's id to look up anything earlier.
 `;
-const SILENT = { info: () => {}, ok: () => {}, warn: () => {} };
 
 function hookCommand(root, harnessId, phase) {
   return `node ${JSON.stringify(path.join(root, "cli", "coding-agent", "hook-runner.mjs"))} ${harnessId} ${phase}`;
@@ -63,16 +63,6 @@ function stripHookEntries(hooks, matches) {
     else delete hooks[event];
   }
   return changed;
-}
-
-function readJson(pathname) {
-  if (!fs.existsSync(pathname)) return {};
-  return JSON.parse(fs.readFileSync(pathname, "utf8"));
-}
-
-function writeJson(pathname, data) {
-  fs.mkdirSync(path.dirname(pathname), { recursive: true });
-  fs.writeFileSync(pathname, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 export function smartCompactCommandPath(home) {
@@ -188,8 +178,7 @@ export function installSessionShim(opts) {
     h.ok(`${agentId}: session hooks → ${cfgPath}`);
     if (agentId === "claude-code") {
       const command = smartCompactCommandPath(home);
-      fs.mkdirSync(path.dirname(command), { recursive: true });
-      fs.writeFileSync(command, SMART_COMPACT_COMMAND);
+      writeFileAtomic(command, SMART_COMPACT_COMMAND);
       h.ok(`claude-code: /smart-compact command → ${command}`);
     }
     installed.push(agentId);

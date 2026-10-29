@@ -6,13 +6,15 @@
  * Optional: rtk command rewriting when rtk is on PATH, and the local context proxy.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./coding-agent/agents.mjs";
 import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { installSessionShim, removeSessionShim, removeUpstreamHooks } from "./coding-agent/install-shim.mjs";
 import { installAgentAccess } from "./coding-agent/install-access.mjs";
-import { installContextProxy } from "./coding-agent/install-context-proxy.mjs";
+import { contextProxyStartCommand, installContextProxy, probeContextProxy } from "./coding-agent/install-context-proxy.mjs";
+import { upsertEnvFile } from "./coding-agent/file-io.mjs";
 import { installRtk } from "./coding-agent/install-rtk.mjs";
 import { removeUpstreamAccess } from "./coding-agent/remove-upstream-access.mjs";
 import { opencodeMajorVersion } from "./coding-agent/opencode-config.mjs";
@@ -26,6 +28,7 @@ import { runInstallMemoryMcp } from "./install-memory-mcp.mjs";
 import {
   agentIntegrationFromPmConfig,
   contextProxyFromPmConfig,
+  contextProxyStackEnvFromPmConfig,
   loadPmConfig,
   updatePmConfigTable,
 } from "../wizard/lib/pm-config.mjs";
@@ -108,7 +111,34 @@ function resolveSettings({ home, stackRoot, flags, write, log }) {
     const r = updatePmConfigTable(home, "context_proxy", { enabled: proxy.enabled }, { dry: !write });
     log.info(`${r === "dry-run" ? "dry-run: would save" : "saved"} [context_proxy] enabled = ${proxy.enabled}`);
   }
-  return { integration, proxy };
+  return { integration, proxy, cfg };
+}
+
+/** Copy config.toml's proxy settings into the stack .env compose reads, when that file exists. */
+function syncProxyStackEnv({ stackRoot, cfg, log }) {
+  const entries = contextProxyStackEnvFromPmConfig(cfg);
+  const file = stackRoot ? path.join(stackRoot, ".env") : "";
+  if (!file || !Object.keys(entries).length || !fs.existsSync(file)) return;
+  upsertEnvFile(file, entries);
+  log.ok(`context proxy settings → ${file} (${Object.keys(entries).join(", ")})`);
+}
+
+/** Warn loudly when the proxy is not answering: Claude Code fails every request until it runs. */
+async function warnIfProxyDown({ port, startCommand, log, fetch }) {
+  if (await probeContextProxy(port, { fetch })) {
+    log.ok(`context proxy is up on http://127.0.0.1:${port}`);
+    return true;
+  }
+  const bar = "!".repeat(72);
+  log.warn([
+    bar,
+    `! Context proxy is NOT running on http://127.0.0.1:${port}.`,
+    "! Claude Code (and OpenCode 1) now send every request there and will fail until it runs.",
+    `! Start it:   ${startCommand}`,
+    "! Or disable: npx openmem install-coding-agent --yes --no-context-proxy",
+    bar,
+  ].join("\n"));
+  return false;
 }
 
 export async function runInstallCodingAgent(opts) {
@@ -126,7 +156,10 @@ export async function runInstallCodingAgent(opts) {
   log.info(`Provider ${provider}: capabilities ${JSON.stringify(caps)}`);
 
   const dry = flags.dry || !flags.yes;
-  const { integration, proxy } = resolveSettings({ home, stackRoot: opts.stackRoot, flags, write: !dry, log });
+  const { integration, proxy, cfg } = resolveSettings({ home, stackRoot: opts.stackRoot, flags, write: !dry, log });
+  const startCommand = contextProxyStartCommand({
+    stackRoot: opts.stackRoot, project: env.PM_PROJECT || String(cfg.stack?.project || "") || "openmem",
+  });
   const useProviderPlugin = integration === "provider" && PROVIDER_PLUGINS.includes(provider);
   if (integration === "provider" && !useProviderPlugin) {
     log.warn(`Provider ${provider} has no coding-agent plugin; installing openmem hooks instead`);
@@ -150,7 +183,7 @@ export async function runInstallCodingAgent(opts) {
       removeUpstreamAccess({ home, agents: flags.agents, dry: true, h: log });
     }
     installAgentAccess({ home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: true, h: log });
-    if (flags.rtk) installRtk({ agents: flags.agents, env, dry: true, h: log });
+    if (flags.rtk) installRtk({ agents: flags.agents, env, dry: true, h: log, opencodeMajor });
     installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, dry: true, h: log, opencodeMajor });
     if (useProviderPlugin) log.info(`dry-run: would also run ${upstreamCmd().join(" ")}`);
     return { provider, integration, ran: false };
@@ -178,8 +211,13 @@ export async function runInstallCodingAgent(opts) {
   installAgentAccess({
     home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: false, h: log,
   });
-  const rtk = flags.rtk ? installRtk({ agents: flags.agents, env, h: log, spawn: opts.spawn }) : { rtk: null, ran: [] };
+  const rtk = flags.rtk ? installRtk({ agents: flags.agents, env, h: log, spawn: opts.spawn, opencodeMajor }) : { rtk: null, ran: [] };
   const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, h: log, opencodeMajor });
+  const proxyUsed = proxy.enabled && flags.agents.some((id) => (id === "claude-code" || id === "opencode") && !proxyOut.pluginTrimmed.includes(id));
+  if (proxyUsed) {
+    syncProxyStackEnv({ stackRoot: opts.stackRoot, cfg, log });
+    await warnIfProxyDown({ port: proxy.port, startCommand, log, fetch: opts.fetch });
+  }
 
   let status = 0;
   if (useProviderPlugin) {
@@ -195,7 +233,7 @@ export async function runInstallCodingAgent(opts) {
       const extras = [
         rtk.ran.includes(agentId) ? "rtk" : "",
         proxyOut.changed.includes(agentId) && proxy.enabled ? "context proxy" : "",
-        !useProviderPlugin && proxyOut.native.includes(agentId) ?"native context trimming (OpenCode 2; context proxy not used)" : "",
+        !useProviderPlugin && proxyOut.pluginTrimmed.includes(agentId) ? "native context trimming (OpenCode 2; context proxy not used)" : "",
       ].filter(Boolean);
       log.info(`  ${agentId}: ${hooks} + unified MCP${extras.length ? ` + ${extras.join(" + ")}` : ""}`);
     } else {
@@ -204,7 +242,7 @@ export async function runInstallCodingAgent(opts) {
     }
   }
   if (proxy.enabled && flags.agents.includes("claude-code")) {
-    log.info(`Context proxy enabled: Claude Code now sends every request to http://127.0.0.1:${proxy.port}; start the proxy before using Claude Code.`);
+    log.info(`Context proxy enabled: Claude Code now sends every request to http://127.0.0.1:${proxy.port}; start the proxy before using Claude Code: ${startCommand}`);
   }
   return { provider, integration, ran: true, status };
 }
