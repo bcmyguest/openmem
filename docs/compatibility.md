@@ -23,7 +23,7 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 | Turn retention (Stop / idle) | 🧪 | ◐ ⁵ | ◐ ⁶ | 🧪 | ❌ ¹ |
 | `/smart-compact` trim flag | 🧪 ⁷ | 🧪 | 🧪 | 🧪 | ❌ ¹ |
 | Context proxy (trim, tool-result compression) | ✅ ⁸ | ❌ ⁹ | ❌ ¹⁰ | ◐ ¹¹ | ❌ ¹ |
-| `[agents] integration` toggle | 🧪 | 🧪 | 🧪 | 🧪 | ❌ ¹ |
+| `[agents] integration` toggle | 🧪 ¹⁵ | 🧪 ¹⁵ | 🧪 ¹⁵ | 🧪 ¹⁵ | ❌ ¹ |
 | rtk command rewriting (`rtk init`) | 🧪 ¹² | 🧪 ¹² | 🧪 ¹² | 🧪 ¹² | ❌ ¹³ |
 
 1. OpenCode 2 replaced the plugin API ([migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1/)): plugins export `Plugin.define({ id, setup })`, config uses `"plugins"` instead of `"plugin"`, and v1 plugins do not load. OpenMem's plugin is v1-shaped. The v2 API has the hooks a port needs: `ctx.session.hook("context")` (edit `system` and `messages`), `"prompt"`, `"compaction"`, `"http.request"`, and `ctx.event.subscribe()`.
@@ -40,6 +40,7 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 12. Tested with a fake `rtk` that records its arguments; flags taken from rtk's README and source. No real rtk binary was run.
 13. Tracked upstream in [rtk-ai/rtk#3463](https://github.com/rtk-ai/rtk/issues/3463).
 14. MCP connection checks recorded in `REVAMP.md` (Claude Code, OpenCode; Cursor listed the tools). The tool list has grown since; the new tools were checked through the facade, not inside each agent.
+15. `openmem` mode removes the upstream Hindsight hooks, OpenCode plugin entry, `hindsight` MCP server (only when it runs the upstream `dist/mcp-server.js`) and `hindsight-coding-agent` skill. Locations come from reading `@vectorize-io/hindsight-coding-agents` 0.8.3 `dist/installer.js`; tested against seeded files, not a live upstream install.
 
 Copilot and Pi are not in OpenMem's agent registry. rtk supports both; Pi can point at the context proxy only if it accepts a custom Anthropic base URL (unverified).
 

@@ -14,6 +14,7 @@ import { installSessionShim, removeSessionShim, removeUpstreamHooks } from "./co
 import { installAgentAccess } from "./coding-agent/install-access.mjs";
 import { installContextProxy } from "./coding-agent/install-context-proxy.mjs";
 import { installRtk } from "./coding-agent/install-rtk.mjs";
+import { removeUpstreamAccess } from "./coding-agent/remove-upstream-access.mjs";
 import { prepareAgentRuntime } from "./coding-agent/runtime.mjs";
 import { SHIM_AGENT_IDS } from "./coding-agent/hook-harnesses.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
@@ -44,7 +45,8 @@ Default agents: ${DEFAULT_AGENT_IDS.join(", ")}
 All known agents: ${CODING_AGENTS.map((a) => a.id).join(", ")}
 
 Every provider gets install-mcp. Session hooks are exclusive:
-  default             openmem hooks (SessionStart / prompt / Stop); removes upstream Hindsight hooks
+  default             openmem hooks (SessionStart / prompt / Stop); removes upstream Hindsight
+                      hooks, its "hindsight" MCP server and its hindsight-coding-agent skill
   --provider-plugin   the provider's own plugin (Hindsight: hindsight-coding-agents); removes openmem hooks
   --no-provider-plugin  switch back to openmem hooks
 The choice is saved as [agents] integration in ~/.config/personal-memory/config.toml.
@@ -149,6 +151,7 @@ export async function runInstallCodingAgent(opts) {
     } else {
       installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: true, h: log });
       removeUpstreamHooks({ home, agents: shimAgents, dry: true, h: log });
+      removeUpstreamAccess({ home, agents: flags.agents, dry: true, h: log });
     }
     installAgentAccess({ home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: true, h: log });
     if (flags.rtk) installRtk({ agents: flags.agents, env, dry: true, h: log });
@@ -174,6 +177,7 @@ export async function runInstallCodingAgent(opts) {
   } else {
     installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: false, h: log });
     removeUpstreamHooks({ home, agents: shimAgents, h: log });
+    removeUpstreamAccess({ home, agents: flags.agents, h: log });
   }
   installAgentAccess({
     home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: false, h: log,
