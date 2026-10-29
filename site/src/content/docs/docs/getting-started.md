@@ -11,7 +11,7 @@ Get from zero to a running stack in one wizard run. **Choose your memory provide
 | --- | --- |
 | Docker + Compose v2 | Runs the stack; your user must run `docker` without sudo |
 | Node.js ≥ 20.12 | CLI and setup wizard |
-| LLM for Hindsight (default provider) | lemond, Ollama, or OpenAI-compatible — wizard wires LiteLLM |
+| LLM for Hindsight (default provider) | lemond, Ollama, OpenAI-compatible, or a Claude subscription through [Meridian](https://github.com/bcmyguest/openmem/blob/main/docs/meridian-litellm.md) — wizard wires LiteLLM |
 | git, curl | Wizard preflight |
 
 Default stack is [Hindsight](../hindsight/). Other providers: wizard or `npx @bcmyguest/openmem providers` ([provider status](../provider-status/)).
@@ -30,8 +30,10 @@ npx @bcmyguest/openmem
 git clone https://github.com/bcmyguest/openmem.git
 cd openmem
 npm install
-npx . setup
+npm run setup
 ```
+
+Run other commands from the checkout with `node cli/openmem.mjs <command>`.
 
 The wizard asks for a memory provider, provider settings, what to index, then starts Docker and runs a smoke test.
 
@@ -55,7 +57,7 @@ curl -fsS http://127.0.0.1:8888/health   # Hindsight default; see wizard output 
 
 ## 3. Wire your coding agent (optional)
 
-**Session memory** (after step 1 — MCP and hooks need the running stack): `npx @bcmyguest/openmem install-coding-agent --yes` — unified MCP **plus** session hooks for Claude Code, Codex, OpenCode, Cursor CLI (any active provider). Optional `--hindsight-plugin` adds the upstream Hindsight plugin. Not the same as `install-mcp` alone.
+**Session memory** (after step 1 — MCP and hooks need the running stack): `npx @bcmyguest/openmem install-coding-agent --yes` — unified MCP **plus** session hooks for Claude Code, Codex, OpenCode, Cursor CLI (any active provider). On Hindsight, `--provider-plugin` uses the upstream Hindsight plugin hooks instead (one hook set at a time). Not the same as `install-mcp` alone.
 
 **`install-mcp`** merges the **`openmem` unified MCP** (`memory_add`, `memory_search`, `memory_recall`, `memory_reflect`, `memory_consolidate`, `memory_forget` on whichever provider you picked) and, when NotebookLM sync is on, the **NotebookLM MCP**:
 
@@ -64,7 +66,7 @@ npx @bcmyguest/openmem install-mcp --yes
 npx @bcmyguest/openmem install-mcp --yes --notebooklm   # force NotebookLM entry
 ```
 
-Session hooks use the in-repo shim by default; add `--hindsight-plugin` if you also want the upstream Hindsight plugin. Optional native mem0/Cognee MCP: `install-mcp --provider-only`. Full guide: [MCP setup](../mcp-setup/).
+Session hooks use the in-repo shim by default (`[agents] integration = "openmem"`); `--provider-plugin` replaces them with the upstream Hindsight plugin and `--no-provider-plugin` switches back. Optional native mem0/Cognee MCP: `install-mcp --provider-only`. Full guide: [MCP setup](../mcp-setup/).
 
 Restart Cursor Agent after MCP changes. Move memories between providers with [Portable memory (PMM)](../memory-portability/) — `switch` alone does not migrate data.
 

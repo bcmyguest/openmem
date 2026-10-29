@@ -57,6 +57,15 @@ export const PAGES = [
     description: 'Install unified memory_* MCP, optional provider-native servers, and NotebookLM.',
   },
   {
+    slug: 'compatibility',
+    kind: 'doc',
+    source: 'docs/compatibility.md',
+    group: 'Start',
+    optional: true,
+    title: 'Compatibility',
+    description: 'What each coding agent, memory provider, and Hindsight model backend supports, with evidence level.',
+  },
+  {
     slug: 'provider-status',
     kind: 'manifest',
     group: 'Providers',
@@ -114,6 +123,15 @@ export const PAGES = [
     group: 'Reference',
     title: 'Configuration file',
     description: 'The mise-like config.toml: files, precedence, sections, and the pm tasks.',
+  },
+  {
+    slug: 'context-proxy',
+    kind: 'doc',
+    source: 'docs/context-proxy.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Context proxy',
+    description: 'Local LiteLLM proxy that trims long agent sessions, compresses tool results, and injects recall.',
   },
   {
     slug: 'index-sources',
