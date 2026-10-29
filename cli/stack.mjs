@@ -47,6 +47,8 @@ export const STACK_ASSETS = [
     include:
       /^config\/(?:[^/]+\.example|index\.yml|notebooklm\.yml|litellm\.[^/]+\.yaml|coding-agent\.json)$/,
   },
+  // context-proxy mounts ./proxy (LiteLLM config and hook).
+  { tree: "proxy" },
   // Per-provider compose fragments (hooks and manifests stay in the read-only package).
   { tree: "providers", include: /^providers\/[^/]+\/compose[^/]*\.ya?ml$/ },
   // Deliberately absent: scripts/ and wizard/. They are code, so they run from the
