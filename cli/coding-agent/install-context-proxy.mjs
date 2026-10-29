@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { contextRoot } from "./context-store.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
 
 const KEY_NAME = "LITELLM_MASTER_KEY";
@@ -106,6 +107,10 @@ export function installContextProxy({ home, agents, enabled, port, dry = false, 
     return { changed: [] };
   }
   const key = enabled ? ensureContextProxyKey(home) : "";
+  // compose mounts this with create_host_path: false, so it must exist (700, host-owned) before `up`.
+  if (enabled) {
+    for (const sub of ["sessions", "blobs"]) fs.mkdirSync(path.join(contextRoot(home), sub), { recursive: true, mode: 0o700 });
+  }
   const changed = [];
   for (const id of targets) {
     const done = id === "claude-code" ? wireClaude(home, { enabled, port, key }) : wireOpencode(home, { enabled, port, key });
