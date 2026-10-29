@@ -12,3 +12,6 @@ compose.override.yaml
 *.tgz
 docs/ROADMAP*.md
 .pytest_cache/
+
+# Agent worktrees
+.claude/
