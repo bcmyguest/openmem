@@ -29,14 +29,21 @@ export function findOnPath(name, env = process.env) {
   return null;
 }
 
-/** Run `rtk init` for each selected agent rtk supports. Missing rtk is a no-op. */
-export function installRtk({ agents, env = process.env, dry = false, h, spawn = spawnSync }) {
+/**
+ * Run `rtk init` for each selected agent rtk supports. Missing rtk is a no-op.
+ * rtk's OpenCode integration targets OpenCode 1, so OpenCode 2 is skipped.
+ */
+export function installRtk({ agents, env = process.env, dry = false, h, spawn = spawnSync, opencodeMajor = 1 }) {
   const rtk = findOnPath("rtk", env);
   if (!rtk) return { rtk: null, ran: [] };
   const ran = [];
   for (const agentId of agents) {
     const args = RTK_INIT_ARGS[agentId];
     if (!args) continue;
+    if (agentId === "opencode" && opencodeMajor >= 2) {
+      h?.info(`opencode: skipped rtk (rtk supports OpenCode 1; found OpenCode ${opencodeMajor})`);
+      continue;
+    }
     if (dry) {
       h?.info(`[dry-run] ${rtk} ${args.join(" ")}`);
       continue;

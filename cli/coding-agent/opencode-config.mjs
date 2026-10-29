@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { writeFileAtomic } from "./file-io.mjs";
 
 /** OpenCode major version from `opencode --version`; any failure counts as 1. */
 export function opencodeMajorVersion({ env = process.env, spawn = spawnSync } = {}) {
@@ -79,8 +80,11 @@ function fieldSpan(list, name) {
   return found;
 }
 
-/** Update one top-level JSONC field while retaining text and comments outside that field. */
-export function mergeOpencodeConfig(home, field, update) {
+/**
+ * Update one top-level JSONC field while retaining text and comments outside that field.
+ * The file is replaced atomically; `opts.mode` sets its mode, else the existing mode is kept.
+ */
+export function mergeOpencodeConfig(home, field, update, opts = {}) {
   const file = opencodeConfigPath(home);
   const source = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "{}\n";
   const parsed = parseJsonc(source);
@@ -98,7 +102,6 @@ export function mergeOpencodeConfig(home, field, update) {
     const separator = hasFields && last?.value !== "," ? "," : "";
     output = source.slice(0, close.start) + `${separator}\n  ${JSON.stringify(field)}: ${JSON.stringify(value, null, 2)}\n` + source.slice(close.start);
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, output);
+  writeFileAtomic(file, output, opts);
   return file;
 }
