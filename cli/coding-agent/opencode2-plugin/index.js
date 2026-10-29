@@ -18,7 +18,7 @@ import { sessionBanner } from "../hook-runner.mjs";
 import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
 import { resolveStackRoot } from "../../stack.mjs";
-import { loadPmConfig } from "../../../wizard/lib/pm-config.mjs";
+import { contextTrimEnvFromPmConfig, contextTrimFromPmConfig, loadPmConfig } from "../../../wizard/lib/pm-config.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const MAX_SESSIONS = 128;
@@ -43,12 +43,12 @@ function timedFetch(ms) {
   return (url, init = {}) => globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
 }
 
-/** `[compaction] native` in config.toml; default true. */
-function nativeCompactionEnabled(home, stackRoot) {
+/** Merged config.toml; empty when it cannot be read, so every setting falls back to its default. */
+function readPmConfig(home, stackRoot) {
   try {
-    return loadPmConfig(home, stackRoot).merged.compaction?.native !== false;
+    return loadPmConfig(home, stackRoot).merged;
   } catch {
-    return true;
+    return {};
   }
 }
 
@@ -67,8 +67,10 @@ async function setup(ctx) {
   const accessConfig = readAccessConfig(home);
   const allowed = accessAllowed(projectDir, accessConfig);
   const bank = allowed ? bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank }) : undefined;
-  const settings = trimSettings(process.env, home);
-  const nativeCompaction = nativeCompactionEnabled(home, stack.root);
+  // config.toml `[context_proxy]` / `[compaction]` keys, with CONTEXT_* environment variables winning.
+  const pmConfig = readPmConfig(home, stack.root);
+  const settings = trimSettings({ ...contextTrimEnvFromPmConfig(pmConfig), ...process.env }, home);
+  const nativeCompaction = contextTrimFromPmConfig(pmConfig).compactionNative;
   // Constant for the session, so it never changes the cached system prefix.
   const banner = allowed ? sessionBanner(memory.provider, bank) : "";
   // sessionID -> recall text for the prompt in flight ("" once bound or empty); also gates retention on idle.
