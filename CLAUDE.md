@@ -11,4 +11,6 @@ The installer sets Codex `features.hooks = true` only when that setting is absen
 
 Cursor Agent Stop retention parses the observed local `agent-transcripts` JSONL shape; live hook `transcript_path` linkage still needs verification. Codex Stop retention is best effort against an unstable format. `REVAMP.md` tracks the remaining parity and live-verification work.
 
+The opt-in `context-proxy` compose service (`proxy/`, LiteLLM hook over a stdlib core) compresses large tool results and trims long sessions into the context store; see [docs/context-proxy.md](docs/context-proxy.md) and [docs/context-store.md](docs/context-store.md). Its trim fingerprints ignore `cache_control` and single-text-block wrapping because Claude Code changes both on resent messages.
+
 `memory_export`/`memory_import` use the PMM beta format. JSONL export has one header line and record lines; import accepts that layout. Export still buffers all records, so bank filtering matters for large migrations. See [docs/memory-portability.md](docs/memory-portability.md).
