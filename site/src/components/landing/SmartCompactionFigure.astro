@@ -1,0 +1,295 @@
+---
+// Smart compaction, animated: the context fills toward the trim limit, old turns move to the
+// saved transcript, a pointer takes their place, and one piece is pulled back on demand.
+// One 14 s CSS loop; with prefers-reduced-motion the figure shows its final frame, still.
+import { withBase } from '../../lib/url';
+
+const OLD = [0, 1, 2, 3];
+const NEW = [4, 5];
+const CARD_W = 220;
+const CARD_H = 26;
+const GAP = 8;
+const CTX_X = 24;
+const LOG_X = 476;
+const TOP = 92;
+const rowY = (i) => TOP + i * (CARD_H + GAP);
+const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_use' : 'tool_result');
+---
+<figure class="sc not-prose" aria-labelledby="sc-caption">
+  <div class="sc-surface overflow-hidden rounded-xl border border-line">
+    <svg
+      class="sc-svg"
+      viewBox="0 0 720 330"
+      role="img"
+      aria-labelledby="sc-title sc-desc"
+    >
+      <title id="sc-title">Smart compaction</title>
+      <desc id="sc-desc">
+        The agent's context fills with turns until it reaches the trim limit. The proxy moves the older turns into the
+        saved transcript, puts a pointer in their place, and the agent later pulls one excerpt back with
+        smart_compact_search.
+      </desc>
+
+      <!-- column headings -->
+      <text class="sc-h" x={CTX_X} y="28">Model context</text>
+      <text class="sc-h" x={LOG_X} y="28">Saved transcript</text>
+      <text class="sc-sub" x={LOG_X} y="44">sessions/&lt;sid&gt;.log.jsonl · memory</text>
+
+      <!-- context meter -->
+      <rect class="sc-meter-bg" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
+      <rect class="sc-meter" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
+      <line class="sc-limit" x1={CTX_X + CARD_W * 0.82} x2={CTX_X + CARD_W * 0.82} y1="46" y2="68" />
+      <text class="sc-sub" x={CTX_X + CARD_W * 0.82 + 6} y="80">trim_at_tokens</text>
+
+      <!-- transcript well -->
+      <rect class="sc-well" x={LOG_X - 8} y={TOP - 8} width={CARD_W + 16} height={4 * (CARD_H + GAP) + 8} rx="10" />
+
+      <!-- old turns: appear in context, then slide to the transcript -->
+      {OLD.map((i) => (
+        <g class={`sc-old sc-o${i}`} style={`--dx:${LOG_X - CTX_X}px`}>
+          <rect class="sc-card" x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
+          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 17}>{`turn ${i + 1} · ${label(i)}`}</text>
+        </g>
+      ))}
+
+      <!-- pointer that replaces the old turns -->
+      <g class="sc-pointer">
+        <rect class="sc-pointer-card" x={CTX_X} y={rowY(0)} width={CARD_W} height={CARD_H * 2 + GAP} rx="6" />
+        <text class="sc-pointer-t" x={CTX_X + 10} y={rowY(0) + 18}>[openmem: continuing session]</text>
+        <text class="sc-card-t" x={CTX_X + 10} y={rowY(0) + 38}>4 turns trimmed · recall attached</text>
+      </g>
+
+      <!-- recent turns stay verbatim; they move up under the pointer -->
+      {NEW.map((i) => (
+        <g class={`sc-new sc-n${i}`} style={`--dy:${rowY(i - 2) - rowY(i)}px`}>
+          <rect class="sc-card sc-card-live" x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
+          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 17}>{`turn ${i + 1} · ${label(i)}`}</text>
+        </g>
+      ))}
+
+      <!-- retrieval: one excerpt comes back on demand -->
+      <path class="sc-fetch" d={`M ${LOG_X - 12} ${rowY(2) + 13} C 400 ${rowY(2) + 13}, 330 ${rowY(4) + 13}, ${CTX_X + CARD_W + 12} ${rowY(4) + 13}`} />
+      <g class="sc-chip" style={`--cx:${CTX_X - LOG_X}px; --cy:${rowY(4) - rowY(2)}px`}>
+        <rect class="sc-chip-r" x={LOG_X} y={rowY(2) + 3} width="150" height="20" rx="10" />
+        <text class="sc-chip-t" x={LOG_X + 10} y={rowY(2) + 17}>turn 3 excerpt</text>
+      </g>
+      <text class="sc-call" x="282" y={rowY(3) + 4}>smart_compact_search("…")</text>
+
+      <!-- arrow from context to transcript (trim direction) -->
+      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(1) + 13} H ${LOG_X - 22}`} />
+      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(1) + 7} l 10 6 l -10 6 z`} />
+    </svg>
+  </div>
+  <figcaption id="sc-caption" class="mt-3 text-xs leading-relaxed text-muted">
+    Past <code>trim_at_tokens</code> (or on <code>/smart-compact</code>) the context proxy moves older turns to a local transcript and{' '}
+    memory, leaves a pointer with bounded recall, and keeps the in-flight turn verbatim. The agent pulls details back with{' '}
+    <code>smart_compact_search</code>. Inspired by <a href="https://github.com/mainplane-ai/mainplane">Mainplane</a>'s continue-and-retrieve sessions.{' '}
+    <a href={withBase('docs/context-proxy/')}>Context proxy</a>.{' '}
+
+  </figcaption>
+</figure>
+
+<style>
+  .sc-surface {
+    position: relative;
+    background-color: var(--c-map-canvas);
+    background-image:
+      linear-gradient(var(--c-map-dot) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-map-dot) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+  }
+  .sc-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    font-family: inherit;
+  }
+  .sc-h {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    fill: var(--c-muted);
+  }
+  .sc-sub {
+    font-size: 10px;
+    fill: var(--c-muted);
+  }
+  .sc-meter-bg {
+    fill: var(--c-panel);
+    stroke: var(--c-line);
+  }
+  .sc-meter {
+    fill: var(--c-brand);
+    transform-box: fill-box;
+    transform-origin: left center;
+    animation: sc-meter 14s ease-in-out infinite;
+  }
+  .sc-limit {
+    stroke: var(--c-warning);
+    stroke-width: 2;
+    stroke-dasharray: 3 3;
+  }
+  .sc-well {
+    fill: var(--c-brand-soft);
+    fill-opacity: 0.35;
+    stroke: var(--c-line);
+    stroke-dasharray: 4 4;
+  }
+  .sc-card {
+    fill: var(--c-panel-raised);
+    stroke: var(--c-line);
+  }
+  .sc-card-live {
+    stroke: var(--c-brand);
+  }
+  .sc-card-t {
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--c-ink);
+  }
+  .sc-pointer-card {
+    fill: var(--c-brand-soft);
+    stroke: var(--c-brand);
+    stroke-width: 1.5;
+  }
+  .sc-pointer-t {
+    font-size: 11px;
+    font-weight: 700;
+    fill: var(--c-source);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sc-chip-r {
+    fill: var(--c-inferred-soft);
+    stroke: var(--c-inferred);
+  }
+  .sc-chip-t,
+  .sc-call {
+    font-size: 10.5px;
+    font-weight: 600;
+    fill: var(--c-ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sc-call {
+    fill: var(--c-muted);
+  }
+  .sc-fetch {
+    fill: none;
+    stroke: var(--c-inferred);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+  }
+  .sc-move {
+    stroke: var(--c-brand);
+    stroke-width: 2;
+    stroke-dasharray: 4 4;
+    fill: none;
+  }
+  .sc-move-tip {
+    fill: var(--c-brand);
+  }
+
+  /* timeline (14 s): 0–28% fill · 30–48% move old turns · 48–58% pointer, recent turns rise ·
+     62–80% fetch one excerpt · 80–96% hold · 96–100% fade out */
+  .sc-old {
+    animation: sc-old 14s ease-in-out infinite;
+  }
+  .sc-o1 { animation-name: sc-old-1; }
+  .sc-o2 { animation-name: sc-old-2; }
+  .sc-o3 { animation-name: sc-old-3; }
+  .sc-new {
+    animation: sc-new 14s ease-in-out infinite;
+  }
+  .sc-n5 { animation-name: sc-new-5; }
+  .sc-pointer { animation: sc-pointer 14s ease-in-out infinite; }
+  .sc-move,
+  .sc-move-tip { animation: sc-move 14s ease-in-out infinite; }
+  .sc-fetch,
+  .sc-call { animation: sc-fetch 14s ease-in-out infinite; }
+  .sc-chip { animation: sc-chip 14s ease-in-out infinite; }
+
+  @keyframes sc-meter {
+    0% { transform: scaleX(0.04); }
+    28% { transform: scaleX(0.86); }
+    46% { transform: scaleX(0.86); }
+    56% { transform: scaleX(0.36); }
+    72% { transform: scaleX(0.36); }
+    80% { transform: scaleX(0.44); }
+    96% { transform: scaleX(0.44); }
+    100% { transform: scaleX(0.04); }
+  }
+  @keyframes sc-old {
+    0% { opacity: 0; transform: translateX(0); }
+    4%, 30% { opacity: 1; transform: translateX(0); }
+    42%, 96% { opacity: 1; transform: translateX(var(--dx)); }
+    100% { opacity: 0; transform: translateX(var(--dx)); }
+  }
+  @keyframes sc-old-1 {
+    0%, 6% { opacity: 0; transform: translateX(0); }
+    10%, 32% { opacity: 1; transform: translateX(0); }
+    44%, 96% { opacity: 1; transform: translateX(var(--dx)); }
+    100% { opacity: 0; transform: translateX(var(--dx)); }
+  }
+  @keyframes sc-old-2 {
+    0%, 11% { opacity: 0; transform: translateX(0); }
+    15%, 34% { opacity: 1; transform: translateX(0); }
+    46%, 96% { opacity: 1; transform: translateX(var(--dx)); }
+    100% { opacity: 0; transform: translateX(var(--dx)); }
+  }
+  @keyframes sc-old-3 {
+    0%, 16% { opacity: 0; transform: translateX(0); }
+    20%, 36% { opacity: 1; transform: translateX(0); }
+    48%, 96% { opacity: 1; transform: translateX(var(--dx)); }
+    100% { opacity: 0; transform: translateX(var(--dx)); }
+  }
+  @keyframes sc-new {
+    0%, 21% { opacity: 0; transform: translateY(0); }
+    25%, 50% { opacity: 1; transform: translateY(0); }
+    58%, 96% { opacity: 1; transform: translateY(var(--dy)); }
+    100% { opacity: 0; transform: translateY(var(--dy)); }
+  }
+  @keyframes sc-new-5 {
+    0%, 25% { opacity: 0; transform: translateY(0); }
+    28%, 50% { opacity: 1; transform: translateY(0); }
+    58%, 96% { opacity: 1; transform: translateY(var(--dy)); }
+    100% { opacity: 0; transform: translateY(var(--dy)); }
+  }
+  @keyframes sc-pointer {
+    0%, 50% { opacity: 0; }
+    56%, 96% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes sc-move {
+    0%, 29% { opacity: 0; }
+    32%, 46% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  @keyframes sc-fetch {
+    0%, 60% { opacity: 0; }
+    64%, 80% { opacity: 1; }
+    86%, 100% { opacity: 0; }
+  }
+  @keyframes sc-chip {
+    0%, 62% { opacity: 0; transform: translate(0, 0); }
+    66% { opacity: 1; transform: translate(0, 0); }
+    78%, 96% { opacity: 1; transform: translate(var(--cx), var(--cy)); }
+    100% { opacity: 0; transform: translate(var(--cx), var(--cy)); }
+  }
+
+  /* Reduced motion: the end state, still. */
+  @media (prefers-reduced-motion: reduce) {
+    .sc-meter, .sc-old, .sc-new, .sc-pointer, .sc-move, .sc-move-tip, .sc-fetch, .sc-call, .sc-chip {
+      animation: none;
+    }
+    .sc-meter { transform: scaleX(0.44); }
+    .sc-old { transform: translateX(var(--dx)); }
+    .sc-new { transform: translateY(var(--dy)); }
+    .sc-chip { transform: translate(var(--cx), var(--cy)); }
+    .sc-move, .sc-move-tip { opacity: 0; }
+  }
+
+  code {
+    font-size: 0.85em;
+  }
+</style>
