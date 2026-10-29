@@ -49,6 +49,7 @@
     "indexer/",
     "bin/",
     "sync/",
+    "proxy/",
     "config/*.example",
     "config/index.yml",
     "config/notebooklm.yml",
