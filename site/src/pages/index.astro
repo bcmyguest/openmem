@@ -1,6 +1,7 @@
 ---
 import Landing from '../layouts/Landing.astro';
 import ArchitectureFigure from '../components/landing/ArchitectureFigure.astro';
+import SmartCompactionFigure from '../components/landing/SmartCompactionFigure.astro';
 import Button from '../components/ui/Button.astro';
 import Card from '../components/ui/Card.astro';
 import Badge from '../components/ui/Badge.astro';
@@ -76,6 +77,19 @@ npx ${site.npm.package} switch mem0 --yes`;
             </Card>
           ))}
         </ul>
+      </div>
+    </section>
+
+    <section class="py-16" aria-labelledby="compact-h">
+      <div class="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-5">
+        <div class="lg:col-span-2">
+          <h2 id="compact-h" class="text-3xl font-bold tracking-tight">Smart compaction</h2>
+          <p class="mt-3 text-muted">Long sessions keep going without a slow LLM summary. Older turns move to a local transcript and memory; a pointer and bounded recall take their place; the agent retrieves details when it needs them.</p>
+          <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-proxy/')}>Context proxy</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/compatibility/')}>Which agents support it</a></p>
+        </div>
+        <div class="lg:col-span-3">
+          <SmartCompactionFigure />
+        </div>
       </div>
     </section>
 
