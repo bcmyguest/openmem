@@ -20,7 +20,6 @@ import {
   loadManifest,
 } from "../wizard/lib/providers/registry.mjs";
 import { wizardModulePath } from "../wizard/lib/provider-wizard/run-steps.mjs";
-import { contextProxyStackEnvFromPmConfig, loadPmConfig } from "../wizard/lib/pm-config.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(process.env.PM_PACKAGE_ROOT || path.join(scriptDir, ".."));
@@ -58,6 +57,8 @@ try {
 /** @type {Record<string, string>} */
 let proxyEnv = {};
 try {
+  // Imported here: pm-config needs npm dependencies, and setup.mjs also runs from bare checkouts.
+  const { contextProxyStackEnvFromPmConfig, loadPmConfig } = await import("../wizard/lib/pm-config.mjs");
   proxyEnv = contextProxyStackEnvFromPmConfig(loadPmConfig(home, repo).merged);
 } catch (e) {
   console.warn(`skipped context-proxy settings: ${/** @type {Error} */ (e).message}`);
