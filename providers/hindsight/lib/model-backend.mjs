@@ -137,7 +137,12 @@ async function chooseOllama(ctx, h) {
     "MEMORY_MODEL",
     process.env.PM_DEFAULT_MODEL || ctx.ollamaDefaultModel,
   );
-  if (ctx.ollamaJson) {
+  // Compose Ollama publishes 127.0.0.1:11434, so a saved compose choice must win over the host probe.
+  if (storedOr(ctx, h, "ollama", "MEMORY_OLLAMA_IN_COMPOSE", "0") === "1") {
+    ctx.ollamaInCompose = true;
+    ctx.apiBase = OLLAMA_COMPOSE_API_BASE;
+    h.info("Keeping Ollama in Docker (compose profile ollama); LiteLLM calls http://ollama:11434.");
+  } else if (ctx.ollamaJson) {
     ctx.ollamaInCompose = false;
     ctx.apiBase = OLLAMA_HOST_API_BASE;
   } else {
