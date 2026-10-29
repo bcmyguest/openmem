@@ -1,6 +1,6 @@
 # Context store contract
 
-The context proxy, the session hooks, and the `smart_compact_*` MCP tools exchange state through local files. This page is the contract between them; change it before changing any side.
+The context proxy, OpenMem's OpenCode 2 plugin (which trims natively instead of using the proxy), the session hooks, and the `smart_compact_*` MCP tools exchange state through local files. Below, "proxy" means whichever of the two trims a session. This page is the contract between them; change it before changing any side.
 
 ## Location
 
@@ -8,8 +8,8 @@ Root: `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. Di
 
 | Path | Writer | Reader | Content |
 | --- | --- | --- | --- |
-| `sessions/<sid>.json` | SessionStart hook | proxy, MCP | Registration: `{"session_id", "agent", "cwd", "bank", "registered_at"}` (ISO 8601 UTC) |
-| `sessions/<sid>.force` | prompt hook on `/smart-compact` | proxy | Empty flag. The proxy trims on the next request for that session, then deletes the flag. |
+| `sessions/<sid>.json` | SessionStart hook, OpenCode plugins | proxy, MCP | Registration: `{"session_id", "agent", "cwd", "bank", "registered_at"}` (ISO 8601 UTC) |
+| `sessions/<sid>.force` | prompt hook or OpenCode plugin on `/smart-compact` | proxy | Empty flag. The proxy trims on the next request for that session, then deletes the flag. |
 | `sessions/<sid>.trim.json` | proxy | proxy | Proxy-private trim state (cut point, fingerprints). Other components must not depend on its shape. |
 | `sessions/<sid>.log.jsonl` | proxy | MCP `smart_compact_search` | Handoff log: one row per trimmed content block, appended at trim time |
 | `blobs/<id>.txt` | proxy | MCP `smart_compact_get` | Full text of a compressed tool result. `id` = first 16 hex chars of SHA-256 of the UTF-8 content. |
@@ -38,7 +38,7 @@ Pointer block placed at the start of the first kept user turn after a trim:
 [openmem: continuing session <sid>; <n> earlier messages trimmed. Use smart_compact_search(session_id="<sid>", query=...) for anything earlier.]
 ```
 
-Followed, when the registration names a bank and recall succeeds, by `[openmem recall]` and at most `[compaction] max_chars` characters of recalled memory.
+Followed, when the registration names a bank and recall succeeds, by `[openmem recall]` and at most `[compaction] max_chars` characters of recalled memory. The OpenCode 2 plugin puts this block in its own text part, followed by a blank line; when OpenCode 2 compacts a session, the same block (without the blank line) becomes the compaction summary.
 
 Compressed tool result:
 
