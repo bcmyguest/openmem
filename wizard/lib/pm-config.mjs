@@ -257,7 +257,8 @@ export function contextTrimFromPmConfig(cfg) {
  * `trimSettings()` read: `[context_proxy] trim_at_tokens` → CONTEXT_TRIM_AT_TOKENS,
  * `compress_over_tokens` → CONTEXT_COMPRESS_OVER_TOKENS, `[compaction] max_chars` →
  * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
- * CONTEXT_STANDING_INSTRUCTION ("1" / "0"). Unset or invalid keys are left out, so the reader's defaults
+ * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
+ * CONTEXT_CHARS_PER_TOKEN. Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
  * @param {Record<string, unknown>} cfg
  * @returns {Record<string, string>}
@@ -270,6 +271,8 @@ export function contextTrimEnvFromPmConfig(cfg) {
   }
   const standing = tableOf(cfg, "context_proxy").standing_instruction;
   if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
+  const ratio = tableOf(cfg, "context_proxy").chars_per_token;
+  if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
   return out;
 }
 

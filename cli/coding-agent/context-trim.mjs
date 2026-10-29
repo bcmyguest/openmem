@@ -16,6 +16,8 @@ export const DEFAULT_TRIM_AT_TOKENS = 120000;
 export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
 export const DEFAULT_COMPACTION_MAX_CHARS = 12000;
 export const DEFAULT_RECALL_TIMEOUT_S = 5.0;
+/** Characters per prompt token before a session has reported usage (proxy/openmem_context/tokens.py). */
+export const DEFAULT_CHARS_PER_TOKEN = 2.5;
 export const MARKER_PREFIX = "[openmem: tool result compressed,";
 /**
  * Added to the system prompt of every request while trimming is on, before any trim; constant, so the
@@ -37,6 +39,10 @@ const FORMAT = "opencode2";
 /** Part types whose payload is binary; each is charged a flat 6400 characters (about 1600 tokens). */
 const BINARY_BLOCK_TYPES = new Set(["image", "document", "input_image", "input_file", "image_url", "file", "media"]);
 const BINARY_BLOCK_CHARS = 6400;
+/** Bounds on an observed chars-per-token ratio, and usage samples kept per session; same as the proxy. */
+const MIN_CHARS_PER_TOKEN = 1.0;
+const MAX_CHARS_PER_TOKEN = 8.0;
+const MAX_USAGE_THREADS = 32;
 const BLOB_REF_RE = /smart_compact_get\(id="([0-9a-f]{16})"\)/;
 const REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const SURROGATE_RE = /[\uD800-\uDFFF]/;
@@ -57,12 +63,17 @@ export function trimSettings(env = process.env, home = env.HOME) {
     const value = raw ? Number(raw) : Number.NaN;
     return Number.isFinite(value) ? value : fallback;
   };
+  const positive = (name, fallback) => {
+    const value = float(name, fallback);
+    return value > 0 ? value : fallback;
+  };
   const flag = (name) => !["0", "false", "no", "off"].includes(String(env[name] ?? "1").trim().toLowerCase());
   return {
     enabled: flag("CONTEXT_PROXY_ENABLED"),
     standingInstruction: flag("CONTEXT_STANDING_INSTRUCTION"),
     trimAtTokens: int("CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
     compressOverTokens: int("CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
+    charsPerToken: positive("CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
     compactionMaxChars: int("CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
     recallTimeoutS: float("CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
     contextDir: contextRoot(home, env),
@@ -85,9 +96,58 @@ function chars(value) {
   return String(value).length;
 }
 
-/** Characters / 4 over every value, as the proxy estimates request size. */
-export function estimateTokens(...values) {
-  return Math.floor((values.reduce((sum, v) => sum + chars(v), 0) + 3) / 4);
+/** Characters in the values, as the trim measures a request (proxy request_chars). */
+export function requestChars(...values) {
+  return values.reduce((sum, v) => sum + chars(v), 0);
+}
+
+const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** [chars, tokens] of a stored usage sample, or null when it is missing or malformed. */
+function usageSample(value) {
+  if (!isObject(value)) return null;
+  const { chars: c, tokens: t } = value;
+  return Number.isSafeInteger(c) && Number.isSafeInteger(t) && c > 0 && t > 0 ? [c, t] : null;
+}
+
+const sampleRatio = (sample, fallback) => (sample
+  ? Math.min(MAX_CHARS_PER_TOKEN, Math.max(MIN_CHARS_PER_TOKEN, sample[0] / sample[1])) : fallback);
+const usageThreads = (usage) => (isObject(usage) && isObject(usage.threads) ? usage.threads : {});
+
+/**
+ * Prompt tokens of a request of `size` characters in conversation thread `root`, as the proxy's
+ * estimate_prompt_tokens: with a usage sample for this thread, its reported tokens plus the characters
+ * added since at that sample's ratio; otherwise size at the session's latest sample's ratio, else defaultRatio.
+ */
+export function estimatePromptTokens(size, usage, root, defaultRatio) {
+  const own = usageSample(usageThreads(usage)[root]);
+  if (own) return Math.max(0, own[1] + Math.ceil((size - own[0]) / sampleRatio(own, defaultRatio)));
+  return Math.ceil(size / sampleRatio(isObject(usage) ? usageSample(usage.last) : null, defaultRatio));
+}
+
+/** Store a reported prompt size into state.usage (proxy record_usage). False, state untouched, on bad values. */
+export function recordUsage(state, root, size, tokens) {
+  if (!usageSample({ chars: size, tokens })) return false;
+  if (!isObject(state.usage)) state.usage = {};
+  const threads = usageThreads(state.usage);
+  delete threads[root];
+  threads[root] = { chars: size, tokens };
+  const keys = Object.keys(threads);
+  for (const key of keys.slice(0, Math.max(0, keys.length - MAX_USAGE_THREADS))) delete threads[key];
+  state.usage.threads = threads;
+  state.usage.last = { chars: size, tokens };
+  return true;
+}
+
+/**
+ * Prompt tokens in an OpenCode 2 TokenUsage.Info ({input, output, reasoning, cache: {read, write}}), or null.
+ * `input` excludes cache reads and writes (OpenCode fills it from nonCachedInputTokens), so they are added.
+ */
+export function promptTokensFromOpenCode(tokens) {
+  if (!isObject(tokens)) return null;
+  const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const total = n(tokens.input) + n(tokens.cache?.read) + n(tokens.cache?.write);
+  return total > 0 ? total : null;
 }
 
 function canonical(value) {
@@ -532,7 +592,9 @@ export async function trimContext(request, settings, deps = {}) {
     }
     let rendered = render(items, cut, note, first, decorate);
     const force = store.forceRequested(sid);
-    if (force || estimateTokens(request.system, request.tools, rendered) >= settings.trimAtTokens) {
+    const ratio = settings.charsPerToken > 0 ? settings.charsPerToken : DEFAULT_CHARS_PER_TOKEN;
+    const tokens = estimatePromptTokens(requestChars(request.system, request.tools, rendered), state.usage, root, ratio);
+    if (force || tokens >= settings.trimAtTokens) {
       const next = chooseCut(items, cut, first);
       if (next !== null) {
         const ts = utcNow(deps.now?.());
@@ -548,7 +610,26 @@ export async function trimContext(request, settings, deps = {}) {
     } else if (thread && !cut) store.saveTrim(sid, state);
     return rendered;
   });
+  // Measured like the estimate, so a later recordPromptUsage compares like with like.
+  deps.measured?.({ root, chars: requestChars(request.system, request.tools, view) });
   return view.length === original.length && view.every((m, i) => m === original[i]) ? original : view;
+}
+
+/**
+ * Calibrate a session from the provider's reported prompt tokens for a request trimContext measured
+ * (deps.measured's { root, chars }). Returns whether a sample was stored.
+ */
+export async function recordPromptUsage(settings, sessionID, measured, tokens) {
+  if (!settings.enabled || !measured) return false;
+  let sid;
+  try { sid = sanitizeSessionId(sessionID); } catch { return false; }
+  const store = new Store(settings.contextDir);
+  return withSessionLock(sid, async () => {
+    const state = store.loadTrim(sid);
+    if (!recordUsage(state, measured.root, measured.chars, tokens)) return false;
+    store.saveTrim(sid, state);
+    return true;
+  });
 }
 
 /**

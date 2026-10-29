@@ -13,7 +13,10 @@ import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "../bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "../access-policy.mjs";
 import { SMART_COMPACT_BODY, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
-import { addStandingInstruction, compactionSummary, fingerprint, isTurnStart, logFailOpen, trimContext, trimSettings } from "../context-trim.mjs";
+import {
+  addStandingInstruction, compactionSummary, fingerprint, isTurnStart, logFailOpen, promptTokensFromOpenCode, recordPromptUsage,
+  trimContext, trimSettings,
+} from "../context-trim.mjs";
 import { sessionBanner } from "../hook-runner.mjs";
 import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
@@ -27,8 +30,14 @@ const RECALL_LIMIT = 20;
 const STATUS_TIMEOUT_MS = 2000;
 const RETAIN_TIMEOUT_MS = 10000;
 const MAX_RECALLS_PER_SESSION = 64;
+// Measured context requests per session still waiting for their step's usage.
+const MAX_MEASURED_PER_SESSION = 8;
 // OpenCode 2.2.1 publishes session.execution.succeeded; session.status / session.idle are kept for other releases.
-const EVENT_TYPES = ["session.created", "session.execution.succeeded", "session.status", "session.idle"];
+// session.step.ended carries each model call's TokenUsage, which calibrates the trim estimate.
+const EVENT_TYPES = [
+  "session.created", "session.execution.succeeded", "session.status", "session.idle",
+  "session.step.ended", "session.step.failed", "session.execution.interrupted", "session.execution.failed",
+];
 
 /** Text of an OpenCode 2 session message (Session.Message.Info) for retention. */
 function sessionMessageText(info) {
@@ -80,6 +89,8 @@ async function setup(ctx) {
   const seen = new Map();
   const retaining = new Set();
   const registered = new Set();
+  // sessionID -> FIFO of { root, chars } from trimContext, one per context request, paired with session.step.ended.
+  const measured = new Map();
 
   // Recall for the trim pointer uses the registration's bank, as the proxy does.
   const trimDeps = {
@@ -159,6 +170,20 @@ async function setup(ctx) {
     };
   }
 
+  /** Queue a measured request; steps of one session run in order, so step events pop in the same order. */
+  function onMeasured(sessionID, sample) {
+    const queue = measured.get(sessionID) || [];
+    queue.push(sample);
+    while (queue.length > MAX_MEASURED_PER_SESSION) queue.shift();
+    remember(measured, sessionID, queue);
+  }
+
+  async function onStepEnded(data) {
+    const sample = measured.get(data.sessionID)?.shift();
+    const tokens = promptTokensFromOpenCode(data.tokens);
+    if (sample && tokens) await recordPromptUsage(settings, data.sessionID, sample, tokens);
+  }
+
   async function onContext(event) {
     register(event.sessionID);
     let decorate;
@@ -172,7 +197,7 @@ async function setup(ctx) {
     const original = event.messages;
     let messages = original;
     try {
-      messages = await trimContext(event, settings, { ...trimDeps, decorate });
+      messages = await trimContext(event, settings, { ...trimDeps, decorate, measured: (sample) => onMeasured(event.sessionID, sample) });
     } catch (error) { logFailOpen(error); }
     // trimContext returns its input untouched when trimming is off or the request is malformed.
     if (messages === original && decorate && Array.isArray(original)) {
@@ -223,6 +248,9 @@ async function setup(ctx) {
     const where = data.location?.directory;
     if (where && projectDir && path.resolve(where) !== path.resolve(projectDir)) return;
     if (event.type === "session.created") register(data.sessionID);
+    else if (event.type === "session.step.ended") await onStepEnded(data);
+    else if (event.type === "session.step.failed") measured.get(data.sessionID)?.shift();
+    else if (["session.execution.interrupted", "session.execution.failed"].includes(event.type)) measured.delete(data.sessionID);
     else if (["session.execution.succeeded", "session.idle"].includes(event.type)
       || (event.type === "session.status" && data.status?.type === "idle")) {
       if (allowed) await onIdle(data.sessionID);

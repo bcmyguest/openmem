@@ -1,10 +1,12 @@
 """Runtime settings for the context proxy, read from environment variables."""
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from .store import ASCII_WHITESPACE
+from .tokens import DEFAULT_CHARS_PER_TOKEN
 
 DEFAULT_TRIM_AT_TOKENS = 120000
 DEFAULT_COMPRESS_OVER_TOKENS = 4000
@@ -33,6 +35,11 @@ def _float(env, name, default):
         return default
 
 
+def _positive_float(env, name, default):
+    value = _float(env, name, default)
+    return value if math.isfinite(value) and value > 0 else default
+
+
 def _flag(env, name):
     """True unless the variable is 0, false, no or off."""
     return str(env.get(name, "1")).strip().lower() not in ("0", "false", "no", "off")
@@ -45,6 +52,8 @@ class Settings:
     standing_instruction: bool = True
     trim_at_tokens: int = DEFAULT_TRIM_AT_TOKENS
     compress_over_tokens: int = DEFAULT_COMPRESS_OVER_TOKENS
+    # Characters per token for the trim estimate until the session reports usage (CONTEXT_CHARS_PER_TOKEN).
+    chars_per_token: float = DEFAULT_CHARS_PER_TOKEN
     compaction_max_chars: int = DEFAULT_COMPACTION_MAX_CHARS
     recall_timeout_s: float = DEFAULT_RECALL_TIMEOUT_S
     hindsight_url: str = DEFAULT_HINDSIGHT_URL
@@ -67,6 +76,7 @@ class Settings:
             standing_instruction=_flag(env, "CONTEXT_STANDING_INSTRUCTION"),
             trim_at_tokens=_int(env, "CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
             compress_over_tokens=_int(env, "CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
+            chars_per_token=_positive_float(env, "CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
             compaction_max_chars=_int(env, "CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
             recall_timeout_s=_float(env, "CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
             hindsight_url=(str(env.get("HINDSIGHT_URL", "")).strip() or DEFAULT_HINDSIGHT_URL).rstrip("/"),
