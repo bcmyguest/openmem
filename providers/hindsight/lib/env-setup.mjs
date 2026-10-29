@@ -30,7 +30,8 @@ export function llmWired(ctx, h) {
 export function stackEnv(ctx) {
   ensureState(ctx);
   let backend = ctx.backend;
-  if (backend === "custom") backend = "lemond";
+  // Own-route backends run from litellm.yaml; setup.mjs only knows lemond and ollama.
+  if (backend === "custom" || backend === "meridian") backend = "lemond";
   /** @type {Record<string, string>} */
   const env = { MEMORY_BACKEND: backend };
   if (ctx.ollamaInCompose) env.MEMORY_OLLAMA_IN_COMPOSE = "1";

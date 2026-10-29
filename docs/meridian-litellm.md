@@ -132,6 +132,19 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
 ```
 
+## With the wizard
+
+`./setup` step "3. Model backend" option 4, **Claude subscription (Meridian)**, automates [Route file](#route-file) and [Apply](#apply). It does not install or start Meridian; run it first as in [Run Meridian](#run-meridian).
+
+| Step | What the wizard does |
+| --- | --- |
+| Ask | Meridian URL from the host (default `http://127.0.0.1:3456`, port from `MERIDIAN_PORT` in `~/.config/meridian/meridian.env`) and an optional `MERIDIAN_API_KEY` (blank reuses the environment, `meridian.env`, or `litellm.env`) |
+| Probe | `GET /health` and `GET /v1/models` (with `x-api-key`) from the host, then `/health` on the `docker0` address. Answering on 127.0.0.1 but not on `docker0` means a loopback-only bind: it warns to set `MERIDIAN_HOST=0.0.0.0`. Without `docker0` it states the requirement |
+| Models | Retain and consolidate: `claude-haiku-5-5`, reflect: `claude-sonnet-5-5`, when listed; otherwise the first listed Haiku and Sonnet ids. Unreachable Meridian: the guide defaults |
+| Write | The route file above as `~/.config/hindsight/litellm.yaml` (an existing one is copied to `litellm.yaml.bak-<timestamp>`), `MERIDIAN_API_KEY` in `litellm.env` (mode 600; `placeholder` when Meridian runs without a key), and `[model] backend = "meridian"` in `wizard.conf` and `config.toml` |
+
+Non-interactive: `PM_BACKEND=meridian MERIDIAN_BASE=http://127.0.0.1:3456 MERIDIAN_API_KEY=... ./setup --yes`. `[model.meridian] host` in `config.toml` sets `MERIDIAN_BASE`; `PM_DEFAULT_MODEL` and `PM_REFLECT_MODEL` pick models. `--dry-run` probes and prints the plan without writing. Then run the [Smoke test](#smoke-test); the wizard's host-side probe does not prove the container reaches Meridian through a firewall.
+
 ## Apply
 
 ```sh

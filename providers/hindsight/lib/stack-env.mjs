@@ -10,6 +10,25 @@ import path from "node:path";
 import { envValue } from "../../../wizard/lib/paths.mjs";
 
 /**
+ * Create litellm.env (mode 600) with a fresh LITELLM_MASTER_KEY when it does not exist.
+ * @param {string} litellmEnv
+ * @returns {boolean} true when the file was created
+ */
+export function ensureLitellmEnv(litellmEnv) {
+  if (fs.existsSync(litellmEnv)) return false;
+  const key = crypto.randomBytes(24).toString("hex");
+  const body =
+    "# LiteLLM proxy secrets. Read by the litellm compose service. Do not commit.\n" +
+    `LITELLM_MASTER_KEY=sk-${key}\n` +
+    "# lemond ignores the key; any non-empty value works.\n" +
+    "LEMOND_API_KEY=placeholder\n" +
+    "# Hosted models: add the provider key here, e.g. ANTHROPIC_API_KEY=..., and reference it as os.environ/ANTHROPIC_API_KEY.\n";
+  fs.mkdirSync(path.dirname(litellmEnv), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(litellmEnv, body, { mode: 0o600 });
+  return true;
+}
+
+/**
  * @param {{ repo: string, home: string, env: NodeJS.ProcessEnv }} opts
  * @returns {{ entries: [string, string][], drop: string[], report: string[] }}
  *   entries: KEY=value lines to add to the stack .env; drop: keys to remove first;
@@ -25,17 +44,7 @@ export function prepareStackEnv({ repo, home, env }) {
     throw new Error(`MEMORY_BACKEND must be lemond or ollama (got: ${backend})`);
   }
 
-  if (!fs.existsSync(litellmEnv)) {
-    const key = crypto.randomBytes(24).toString("hex");
-    const body =
-      "# LiteLLM proxy secrets. Read by the litellm compose service. Do not commit.\n" +
-      `LITELLM_MASTER_KEY=sk-${key}\n` +
-      "# lemond ignores the key; any non-empty value works.\n" +
-      "LEMOND_API_KEY=placeholder\n" +
-      "# Hosted models: add the provider key here, e.g. ANTHROPIC_API_KEY=..., and reference it as os.environ/ANTHROPIC_API_KEY.\n";
-    fs.writeFileSync(litellmEnv, body, { mode: 0o600 });
-    console.log(`created ${litellmEnv} (mode 600)`);
-  }
+  if (ensureLitellmEnv(litellmEnv)) console.log(`created ${litellmEnv} (mode 600)`);
 
   const litellmConfig = fs.existsSync(overrideConfig)
     ? overrideConfig

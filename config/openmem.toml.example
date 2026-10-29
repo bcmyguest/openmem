@@ -24,9 +24,9 @@ control_plane_port = 9999
 [wizard]
 action = "configure" # configure | up | down
 
-# LLM routing for Hindsight (LiteLLM → lemond/Ollama/custom). Not lemond's own config.
+# LLM routing for Hindsight (LiteLLM → lemond/Ollama/custom/Meridian). Not lemond's own config.
 [model]
-backend = "lemond" # lemond | ollama | custom
+backend = "lemond" # lemond | ollama | custom | meridian (Claude subscription, docs/meridian-litellm.md)
 retain = "Gemma-4-E2B-it-GGUF"
 reflect = ""       # empty = shipped memory-reflect route
 api_base = ""      # custom backend only
@@ -36,6 +36,10 @@ host = "http://127.0.0.1:13305"
 
 [model.ollama]
 host = "http://127.0.0.1:11434"
+
+# meridian backend only: Meridian's URL as seen from this host. The wizard does not run Meridian.
+# [model.meridian]
+# host = "http://127.0.0.1:3456"
 
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]

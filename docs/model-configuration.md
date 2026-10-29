@@ -16,6 +16,7 @@ Edit the YAML (or a per-machine override) to change models.
 | --- | --- | --- |
 | `config/litellm.lemond.yaml` | lemond on the host | Reflect: Gemma 4 E4B GGUF (`unsloth/`); retain and consolidate: E2B |
 | `config/litellm.ollama.yaml` | Ollama on the host | Used when `MEMORY_BACKEND=ollama`; `gemma4:e4b` needs Ollama newer than 0.20.3 |
+| `~/.config/hindsight/litellm.yaml` (written by `./setup`, backend `meridian`) | Meridian on the host (Claude subscription) | Retain and consolidate: `claude-haiku-5-5`; reflect: `claude-sonnet-5-5`. See [Meridian route](meridian-litellm.md#with-the-wizard) |
 
 **Why reflect uses a larger model:** E2B often returns no usable tool call on Hindsight reflect (`finish_reason=length`). The shipped lemond route uses E4B for `memory-reflect` only. Qwen3.5-4B works as an alternative if you change the route; pick any model that passes a direct tool-call check and a smoke reflect.
 

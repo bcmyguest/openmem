@@ -9,7 +9,7 @@ export const OLLAMA_HOST_API_BASE = "http://host.docker.internal:11434";
 /** LiteLLM api_base when Ollama is the compose `ollama` service. */
 export const OLLAMA_COMPOSE_API_BASE = "http://ollama:11434";
 
-export const BACKENDS = ["lemond", "ollama", "custom"];
+export const BACKENDS = ["lemond", "ollama", "custom", "meridian"];
 
 /**
  * Fill the Hindsight fields of the wizard context. Idempotent: a field that is already
@@ -23,6 +23,8 @@ export function ensureState(ctx) {
     litellmEnv: path.join(hs, "litellm.env"),
     litellmOverride: path.join(hs, "litellm.yaml"),
     agentJson: path.join(ctx.home || "", ".hindsight/coding-agent.json"),
+    /** Meridian's own env file from docs/meridian-litellm.md (read for MERIDIAN_API_KEY/HOST/PORT). */
+    meridianEnvFile: path.join(ctx.home || "", ".config/meridian/meridian.env"),
     lemondBase: "http://127.0.0.1:13305",
     ollamaBase: "http://127.0.0.1:11434",
     lemondDefaultModel: LEMOND_DEFAULT_MODEL,
@@ -41,6 +43,9 @@ export function ensureState(ctx) {
     portApi: "",
     portCp: "",
     hindsightUrl: "",
+    /** Meridian URL as seen from the host, and the key for litellm.env (backend meridian). */
+    meridianBase: "",
+    meridianKey: "",
   };
   for (const [key, value] of Object.entries(defaults)) {
     if (ctx[key] === undefined) ctx[key] = value;
