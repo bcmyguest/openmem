@@ -162,7 +162,7 @@ Interactive `./setup` uses this file for **defaults** (Clack pre-selects); your 
     Flags: `--yes`, `--dry-run`, `--no-stack`, `--no-mcp`. Does not migrate data between
     backends. See [README — Switch memory provider](../README.md#switch-memory-provider).
   - `feed-sync` — runs `cli/feed-sync.mjs` (RSS + OpenAlex → `feeds.out_dir` in `index.yml`).
-  - `install-coding-agent` — unified MCP + session hooks (all providers); optional `--hindsight-plugin`; see
+  - `install-coding-agent` — unified MCP + session hooks (all providers); `--provider-plugin` / `--no-provider-plugin` set `[agents] integration`; see
     [coding-agent hooks](coding-agent-hooks.md).
 
 ## MCP (unified `memory_*` tools)
@@ -179,7 +179,7 @@ After changing MCP code, re-run `npx @bcmyguest/openmem install-coding-agent --y
 cp config/openmem.toml.example ~/.config/personal-memory/config.toml
 # edit provider, ports, model backend
 npx @bcmyguest/openmem configure --yes
-# checkout before publish: npx . configure --yes
+# from a checkout: node cli/openmem.mjs configure --yes
 ```
 
 After a successful configure, the wizard **writes back** `~/.config/personal-memory/config.toml` so

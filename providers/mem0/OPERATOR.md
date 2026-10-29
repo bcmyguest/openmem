@@ -76,7 +76,7 @@ via the launcher `cli/mem0-mcp.mjs` (loads the key from the env file, then
 
 ```sh
 MEMORY_PROVIDER=mem0 npx openmem install-mcp --yes
-# checkout: MEMORY_PROVIDER=mem0 npx . install-mcp --yes
+# checkout: MEMORY_PROVIDER=mem0 node cli/openmem.mjs install-mcp --yes
 # or accept the coding-agent MCP confirm in setup
 ```
 
@@ -111,7 +111,7 @@ Restart Cursor Agent after install.
 ```sh
 npx openmem switch mem0 --yes
 # later: npx openmem switch hindsight --yes
-# checkout: npx . switch mem0 --yes
+# checkout: node cli/openmem.mjs switch mem0 --yes
 ```
 
 Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack

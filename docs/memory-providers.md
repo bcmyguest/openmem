@@ -65,7 +65,7 @@ after meta steps — like asdf plugin install scripts, not reimplemented npm/mem
 
 NotebookLM sync is **orthogonal** to which provider you picked: enable the `notebooklm` profile and the sync container uses the same `MEMORY_SINK` as the indexer (Hindsight, mem0, or Cognee).
 
-Coding-agent session memory uses the **same** in-repo hooks and unified MCP for every provider; optional `--hindsight-plugin` adds the upstream Hindsight plugin on Hindsight stacks only.
+Coding-agent session memory uses the **same** in-repo hooks and unified MCP for every provider; on Hindsight stacks `--provider-plugin` swaps the in-repo hooks for the upstream Hindsight plugin (`[agents] integration = "provider"`).
 
 ## Provider manifest
 
@@ -143,7 +143,7 @@ first step); default action is full **configure and start**.
 
 ### Changing provider later
 
-Prefer **`npx @bcmyguest/openmem switch <id> --yes`** (checkout: `npx . switch <id> --yes`) over a full
+Prefer **`npx @bcmyguest/openmem switch <id> --yes`** (checkout: `node cli/openmem.mjs switch <id> --yes`) over a full
 interactive setup re-run when you only need to change backends:
 
 - Updates `MEMORY_PROVIDER` in `~/.config/hindsight/wizard.conf`

@@ -43,7 +43,7 @@ When `MEMORY_PROVIDER=cognee`:
 
 ```sh
 npx openmem install-mcp --yes --provider-only
-# checkout: npx . install-mcp --yes --provider-only
+# checkout: node cli/openmem.mjs install-mcp --yes --provider-only
 # or during setup: coding-agent step registers the same entry
 ```
 
@@ -74,7 +74,7 @@ v1 MCP is read-only (no add/cognify). Ingest stays with the indexer or curl.
 ```sh
 npx openmem switch cognee --yes
 # later: npx openmem switch hindsight --yes
-# checkout: npx . switch cognee --yes
+# checkout: node cli/openmem.mjs switch cognee --yes
 ```
 
 Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), restarts the stack

@@ -14,8 +14,8 @@ It is **not** another memory product. It is the plumbing so the engines stay int
 
 ```sh
 git clone https://github.com/bcmyguest/openmem.git && cd openmem
-npm install && npx . setup
-npx . install-coding-agent --yes
+npm install && npm run setup
+node cli/openmem.mjs install-coding-agent --yes
 ```
 
 Once on npm: `npx @bcmyguest/openmem` / `npx openmem-mcp`

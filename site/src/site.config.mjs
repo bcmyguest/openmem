@@ -28,6 +28,6 @@ export const site = {
   sourceInstall: {
     clone: 'https://github.com/bcmyguest/openmem.git',
     directory: 'openmem',
-    command: 'npm install && npx . setup',
+    command: 'npm install && npm run setup',
   },
 };

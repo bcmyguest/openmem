@@ -1,6 +1,6 @@
 # Coding agents and MCP
 
-Prerequisite: run the wizard (`npx @bcmyguest/openmem`) so a provider stack is up. The MCP server and hooks only forward to that stack.
+Prerequisite: run the wizard (`npx @bcmyguest/openmem`) so a provider stack is up. The MCP server and hooks only forward to that stack. Per-agent support and evidence levels: [Compatibility matrix](compatibility.md).
 
 One entry point for session wiring on **every** provider (unified MCP + in-repo session hooks):
 
@@ -23,7 +23,7 @@ The two hook sets are exclusive; see [hook parity](coding-agent-hooks.md#install
 
 **rtk.** When [`rtk`](https://github.com/rtk-ai/rtk) is on `PATH`, the installer runs rtk's own setup per selected agent: `rtk init -g --auto-patch` (Claude Code), `rtk init -g --codex`, `rtk init -g --agent cursor`, `rtk init -g --opencode`. rtk adds PreToolUse-style command rewriting and keeps other hooks; OpenMem's reinstall keeps rtk's entries. `rtk init` is idempotent. `--no-rtk` skips it.
 
-**Context proxy.** `--context-proxy` creates `~/.config/personal-memory/context-proxy.env` (mode 600) with `LITELLM_MASTER_KEY` once and reuses it. Claude Code gets `env.ANTHROPIC_BASE_URL = http://127.0.0.1:<port>` and `env.ANTHROPIC_CUSTOM_HEADERS = x-litellm-api-key: Bearer <key>` in `~/.claude/settings.json`; OpenCode gets `provider.anthropic.options.baseURL = http://127.0.0.1:<port>/v1` and the same header ([OpenCode providers](https://opencode.ai/docs/providers/#base-url)). Claude Code then fails until the proxy runs. `--no-context-proxy` removes those keys when they still point at the loopback proxy; the key file stays. Codex stays hook-only.
+**Context proxy.** `--context-proxy` creates `~/.config/personal-memory/context-proxy.env` (mode 600) with `LITELLM_MASTER_KEY` once and reuses it. Claude Code gets `env.ANTHROPIC_BASE_URL = http://127.0.0.1:<port>` and `env.ANTHROPIC_CUSTOM_HEADERS = x-litellm-api-key: Bearer <key>` in `~/.claude/settings.json`; OpenCode gets `provider.anthropic.options.baseURL = http://127.0.0.1:<port>/v1` and the same header ([OpenCode providers](https://opencode.ai/docs/providers/#base-url)). Claude Code then fails until the proxy runs. The proxy trims long sessions and compresses tool results; typing `/smart-compact` makes the prompt hook flag the next request for a trim. See [Context proxy](context-proxy.md). `--no-context-proxy` removes those keys when they still point at the loopback proxy; the key file stays. Codex stays hook-only.
 
 This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
 
@@ -33,7 +33,7 @@ Codex requires review of new or changed non-managed hooks in `/hooks` before the
 
 The command keeps existing agent settings and other MCP servers. With `integration = "openmem"` it removes the upstream Hindsight plugin's hook entries but leaves its MCP server and skill; remove those through the plugin's own uninstaller if you no longer want them.
 
-The wizard coding-agent step follows the same idea for Hindsight-first flows.
+Wizard step 8 (Coding agents) offers the same `install-coding-agent --yes` for detected CLIs.
 
 Use a **real** `~/.hindsight/coding-agent.json` on disk (seed from `config/coding-agent.json`). Do not symlink into the repo — machine fields such as `optInPaths` and `notebooklmAccess` must not live in the checkout. The indexer reads this file through the `$HOME` mount. If it is missing, the indexer logs a warning and still indexes everything under `$HOME`.
 
@@ -43,7 +43,7 @@ To register **only** Cursor's memory-related MCP entries (NotebookLM, mem0, Cogn
 
 ```sh
 npx @bcmyguest/openmem install-mcp --yes
-# checkout: npx . install-mcp --yes
+# checkout: node cli/openmem.mjs install-mcp --yes
 
 # mem0 self-hosted REST → @yeyuan98/mem0-mcp via cli/mem0-mcp.mjs
 MEMORY_PROVIDER=mem0 npx @bcmyguest/openmem install-mcp --yes --provider-only
@@ -62,7 +62,7 @@ To change `MEMORY_PROVIDER` (updates `~/.config/hindsight/wizard.conf`, optional
 
 ```sh
 npx @bcmyguest/openmem switch mem0 --yes
-# checkout: npx . switch cognee --yes
+# checkout: node cli/openmem.mjs switch cognee --yes
 ```
 
 Flags: `--dry-run`, `--no-stack` (skip compose down/up), `--no-mcp` (skip `install-mcp --provider-only`). Switching does **not** migrate memories between backends. After a switch: restart Cursor Agent, then `npx @bcmyguest/openmem doctor`.
