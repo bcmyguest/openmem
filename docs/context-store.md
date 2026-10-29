@@ -10,7 +10,7 @@ Root: `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. Su
 | --- | --- | --- | --- |
 | `sessions/<sid>.json` | SessionStart hook, OpenCode plugins | proxy, MCP | Registration: `{"session_id", "agent", "cwd", "bank", "registered_at"}` (ISO 8601 UTC) |
 | `sessions/<sid>.force` | prompt hook or OpenCode plugin on `/smart-compact` | proxy | Empty flag. The proxy trims on the next request for that session, then deletes the flag. |
-| `sessions/<sid>.trim.json` | proxy | proxy | Proxy-private trim state (cut point, fingerprints). Other components must not depend on its shape. |
+| `sessions/<sid>.trim.json` | proxy | proxy | Proxy-private trim state (cut point, fingerprints, reported-usage samples for the token estimate, see [context-proxy.md](context-proxy.md#token-estimate)). Other components must not depend on its shape. |
 | `sessions/<sid>.log.jsonl` | proxy | MCP `smart_compact_search`, shell tools | Handoff log: one row per trimmed content block, appended at trim time |
 | `blobs/<id>.txt` | proxy | MCP `smart_compact_get` | Full text of a compressed tool result. `id` = first 16 hex chars of SHA-256 of the UTF-8 content. |
 
@@ -41,6 +41,8 @@ A trim keeps, in their original order:
 - pinned messages before the cut (Chat and Responses `system` / `developer` messages, OpenCode 2 `system` messages; Anthropic keeps `system` outside the message list);
 - the **first real user turn**, verbatim: Anthropic, the first `user` message that is not only `tool_result` blocks; Chat, the first `user` message; Responses, the first user `message` item; OpenCode 2, the first `user` message that is not only `tool-result` parts. It usually states the task, so every trim keeps it ahead of the pointer;
 - the cut turn, with the pointer block prepended, and everything after it.
+
+A trim runs when the `.force` flag exists or the request's estimated prompt tokens reach the threshold. The estimate is calibrated from the provider's reported usage, with `CONTEXT_CHARS_PER_TOKEN` (default 2.5) as the fallback ratio ([context-proxy.md](context-proxy.md#token-estimate)); it never moves an existing cut.
 
 The cut is the last real user turn after the previous cut whose kept part (the suffix plus the pinned first turn) shares no tool call/result pair with the dropped part. No cut exists, and the request passes unchanged, when nothing but pinned messages and the first user turn precede it; in particular, nothing changes while the first user turn is still the in-flight turn. The pinned first turn is never written to the handoff log by a trim, and the pointer's `<n>` excludes it. An OpenCode 2 compaction drops it too, so the compaction logs it then, once, after the rows earlier trims logged.
 
