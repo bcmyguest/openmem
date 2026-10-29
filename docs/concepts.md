@@ -73,6 +73,10 @@ Agents do not call Hindsight or mem0 tool names by default. They call a **stable
 | `memory_forget` | Delete (scoped; confirm before bulk) |
 | `memory_export` / `memory_import` | Portability (PMM) |
 | `memory_provider_status` / `memory_project_scope` | Ops / bank resolution |
+| `memory_pages_list` / `memory_pages_search` / `memory_pages_read` | Curated knowledge pages (Hindsight) |
+| `memory_capture_initiative` | Track an approved feature plan (Hindsight) |
+| `memory_status` | Ingest drain state (Hindsight; mem0 always ready) |
+| `smart_compact_search` / `smart_compact_get` | Recover trimmed session context and compressed tool results (local, every provider) |
 
 The facade (`cli/mcp/memory-facade.mjs`) maps each call onto the active provider’s HTTP API. Native provider MCP (`install-mcp --provider-only`) remains available when you want vendor tools.
 

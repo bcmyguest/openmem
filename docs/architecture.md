@@ -194,6 +194,12 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 | `memory_forget` | Delete by id (mem0) or drop a Hindsight bank |
 | `memory_provider_status` | Active provider and loopback URL (no secrets) |
 | `memory_export` / `memory_import` | PMM portable format — [Portable memory (PMM)](memory-portability.md) |
+| `memory_project_scope` | Resolve a workspace's bank and hook access (local) |
+| `memory_pages_list` / `memory_pages_search` / `memory_pages_read` | List, search, and read curated knowledge pages (Hindsight; others return `supported: false`) |
+| `memory_capture_initiative` | Record an approved feature plan as a tracked initiative page plus marker memory (Hindsight) |
+| `memory_status` | Async ingest drain state and operation status (Hindsight; mem0 always ready) |
+| `smart_compact_search` | Search the context proxy's handoff logs of trimmed turns (local files, every provider) — [Context store](context-store.md) |
+| `smart_compact_get` | Return the full text of a compressed tool result by blob id, paged at 100k chars (local files, every provider) |
 
 **Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) with `--hindsight-plugin` adds a second hook set on Hindsight stacks.
 
