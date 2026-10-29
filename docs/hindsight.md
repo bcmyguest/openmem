@@ -47,7 +47,7 @@ npx @bcmyguest/openmem install-coding-agent --yes --provider-plugin
 npx @bcmyguest/openmem install-coding-agent --yes --no-provider-plugin   # back to OpenMem hooks
 ```
 
-`--hindsight-plugin` is a deprecated alias for `--provider-plugin`.
+`--hindsight-plugin` was renamed to `--provider-plugin`; the old flag exits with an error.
 
 MCP without session hooks:
 

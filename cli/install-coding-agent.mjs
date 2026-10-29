@@ -50,7 +50,7 @@ Every provider gets install-mcp. Session hooks are exclusive:
   --provider-plugin   the provider's own plugin (Hindsight: hindsight-coding-agents); removes openmem hooks
   --no-provider-plugin  switch back to openmem hooks
 The choice is saved as [agents] integration in ~/.config/personal-memory/config.toml.
---hindsight-plugin is a deprecated alias for --provider-plugin.
+--hindsight-plugin was renamed to --provider-plugin.
 
 rtk on PATH: runs rtk init for each supported agent (skip with --no-rtk).
 --context-proxy / --no-context-proxy: route Claude Code and OpenCode through the local
@@ -67,7 +67,6 @@ function parseArgs(argv) {
     contextProxy: undefined,
     agents: [...DEFAULT_AGENT_IDS],
     unknown: [],
-    deprecated: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -75,10 +74,7 @@ function parseArgs(argv) {
     else if (a === "--dry-run") flags.dry = true;
     else if (a === "--help" || a === "-h") flags.help = true;
     else if (a === "--provider-plugin") flags.providerPlugin = true;
-    else if (a === "--hindsight-plugin") {
-      flags.providerPlugin = true;
-      flags.deprecated.push("--hindsight-plugin is deprecated; use --provider-plugin");
-    } else if (a === "--no-provider-plugin") flags.providerPlugin = false;
+    else if (a === "--no-provider-plugin") flags.providerPlugin = false;
     else if (a === "--no-rtk") flags.rtk = false;
     else if (a === "--context-proxy") flags.contextProxy = true;
     else if (a === "--no-context-proxy") flags.contextProxy = false;
@@ -99,8 +95,7 @@ function h() {
 /** Resolve integration and proxy settings from flags, then config; persist flag choices. */
 function resolveSettings({ home, stackRoot, flags, write, log }) {
   const cfg = loadPmConfig(home, stackRoot || home).merged;
-  // Older callers pass `hindsightPlugin: true` directly.
-  const providerFlag = flags.providerPlugin ?? (flags.hindsightPlugin ? true : undefined);
+  const providerFlag = flags.providerPlugin;
   const integration = providerFlag === undefined ? agentIntegrationFromPmConfig(cfg) : providerFlag ? "provider" : "openmem";
   const proxy = contextProxyFromPmConfig(cfg);
   if (flags.contextProxy !== undefined) proxy.enabled = flags.contextProxy;
@@ -125,7 +120,6 @@ export async function runInstallCodingAgent(opts) {
       log.warn(`Unknown agent "${agentId}" (known: ${AGENT_IDS.join(", ")})`);
     }
   }
-  for (const note of flags.deprecated || []) log.warn(note);
   const provider = resolveMemoryProvider(home, env);
   const caps = PROVIDER_CAPABILITIES[provider] || {};
   log.info(`Provider ${provider}: capabilities ${JSON.stringify(caps)}`);
@@ -211,6 +205,10 @@ export async function runInstallCodingAgent(opts) {
 
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
+  if (flags.unknown.includes("--hindsight-plugin")) {
+    console.error("install-coding-agent: --hindsight-plugin was renamed to --provider-plugin");
+    process.exit(2);
+  }
   if (flags.help || flags.unknown.length) {
     console.log(HELP);
     process.exit(flags.unknown.length ? 2 : 0);
