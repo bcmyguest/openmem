@@ -6,9 +6,24 @@ One entry point for session wiring on **every** provider (unified MCP + in-repo 
 
 ```sh
 npx @bcmyguest/openmem install-coding-agent --yes
-# optional: --hindsight-plugin (also run @vectorize-io/hindsight-coding-agents on Hindsight stacks)
+# --provider-plugin / --no-provider-plugin: upstream Hindsight hooks instead of openmem's (saved in config)
+# --no-rtk: skip rtk wiring;  --context-proxy / --no-context-proxy: local context proxy (saved in config)
 # same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli,hermes,gemini-cli,amp,cline
 ```
+
+Persisted choices live in `~/.config/personal-memory/config.toml`:
+
+| Table | Key | Default | Flag |
+| --- | --- | --- | --- |
+| `[agents]` | `integration` = `openmem` \| `provider` | `openmem` | `--provider-plugin`, `--no-provider-plugin` |
+| `[context_proxy]` | `enabled` | `false` | `--context-proxy`, `--no-context-proxy` |
+| `[context_proxy]` | `port` | `4100` | edit the file |
+
+The two hook sets are exclusive; see [hook parity](coding-agent-hooks.md#install-per-agent).
+
+**rtk.** When [`rtk`](https://github.com/rtk-ai/rtk) is on `PATH`, the installer runs rtk's own setup per selected agent: `rtk init -g --auto-patch` (Claude Code), `rtk init -g --codex`, `rtk init -g --agent cursor`, `rtk init -g --opencode`. rtk adds PreToolUse-style command rewriting and keeps other hooks; OpenMem's reinstall keeps rtk's entries. `rtk init` is idempotent. `--no-rtk` skips it.
+
+**Context proxy.** `--context-proxy` creates `~/.config/personal-memory/context-proxy.env` (mode 600) with `LITELLM_MASTER_KEY` once and reuses it. Claude Code gets `env.ANTHROPIC_BASE_URL = http://127.0.0.1:<port>` and `env.ANTHROPIC_CUSTOM_HEADERS = x-litellm-api-key: Bearer <key>` in `~/.claude/settings.json`; OpenCode gets `provider.anthropic.options.baseURL = http://127.0.0.1:<port>/v1` and the same header ([OpenCode providers](https://opencode.ai/docs/providers/#base-url)). Claude Code then fails until the proxy runs. `--no-context-proxy` removes those keys when they still point at the loopback proxy; the key file stays. Codex stays hook-only.
 
 This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
 
@@ -16,7 +31,7 @@ For Codex, installation enables `features.hooks` when unset and preserves an exp
 
 Codex requires review of new or changed non-managed hooks in `/hooks` before they run. [Codex hook documentation](https://developers.openai.com/codex/hooks) describes this trust step.
 
-The command keeps existing agent settings and other MCP servers. It does not remove the optional Hindsight plugin; after checking the new MCP and hooks, remove the old plugin through its own uninstaller if you no longer want both integrations running.
+The command keeps existing agent settings and other MCP servers. With `integration = "openmem"` it removes the upstream Hindsight plugin's hook entries but leaves its MCP server and skill; remove those through the plugin's own uninstaller if you no longer want them.
 
 The wizard coding-agent step follows the same idea for Hindsight-first flows.
 

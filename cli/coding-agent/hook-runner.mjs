@@ -9,6 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
+import { providerSupports } from "./capabilities.mjs";
+import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { SHIM_HARNESSES } from "./hook-harnesses.mjs";
 import { sessionRecall, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
@@ -30,6 +32,17 @@ async function readStdinJson() {
 
 const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 const TRANSCRIPT_MAX_CHARS = 12000;
+
+/** Short SessionStart banner; names knowledge tools only when the provider has them. */
+export function sessionBanner(provider, bank) {
+  const tools = ["memory_recall", "memory_add"];
+  if (providerSupports(provider, "knowledge_pages")) tools.push("memory_pages_search");
+  if (providerSupports(provider, "initiatives")) tools.push("memory_capture_initiative");
+  return [
+    `[openmem] Memory provider ${provider}, bank ${bank}.`,
+    `Tools: ${tools.join(", ")}. Pass bank "${bank}" for this project.`,
+  ].join("\n");
+}
 
 function blockText(content, acceptedTypes) {
   if (typeof content === "string") return content;
@@ -186,6 +199,11 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
   const spec = SHIM_HARNESSES[harnessId];
   if (!spec) throw new Error(`unknown harness ${harnessId}`);
   const parsed = spec.parse[phase](ev);
+  const smartCompact = phase === "prompt" && isSmartCompactPrompt(parsed.prompt);
+  if (smartCompact) {
+    // Context trimming is independent of memory access; the flag never fails the hook.
+    try { writeForceFlag({ home, env, sessionId: parsed.sessionId }); } catch { /* best effort */ }
+  }
   const config = readAccessConfig(home);
   const access = config ? resolveAccess(parsed.cwd, config, home) : { allowed: false };
   if (!access.allowed) return spec.emit[phase](undefined);
@@ -202,15 +220,20 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
   let context = "";
 
   if (phase === "sessionStart") {
-    context = await sessionRecall(
+    try {
+      registerSession({ home, env, sessionId: parsed.sessionId, agent: harnessId, cwd: parsed.cwd, bank });
+    } catch { /* Registration is optional for the proxy; never fail SessionStart. */ }
+    const recalled = await sessionRecall(
       ctx,
       { query: "What should I know about this project and recent decisions?", bank, limit: 8,
         budget: "low", maxTokens: 1200 },
       fetchFn,
     );
+    const banner = sessionBanner(ctx.provider, bank);
+    context = recalled?.trim() ? `${banner}\n\n${recalled.trim()}` : banner;
   } else if (phase === "prompt") {
     const q = String(parsed.prompt || "").trim();
-    if (q) {
+    if (q && !smartCompact) {
       context = await sessionRecall(ctx, { query: q, bank, limit: 8 }, fetchFn);
     }
   } else if (phase === "stop") {

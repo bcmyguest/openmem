@@ -35,7 +35,7 @@ function tokens(source) {
   return out;
 }
 
-function parseJsonc(source) {
+export function parseJsonc(source) {
   const list = tokens(source);
   const compact = list.filter((token, i) => token.value !== "," || !["}", "]"].includes(list[i + 1]?.value));
   return JSON.parse(compact.map((token) => token.value).join(""));
