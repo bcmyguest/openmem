@@ -51,13 +51,14 @@ integration = "openmem"
 # Claude Code's ANTHROPIC_BASE_URL points at http://127.0.0.1:<port>.
 # trim_at_tokens / compress_over_tokens (and [compaction] max_chars) reach the proxy
 # container through the stack .env (written by ./setup and install-coding-agent) and the
-# OpenCode 2 plugin; the env vars CONTEXT_TRIM_AT_TOKENS, CONTEXT_COMPRESS_OVER_TOKENS and
-# CONTEXT_COMPACTION_MAX_CHARS override them.
+# OpenCode 2 plugin; the env vars CONTEXT_TRIM_AT_TOKENS, CONTEXT_COMPRESS_OVER_TOKENS,
+# CONTEXT_STANDING_INSTRUCTION and CONTEXT_COMPACTION_MAX_CHARS override them.
 [context_proxy]
 enabled = false
 port = 4100
 trim_at_tokens = 120000     # trim a session once its request exceeds this many tokens
 compress_over_tokens = 4000 # compress tool results larger than this
+standing_instruction = true # constant system-prompt note telling the agent to search trimmed turns
 
 # native (OpenCode 2 only): when OpenCode compacts a session, OpenMem's plugin supplies the
 # smart_compact_search pointer + recall as the summary instead of a model call.

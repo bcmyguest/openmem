@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import plugin from "../../cli/coding-agent/opencode2-plugin/index.js";
 import { callContextStoreTool } from "../../cli/mcp/context-store.mjs";
-import { pointerText } from "../../cli/coding-agent/context-trim.mjs";
+import { STANDING_INSTRUCTION, pointerText } from "../../cli/coding-agent/context-trim.mjs";
 import { sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
 
 let failed = 0;
@@ -25,12 +25,13 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "pm-opencode2-"));
 const project = path.join(home, "work", "demo");
 fs.mkdirSync(project, { recursive: true });
 const saved = {};
-for (const key of ["HOME", "HINDSIGHT_URL", "MEMORY_PROVIDER", "OPENMEM_STATE_DIR", "CONTEXT_TRIM_AT_TOKENS", "CONTEXT_PROXY_ENABLED", "PM_STACK_ROOT"]) saved[key] = process.env[key];
+for (const key of ["HOME", "HINDSIGHT_URL", "MEMORY_PROVIDER", "OPENMEM_STATE_DIR", "CONTEXT_TRIM_AT_TOKENS", "CONTEXT_PROXY_ENABLED", "CONTEXT_STANDING_INSTRUCTION", "PM_STACK_ROOT"]) saved[key] = process.env[key];
 const oldFetch = globalThis.fetch;
 Object.assign(process.env, { HOME: home, HINDSIGHT_URL: "http://memory.test", MEMORY_PROVIDER: "hindsight", PM_STACK_ROOT: path.join(home, "stack") });
 delete process.env.OPENMEM_STATE_DIR;
 delete process.env.CONTEXT_TRIM_AT_TOKENS;
 delete process.env.CONTEXT_PROXY_ENABLED;
+delete process.env.CONTEXT_STANDING_INSTRUCTION;
 
 const sessions = path.join(home, ".local", "share", "openmem", "context", "sessions");
 const ptr = (sid, dropped) => pointerText(sid, dropped, path.join(sessions, `${sid}.log.jsonl`));
@@ -122,8 +123,9 @@ try {
   check("first prompt uses reflect", calls.some((c) => c.url.endsWith("/reflect") && c.body.query === "how do we deploy?"));
   const first = contextEvent("ses_one", [user("how do we deploy?")]);
   await oc.hooks.context(first);
-  check("P4: context hook adds the session banner as a system part", first.system.length === 2 && first.system[1].type === "text"
+  check("P4: context hook adds the session banner as a system part", first.system.length === 3 && first.system[1].type === "text"
     && first.system[1].text === sessionBanner("hindsight", registration.bank));
+  check("standing instruction is a system part from the first request", first.system[2].type === "text" && first.system[2].text === STANDING_INSTRUCTION);
   const recallPart = first.messages[0]?.content?.[0]?.text || "";
   check("P6: prompt recall is a leading part of the newest user message, not system", recallPart.startsWith(`Personal memory for ${registration.bank}:\n`)
     && /reflected: how do we deploy\?/.test(recallPart) && recallPart.endsWith("\n\n") && first.messages[0].content[1].text === "how do we deploy?"
@@ -272,13 +274,31 @@ try {
   denied.emit({ id: "evt_10", type: "session.idle", data: { sessionID: "ses_denied" } });
   await settle();
   check("denied: no memory calls", calls.length === deniedCalls);
-  check("denied: no registration, no system memory", !fs.existsSync(path.join(sessions, "ses_denied.json")) && deniedContext.system.length === 1);
+  check("denied: no registration, no system memory", !fs.existsSync(path.join(sessions, "ses_denied.json")) && deniedContext.system.length === 2
+    && deniedContext.system[1].text === STANDING_INSTRUCTION);
   await denied.hooks.prompt({ sessionID: "ses_denied", messageID: "m2", prompt: { text: "/smart-compact" }, delivery: "steer" });
   check("denied: /smart-compact still writes .force", fs.existsSync(path.join(sessions, "ses_denied.force")));
   const deniedTrim = contextEvent("ses_denied", [user("a"), assistant("b"), user("c")]);
   await denied.hooks.context(deniedTrim);
   check("denied: trim has the pointer and no recall", deniedTrim.messages.length === 2 && deniedTrim.messages[1].content[0].text === `${ptr("ses_denied", 1)}\n\n` && calls.length === deniedCalls);
   deniedCleanup();
+
+  // Standing instruction: not duplicated when present; CONTEXT_STANDING_INSTRUCTION=0 leaves it out.
+  const again = contextEvent("ses_denied", [user("x")]);
+  again.system.push({ type: "text", text: STANDING_INSTRUCTION });
+  const dedupe = fakeContext(project);
+  const dedupeCleanup = await plugin.setup(dedupe.ctx);
+  await dedupe.hooks.context(again);
+  check("standing instruction not duplicated", again.system.filter((p) => p.text === STANDING_INSTRUCTION).length === 1 && again.system.length === 2);
+  dedupeCleanup();
+  process.env.CONTEXT_STANDING_INSTRUCTION = "0";
+  const standingOff = fakeContext(project);
+  const standingOffCleanup = await plugin.setup(standingOff.ctx);
+  const offContext = contextEvent("ses_denied", [user("x")]);
+  await standingOff.hooks.context(offContext);
+  check("CONTEXT_STANDING_INSTRUCTION=0 leaves the system prompt alone", offContext.system.length === 1);
+  standingOffCleanup();
+  delete process.env.CONTEXT_STANDING_INSTRUCTION;
 } finally {
   globalThis.fetch = oldFetch;
   for (const [key, value] of Object.entries(saved)) {

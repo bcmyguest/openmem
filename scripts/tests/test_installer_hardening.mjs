@@ -242,12 +242,18 @@ other = { command = "x" }
 // --- P2 readers and S3 ----------------------------------------------------------------------------
 {
   const cfg = { context_proxy: { trim_at_tokens: 50000, compress_over_tokens: -1, port: 4200 }, compaction: { max_chars: 900, native: false } };
-  check("trim reader defaults", JSON.stringify(contextTrimFromPmConfig({})) === JSON.stringify({ trimAtTokens: 120000, compressOverTokens: 4000, compactionMaxChars: 12000, compactionNative: true }));
+  check("trim reader defaults", JSON.stringify(contextTrimFromPmConfig({})) === JSON.stringify({ trimAtTokens: 120000, compressOverTokens: 4000, compactionMaxChars: 12000, compactionNative: true, standingInstruction: true }));
   const t = contextTrimFromPmConfig(cfg);
   check("trim reader reads keys; invalid falls back", t.trimAtTokens === 50000 && t.compressOverTokens === 4000 && t.compactionMaxChars === 900 && t.compactionNative === false);
   check("trim env has only set, valid keys", JSON.stringify(contextTrimEnvFromPmConfig(cfg)) === JSON.stringify({ CONTEXT_TRIM_AT_TOKENS: "50000", CONTEXT_COMPACTION_MAX_CHARS: "900" }));
   check("stack env adds the port", contextProxyStackEnvFromPmConfig(cfg).CONTEXT_PROXY_PORT === "4200" && contextProxyStackEnvFromPmConfig({}).CONTEXT_PROXY_PORT === undefined);
-  check("TOML integers are read", contextTrimFromPmConfig(TOML.parse("[context_proxy]\ntrim_at_tokens = 7\n")).trimAtTokens === 7);
+  const off = TOML.parse("[context_proxy]\nstanding_instruction = false\n");
+  check("standing_instruction = false reaches the reader and env", contextTrimFromPmConfig(off).standingInstruction === false
+    && contextTrimEnvFromPmConfig(off).CONTEXT_STANDING_INSTRUCTION === "0"
+    && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: true } }).CONTEXT_STANDING_INSTRUCTION === "1"
+    && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: "no" } }).CONTEXT_STANDING_INSTRUCTION === undefined
+    && contextProxyStackEnvFromPmConfig(off).CONTEXT_STANDING_INSTRUCTION === "0");
+  check("TOML integers are read",contextTrimFromPmConfig(TOML.parse("[context_proxy]\ntrim_at_tokens = 7\n")).trimAtTokens === 7);
 
   const home = tmpHome("s3");
   updatePmConfigTable(home, "compaction", { native: false, max_chars: 5000 });

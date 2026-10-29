@@ -17,6 +17,15 @@ export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
 export const DEFAULT_COMPACTION_MAX_CHARS = 12000;
 export const DEFAULT_RECALL_TIMEOUT_S = 5.0;
 export const MARKER_PREFIX = "[openmem: tool result compressed,";
+/**
+ * Added to the system prompt of every request while trimming is on, before any trim; constant, so the
+ * cached prefix never changes. Same text as STANDING_INSTRUCTION in proxy/openmem_context/core.py.
+ */
+export const STANDING_INSTRUCTION = "Context management: to fit your context window, older turns may be removed and replaced by an "
+  + "[openmem: …] pointer. Removed content is saved, not forgotten. Before answering anything that depends on "
+  + "earlier content you cannot see in your context — values, ids, keys, counts, decisions — call "
+  + "smart_compact_search (use `pattern` for exact ids/keys, `context` for neighbouring rows; `line_matches` gives "
+  + "exact counts); never guess or answer from memory you cannot see.";
 const HEAD_LINES = 40;
 const TAIL_LINES = 20;
 const HEAD_CHARS = 4000;
@@ -48,8 +57,10 @@ export function trimSettings(env = process.env, home = env.HOME) {
     const value = raw ? Number(raw) : Number.NaN;
     return Number.isFinite(value) ? value : fallback;
   };
+  const flag = (name) => !["0", "false", "no", "off"].includes(String(env[name] ?? "1").trim().toLowerCase());
   return {
-    enabled: !["0", "false", "no", "off"].includes(String(env.CONTEXT_PROXY_ENABLED ?? "1").trim().toLowerCase()),
+    enabled: flag("CONTEXT_PROXY_ENABLED"),
+    standingInstruction: flag("CONTEXT_STANDING_INSTRUCTION"),
     trimAtTokens: int("CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
     compressOverTokens: int("CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
     compactionMaxChars: int("CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
@@ -303,9 +314,20 @@ function locateCut(items, thread) {
 }
 
 export function pointerText(sid, dropped, logPath) {
-  return `[openmem: continuing session ${sid}; ${dropped} earlier messages trimmed. `
-    + `Use smart_compact_search(session_id="${sid}", query=...) for anything earlier; `
-    + `the handoff log is ${logPath} (JSONL, one row per block).]`;
+  return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. `
+    + `You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering `
+    + `anything that depends on them; the handoff log is ${logPath} (JSONL, one row per block).]`;
+}
+
+/**
+ * Push STANDING_INSTRUCTION onto an OpenCode 2 `event.system` array (text parts) unless an entry
+ * already carries it. Returns true when it pushed.
+ */
+export function addStandingInstruction(system, settings) {
+  if (!settings.enabled || !settings.standingInstruction || !Array.isArray(system)) return false;
+  if (system.some((part) => (typeof part === "string" ? part : part?.text) === STANDING_INSTRUCTION)) return false;
+  system.push({ type: "text", text: STANDING_INSTRUCTION });
+  return true;
 }
 
 export function pendingText(sid) {

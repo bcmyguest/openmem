@@ -17,6 +17,15 @@ from .tokens import estimate_tokens, fingerprint
 
 MAX_THREADS = 32
 RECALL_QUERY_MAX_CHARS = 2000
+# Added to the system prompt of every request while trimming is on, before any trim; constant, so the cached
+# prefix never changes. Same text as STANDING_INSTRUCTION in cli/coding-agent/context-trim.mjs.
+STANDING_INSTRUCTION = (
+    "Context management: to fit your context window, older turns may be removed and replaced by an "
+    "[openmem: …] pointer. Removed content is saved, not forgotten. Before answering anything that depends on "
+    "earlier content you cannot see in your context — values, ids, keys, counts, decisions — call "
+    "smart_compact_search (use `pattern` for exact ids/keys, `context` for neighbouring rows; `line_matches` gives "
+    "exact counts); never guess or answer from memory you cannot see."
+)
 
 
 def _log_error(exc):
@@ -32,9 +41,9 @@ def _utc_now():
 
 def pointer_text(sid, dropped, log_path):
     return (
-        f"[openmem: continuing session {sid}; {dropped} earlier messages trimmed. "
-        f'Use smart_compact_search(session_id="{sid}", query=...) for anything earlier; '
-        f"the handoff log is {log_path} (JSONL, one row per block).]"
+        f"[openmem: continuing session {sid}; {dropped} earlier messages are NOT in your context. "
+        f'You MUST call smart_compact_search(session_id="{sid}", query=... or pattern=...) before answering '
+        f"anything that depends on them; the handoff log is {log_path} (JSONL, one row per block).]"
     )
 
 
@@ -43,6 +52,12 @@ def pending_text(sid):
         "[openmem: memory ingest is still running, so the most recent turns may not be in memory yet. "
         f'Use smart_compact_search(session_id="{sid}", query=...) for them.]'
     )
+
+
+def add_standing_instruction(adapter, data):
+    """Add STANDING_INSTRUCTION to the request's system prompt unless it is already there."""
+    if STANDING_INSTRUCTION not in adapter.system_text(data):
+        adapter.add_instruction(data, STANDING_INSTRUCTION)
 
 
 def first_user_index(adapter, items):
@@ -158,6 +173,8 @@ def _rewrite(data, call_type, settings, http):
     sid = resolve_session_id(data, adapter, original)
     roots = [x for x in items if not adapter.is_pinned(x)]
     if not roots:
+        if settings.standing_instruction:
+            add_standing_instruction(adapter, data)
         return data
     root = fingerprint(roots[0])
     first = first_user_index(adapter, items)
@@ -196,9 +213,11 @@ def _rewrite(data, call_type, settings, http):
         elif thread and not cut:
             store.save_trim(sid, state)
 
-    if len(view) == len(original) and all(a is b for a, b in zip(view, original)):
-        return data
-    data[adapter.items_key] = view
+    if not (len(view) == len(original) and all(a is b for a, b in zip(view, original))):
+        data[adapter.items_key] = view
+    if settings.standing_instruction:
+        # After trimming, so the cut, the token estimate and the session id never see it.
+        add_standing_instruction(adapter, data)
     return data
 
 

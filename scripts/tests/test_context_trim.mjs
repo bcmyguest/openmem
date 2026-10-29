@@ -14,6 +14,8 @@ import {
   DEFAULT_COMPACTION_MAX_CHARS,
   DEFAULT_COMPRESS_OVER_TOKENS,
   DEFAULT_TRIM_AT_TOKENS,
+  STANDING_INSTRUCTION,
+  addStandingInstruction,
   compactionSummary,
   compressText,
   pendingText,
@@ -98,7 +100,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     view.length === 3 && view[0] === messages[0] && view[1] === sys && view[2].role === "user");
   check("pointer leads the kept turn", view[2].content[0].text === `${ptr(sid, 3)}\n\n` && view[2].content[1].text === "second question");
   check("pointer text follows the contract",
-    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages trimmed. Use smart_compact_search(session_id="${sid}", query=...) for anything earlier; the handoff log is ${path.join(sessions, `${sid}.log.jsonl`)} (JSONL, one row per block).]\n\n`);
+    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them; the handoff log is ${path.join(sessions, `${sid}.log.jsonl`)} (JSONL, one row per block).]\n\n`);
   check("input messages are not mutated", messages[5].content.length === 1);
 
   const rows = logLines(sid);
@@ -296,6 +298,28 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("blank session id leaves the request alone", (await trimContext({ sessionID: " \t", messages }, settingsFor({ trimAtTokens: 1 }))) === messages
     && (await compactionSummary({ sessionID: "", messages }, settingsFor())) === null);
   check("disabled settings return input", (await trimContext({ sessionID: "ses_off", messages }, settingsFor({ enabled: false, trimAtTokens: 1 }))) === messages);
+}
+
+// Standing instruction: a constant system part, on unless disabled, never duplicated, outside the trim.
+{
+  check("standing instruction on by default, off by env", trimSettings({}, "/h").standingInstruction
+    && !trimSettings({ CONTEXT_STANDING_INSTRUCTION: "0" }, "/h").standingInstruction
+    && !trimSettings({ CONTEXT_STANDING_INSTRUCTION: " Off " }, "/h").standingInstruction);
+  const system = [{ type: "text", text: "sys" }];
+  check("standing instruction pushed once", addStandingInstruction(system, settingsFor()) && !addStandingInstruction(system, settingsFor())
+    && system.length === 2 && system[1].type === "text" && system[1].text === STANDING_INSTRUCTION);
+  const off = [{ type: "text", text: "sys" }];
+  check("standing instruction absent when disabled", !addStandingInstruction(off, settingsFor({ standingInstruction: false }))
+    && !addStandingInstruction(off, settingsFor({ enabled: false })) && off.length === 1);
+  const again = [{ type: "text", text: "sys" }];
+  addStandingInstruction(again, settingsFor());
+  check("standing instruction byte-identical across requests", JSON.stringify(again) === JSON.stringify(system));
+  const history = [user("task"), assistant("a"), user("next"), assistant("b"), user("now")];
+  const a = await trimContext({ sessionID: "ses_si_a", system, messages: history }, settingsFor({ trimAtTokens: 1 }));
+  const b = await trimContext({ sessionID: "ses_si_a", system: [{ type: "text", text: "sys" }], messages: history },
+    settingsFor({ trimAtTokens: 1, contextDir: path.join(state, "si-off") }));
+  check("standing instruction does not move the cut", a.length === b.length && a.length === 2 && a[1].content[1].text === "now"
+    && b[1].content[1].text === "now");
 }
 
 fs.rmSync(state, { recursive: true, force: true });
