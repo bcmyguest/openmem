@@ -8,6 +8,9 @@ import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-
 const UPSTREAM_MARKER = /hindsight[-/]coding-agents/;
 const OPENMEM_PLUGIN = /openmem|personal-memory/;
 const OPENMEM_PLUGIN_FILE = "coding-agent/opencode-plugin.mjs";
+const OPENMEM_PLUGIN2_DIR = "coding-agent/opencode2-plugin";
+/** OpenCode 1 reads `plugin` (file paths); OpenCode 2 reads `plugins` (directory paths). */
+const OPENCODE_PLUGIN_KEYS = ["plugin", "plugins"];
 const SMART_COMPACT_COMMAND = `---
 description: Trim this session's context on the next request (OpenMem context proxy)
 ---
@@ -76,14 +79,23 @@ export function smartCompactCommandPath(home) {
   return path.join(home, ".claude", "commands", "smart-compact.md");
 }
 
-/** Remove matching OpenCode `plugin` entries; leaves the file untouched when nothing matches. */
-function stripOpencodePlugins(home, matches) {
+const entryText = (entry) => (typeof entry === "string" ? entry : JSON.stringify(entry));
+
+/**
+ * Remove matching entries from OpenCode's `plugin` (v1) and `plugins` (v2) lists; a file or key
+ * with nothing to remove is left untouched. Returns true on change.
+ */
+function stripOpencodePlugins(home, matches, keys = OPENCODE_PLUGIN_KEYS) {
   const file = opencodeConfigPath(home);
   if (!fs.existsSync(file)) return false;
-  const plugins = parseJsonc(fs.readFileSync(file, "utf8"))?.plugin;
-  if (!Array.isArray(plugins) || !plugins.some((p) => matches(String(p)))) return false;
-  mergeOpencodeConfig(home, "plugin", (existing) => existing.filter((p) => !matches(String(p))));
-  return true;
+  let changed = false;
+  for (const key of keys) {
+    const list = parseJsonc(fs.readFileSync(file, "utf8"))?.[key];
+    if (!Array.isArray(list) || !list.some((p) => matches(entryText(p)))) continue;
+    mergeOpencodeConfig(home, key, (existing) => existing.filter((p) => !matches(entryText(p))));
+    changed = true;
+  }
+  return changed;
 }
 
 /** Remove hook entries whose JSON text satisfies `matches` from each agent's hook config. */
@@ -119,13 +131,17 @@ function removeHooks({ home, agents, dry, h, matches, label }) {
 }
 
 /**
- * @param {{ home: string, repoRoot: string, agents: string[], dry: boolean, h?: { info: Function, ok: Function, warn: Function } }} opts
+ * @param {{ home: string, repoRoot: string, agents: string[], dry: boolean, opencodeMajor?: number, h?: { info: Function, ok: Function, warn: Function } }} opts
  */
 export function installSessionShim(opts) {
   const home = opts.home;
   const h = opts.h || SILENT;
   const agents = opts.agents.filter((id) => SHIM_AGENT_IDS.includes(id) || id === "opencode");
-  const opencodePlugin = path.join(opts.repoRoot, "cli", "coding-agent", "opencode-plugin.mjs");
+  const opencodeV2 = (opts.opencodeMajor || 1) >= 2;
+  const opencodePlugin = opencodeV2
+    ? path.join(opts.repoRoot, "cli", "coding-agent", "opencode2-plugin")
+    : path.join(opts.repoRoot, "cli", "coding-agent", "opencode-plugin.mjs");
+  const opencodeKey = opencodeV2 ? "plugins" : "plugin";
   if (!agents.length) {
     h.warn("no agents selected for session shim (claude-code, codex, cursor-cli, opencode)");
     return { installed: [] };
@@ -136,15 +152,17 @@ export function installSessionShim(opts) {
     if (agentId === "opencode") {
       const cfgPath = opencodeConfigPath(home);
       if (opts.dry) {
-        h.info(`[dry-run] register opencode plugin ${opencodePlugin} in ${cfgPath}`);
+        h.info(`[dry-run] register opencode ${opencodeV2 ? "2" : "1"} plugin ${opencodePlugin} in ${cfgPath} ("${opencodeKey}")`);
       } else {
-        mergeOpencodeConfig(home, "plugin", (existing) => {
+        // Remove the other major version's entry so exactly one OpenMem plugin loads.
+        stripOpencodePlugins(home, (text) => OPENMEM_PLUGIN.test(text), OPENCODE_PLUGIN_KEYS.filter((k) => k !== opencodeKey));
+        mergeOpencodeConfig(home, opencodeKey, (existing) => {
           const plugins = Array.isArray(existing)
-            ? existing.filter((p) => !OPENMEM_PLUGIN.test(String(p)))
+            ? existing.filter((p) => !OPENMEM_PLUGIN.test(entryText(p)))
             : [];
           return [...plugins, opencodePlugin];
         });
-        h.ok(`opencode: registered openmem plugin in ${cfgPath}`);
+        h.ok(`opencode: registered openmem ${opencodeV2 ? "OpenCode 2 " : ""}plugin in ${cfgPath}`);
       }
       installed.push("opencode");
       continue;
@@ -183,7 +201,7 @@ export function installSessionShim(opts) {
 export function removeSessionShim({ home, agents, dry = false, h = SILENT }) {
   const out = removeHooks({
     home, agents, dry, h, label: "openmem",
-    matches: (text) => text.includes(SHIM_MARKER) || text.includes(OPENMEM_PLUGIN_FILE),
+    matches: (text) => text.includes(SHIM_MARKER) || text.includes(OPENMEM_PLUGIN_FILE) || text.includes(OPENMEM_PLUGIN2_DIR),
   });
   const command = smartCompactCommandPath(home);
   if (agents.includes("claude-code") && !dry && fs.existsSync(command)

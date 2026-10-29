@@ -14,6 +14,7 @@ import { installSessionShim, removeSessionShim, removeUpstreamHooks } from "./co
 import { installAgentAccess } from "./coding-agent/install-access.mjs";
 import { installContextProxy } from "./coding-agent/install-context-proxy.mjs";
 import { installRtk } from "./coding-agent/install-rtk.mjs";
+import { opencodeMajorVersion } from "./coding-agent/opencode-config.mjs";
 import { prepareAgentRuntime } from "./coding-agent/runtime.mjs";
 import { SHIM_AGENT_IDS } from "./coding-agent/hook-harnesses.mjs";
 import { resolveMemoryProvider } from "./install-memory-mcp.mjs";
@@ -135,6 +136,7 @@ export async function runInstallCodingAgent(opts) {
     log.warn(`Provider ${provider} has no coding-agent plugin; installing openmem hooks instead`);
   }
   const shimAgents = flags.agents.filter((id) => SHIM_AGENT_IDS.includes(id) || id === "opencode");
+  const opencodeMajor = flags.agents.includes("opencode") ? opencodeMajorVersion({ env }) : 1;
   const runtimeRoot = prepareAgentRuntime({
     home, repoRoot: opts.repoRoot, stackRoot: opts.stackRoot, dry, h: log,
   });
@@ -147,12 +149,12 @@ export async function runInstallCodingAgent(opts) {
     if (useProviderPlugin) {
       removeSessionShim({ home, agents: shimAgents, dry: true, h: log });
     } else {
-      installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: true, h: log });
+      installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: true, h: log, opencodeMajor });
       removeUpstreamHooks({ home, agents: shimAgents, dry: true, h: log });
     }
     installAgentAccess({ home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: true, h: log });
     if (flags.rtk) installRtk({ agents: flags.agents, env, dry: true, h: log });
-    installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, dry: true, h: log });
+    installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, dry: true, h: log, opencodeMajor });
     if (useProviderPlugin) log.info(`dry-run: would also run ${upstreamCmd().join(" ")}`);
     return { provider, integration, ran: false };
   }
@@ -172,14 +174,14 @@ export async function runInstallCodingAgent(opts) {
   if (useProviderPlugin) {
     removeSessionShim({ home, agents: shimAgents, h: log });
   } else {
-    installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: false, h: log });
+    installSessionShim({ home, repoRoot: runtimeRoot, agents: shimAgents, dry: false, h: log, opencodeMajor });
     removeUpstreamHooks({ home, agents: shimAgents, h: log });
   }
   installAgentAccess({
     home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: false, h: log,
   });
   const rtk = flags.rtk ? installRtk({ agents: flags.agents, env, h: log, spawn: opts.spawn }) : { rtk: null, ran: [] };
-  const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, h: log });
+  const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, h: log, opencodeMajor });
 
   let status = 0;
   if (useProviderPlugin) {
@@ -192,7 +194,11 @@ export async function runInstallCodingAgent(opts) {
   for (const agentId of flags.agents) {
     if (shimAgents.includes(agentId)) {
       const hooks = useProviderPlugin ? "upstream Hindsight hooks" : "openmem session hooks";
-      const extras = [rtk.ran.includes(agentId) ? "rtk" : "", proxyOut.changed.includes(agentId) && proxy.enabled ? "context proxy" : ""].filter(Boolean);
+      const extras = [
+        rtk.ran.includes(agentId) ? "rtk" : "",
+        proxyOut.changed.includes(agentId) && proxy.enabled ? "context proxy" : "",
+        !useProviderPlugin && proxyOut.native.includes(agentId) ?"native context trimming (OpenCode 2; context proxy not used)" : "",
+      ].filter(Boolean);
       log.info(`  ${agentId}: ${hooks} + unified MCP${extras.length ? ` + ${extras.join(" + ")}` : ""}`);
     } else {
       const row = CODING_AGENTS.find((a) => a.id === agentId);

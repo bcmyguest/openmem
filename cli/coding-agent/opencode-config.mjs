@@ -1,5 +1,18 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+
+/** OpenCode major version from `opencode --version`; any failure counts as 1. */
+export function opencodeMajorVersion({ env = process.env, spawn = spawnSync } = {}) {
+  try {
+    const r = spawn("opencode", ["--version"], { env, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    const match = r?.status === 0 ? /(\d+)\.\d+/.exec(String(r.stdout || "")) : null;
+    const major = match ? Number(match[1]) : 1;
+    return major >= 2 ? major : 1;
+  } catch {
+    return 1;
+  }
+}
 
 export function opencodeConfigPath(home) {
   const dir = path.join(home, ".config", "opencode");
