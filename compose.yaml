@@ -157,6 +157,46 @@ services:
         required: false
     restart: unless-stopped
 
+  # Opt-in: docker compose --profile context-proxy up -d context-proxy. LiteLLM in front of Anthropic for coding
+  # agents: compresses large tool results and trims long sessions (docs/context-proxy.md). Separate from the litellm
+  # service and outside the hindsight profile, so Hindsight's own model traffic never passes through it.
+  context-proxy:
+    profiles: ["context-proxy"]
+    image: ghcr.io/berriai/litellm:v1.106.6
+    command: ["--config", "/app/proxy/config.yaml", "--port", "4000"]
+    # LITELLM_MASTER_KEY (and any provider keys for extra routes). Written by install-coding-agent.
+    env_file: ${CONTEXT_PROXY_ENV_FILE:-${HOME}/.config/personal-memory/context-proxy.env}
+    # Host UID/GID from .env, written by scripts/setup.sh; the context store stays host-owned (docs/context-store.md).
+    user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
+    ports:
+      - "127.0.0.1:${CONTEXT_PROXY_PORT:-4100}:4000"
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      OPENMEM_STATE_DIR: /state
+      HINDSIGHT_URL: ${CONTEXT_PROXY_HINDSIGHT_URL:-http://hindsight:8888}
+      CONTEXT_PROXY_ENABLED: ${CONTEXT_PROXY_ENABLED:-1}
+      CONTEXT_TRIM_AT_TOKENS: ${CONTEXT_TRIM_AT_TOKENS:-120000}
+      CONTEXT_COMPRESS_OVER_TOKENS: ${CONTEXT_COMPRESS_OVER_TOKENS:-4000}
+      CONTEXT_COMPACTION_MAX_CHARS: ${CONTEXT_COMPACTION_MAX_CHARS:-12000}
+    volumes:
+      - ./proxy:/app/proxy:ro
+      # Create it first (mode 700, host-owned); compose would otherwise create a root-owned directory.
+      - type: bind
+        source: ${OPENMEM_STATE_DIR:-${HOME}/.local/share/openmem}/context
+        target: /state/context
+        bind:
+          create_host_path: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
 volumes:
   hindsight-data:
   indexer-state:
