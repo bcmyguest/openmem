@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "../bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "../access-policy.mjs";
 import { SMART_COMPACT_BODY, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
-import { compactionSummary, fingerprint, isTurnStart, logFailOpen, trimContext, trimSettings } from "../context-trim.mjs";
+import { addStandingInstruction, compactionSummary, fingerprint, isTurnStart, logFailOpen, trimContext, trimSettings } from "../context-trim.mjs";
 import { sessionBanner } from "../hook-runner.mjs";
 import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
@@ -180,6 +180,9 @@ async function setup(ctx) {
       if (decorated.some((m, i) => m !== original[i])) messages = decorated;
     }
     if (messages !== original) event.messages = messages;
+    // Constant and after the banner, so the system prefix is the same from the first request on; added after
+    // the trim so its size never moves the cut (the proxy adds it after trimming too).
+    try { addStandingInstruction(event.system, settings); } catch (error) { logFailOpen(error); }
   }
 
   async function onCompaction(event) {

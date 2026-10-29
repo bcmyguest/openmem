@@ -58,12 +58,38 @@ The cut is the last real user turn after the previous cut whose kept part (the s
 | `name` | Tool name for `tool_use` / `tool_result`, else `null` |
 | `text` | Plain text; tool inputs as compact JSON; compressed tool results reference their blob as `[blob:<id>]` |
 
+## Search counts
+
+`smart_compact_search` (`cli/mcp/context-store.mjs`) returns two counts over every searched row, independent of `limit`:
+
+| Field | Counts |
+| --- | --- |
+| `total_matches` | Rows that match: the regex matches the row text (`pattern`), or the row contains at least one term (`query`) |
+| `line_matches` | Lines of row text (each `text` split on `\n`) that match, like `grep -c` over the logged text: the regex matches the line, with `^` and `$` per line (`pattern`), or the line contains every term, case-insensitive (`query`) |
+
+`pattern` scans the first 20000 characters of each row for both counts, inside the 1 s regex budget; when the budget runs out the response carries the partial counts and `timed_out: true`. `query` counts are exact. Use `line_matches` for "how many" questions.
+
 ## Proxy-inserted text
+
+Standing instruction, added to the system prompt of every request while trimming is enabled, from the first request on and before any trim:
+
+```
+Context management: to fit your context window, older turns may be removed and replaced by an [openmem: …] pointer. Removed content is saved, not forgotten. Before answering anything that depends on earlier content you cannot see in your context — values, ids, keys, counts, decisions — call smart_compact_search (use `pattern` for exact ids/keys, `context` for neighbouring rows; `line_matches` gives exact counts); never guess or answer from memory you cannot see.
+```
+
+It is a constant (`STANDING_INSTRUCTION` in `proxy/openmem_context/core.py` and `cli/coding-agent/context-trim.mjs`), so the system prefix is byte-identical on every request and the prompt cache keeps hitting. It is added after trimming: the cut, the token estimate and the fingerprint session id never see it. A request whose system text already contains it is left alone. `CONTEXT_STANDING_INSTRUCTION=0`, or `[context_proxy] standing_instruction = false` in config.toml, turns it off; `CONTEXT_PROXY_ENABLED=0` turns it off with the trim. Placement:
+
+| Format | Where |
+| --- | --- |
+| Anthropic | One text block appended to `system`; a string `system` becomes a single leading text block first, an absent one becomes `[block]` |
+| Chat | One `system` message inserted after the leading `system` / `developer` messages (index 0 when there are none) |
+| Responses | Appended to `instructions` after a blank line (or set as `instructions` when absent). `instructions` precede every input item and stay fixed for a session, so a trim of `input` never moves the instruction |
+| OpenCode 2 | One `{type: "text"}` entry pushed onto `event.system`, after the session banner |
 
 Pointer block placed at the start of the cut turn after a trim:
 
 ```
-[openmem: continuing session <sid>; <n> earlier messages trimmed. Use smart_compact_search(session_id="<sid>", query=...) for anything earlier; the handoff log is <log path> (JSONL, one row per block).]
+[openmem: continuing session <sid>; <n> earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="<sid>", query=... or pattern=...) before answering anything that depends on them; the handoff log is <log path> (JSONL, one row per block).]
 ```
 
 `<log path>` is `sessions/<sid>.log.jsonl` under the context root as the agent sees it, so an agent with a shell can `rg` it. The OpenCode 2 plugin runs on the host and names its own path. The proxy runs in a container where the root is `/state/context`, so it names `$OPENMEM_HOST_STATE_DIR/context/sessions/<sid>.log.jsonl` when `OPENMEM_HOST_STATE_DIR` is set (the host value of `OPENMEM_STATE_DIR`), else its own path.
@@ -90,4 +116,4 @@ Compressed tool result:
 
 The compressed form is a pure function of the original content and the configured thresholds, so the same tool result renders to the same bytes on every request and the prompt-cache prefix stays valid.
 
-`scripts/tests/test_context_parity.mjs` runs the fixture requests in `scripts/tests/fixtures/context-parity.json` through both implementations and requires identical views, log rows and blobs.
+`scripts/tests/test_context_parity.mjs` runs the fixture requests in `scripts/tests/fixtures/context-parity.json` through both implementations and requires identical views, log rows and blobs. The fixture also holds the golden standing instruction and pointer text, which `STANDING_INSTRUCTION` and `pointer_text` / `pointerText` must reproduce byte for byte.

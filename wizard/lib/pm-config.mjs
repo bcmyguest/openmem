@@ -236,7 +236,7 @@ export function contextProxyFromPmConfig(cfg) {
 
 /**
  * Trim settings with defaults: `[context_proxy] trim_at_tokens` (120000), `compress_over_tokens`
- * (4000), `[compaction] max_chars` (12000), `native` (true). Env overrides are applied by
+ * (4000), `standing_instruction` (true), `[compaction] max_chars` (12000), `native` (true). Env overrides are applied by
  * `contextTrimEnvFromPmConfig` + `trimSettings()`, not here.
  * @param {Record<string, unknown>} cfg
  */
@@ -248,6 +248,7 @@ export function contextTrimFromPmConfig(cfg) {
     compressOverTokens: countValue(proxy.compress_over_tokens) ?? DEFAULT_COMPRESS_OVER_TOKENS,
     compactionMaxChars: countValue(compaction.max_chars) ?? DEFAULT_COMPACTION_MAX_CHARS,
     compactionNative: compaction.native !== false,
+    standingInstruction: proxy.standing_instruction !== false,
   };
 }
 
@@ -255,7 +256,8 @@ export function contextTrimFromPmConfig(cfg) {
  * Context-trim settings that config.toml sets, as the environment variables the proxy and
  * `trimSettings()` read: `[context_proxy] trim_at_tokens` → CONTEXT_TRIM_AT_TOKENS,
  * `compress_over_tokens` → CONTEXT_COMPRESS_OVER_TOKENS, `[compaction] max_chars` →
- * CONTEXT_COMPACTION_MAX_CHARS. Unset or invalid keys are left out, so the reader's defaults
+ * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
+ * CONTEXT_STANDING_INSTRUCTION ("1" / "0"). Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
  * @param {Record<string, unknown>} cfg
  * @returns {Record<string, string>}
@@ -266,6 +268,8 @@ export function contextTrimEnvFromPmConfig(cfg) {
     const value = countValue(tableOf(cfg, table)[key]);
     if (value !== undefined) out[envName] = String(value);
   }
+  const standing = tableOf(cfg, "context_proxy").standing_instruction;
+  if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
   return out;
 }
 

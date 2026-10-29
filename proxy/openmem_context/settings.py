@@ -33,9 +33,16 @@ def _float(env, name, default):
         return default
 
 
+def _flag(env, name):
+    """True unless the variable is 0, false, no or off."""
+    return str(env.get(name, "1")).strip().lower() not in ("0", "false", "no", "off")
+
+
 @dataclass(frozen=True)
 class Settings:
     enabled: bool = True
+    # STANDING_INSTRUCTION in every request's system prompt (CONTEXT_STANDING_INSTRUCTION=0 turns it off).
+    standing_instruction: bool = True
     trim_at_tokens: int = DEFAULT_TRIM_AT_TOKENS
     compress_over_tokens: int = DEFAULT_COMPRESS_OVER_TOKENS
     compaction_max_chars: int = DEFAULT_COMPACTION_MAX_CHARS
@@ -56,7 +63,8 @@ class Settings:
         root = Path(state_dir) if state_dir else Path.home() / ".local" / "share" / "openmem"
         host_state_dir = str(env.get("OPENMEM_HOST_STATE_DIR", "")).strip(ASCII_WHITESPACE)
         return cls(
-            enabled=str(env.get("CONTEXT_PROXY_ENABLED", "1")).strip().lower() not in ("0", "false", "no", "off"),
+            enabled=_flag(env, "CONTEXT_PROXY_ENABLED"),
+            standing_instruction=_flag(env, "CONTEXT_STANDING_INSTRUCTION"),
             trim_at_tokens=_int(env, "CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
             compress_over_tokens=_int(env, "CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
             compaction_max_chars=_int(env, "CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),

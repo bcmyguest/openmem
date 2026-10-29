@@ -32,7 +32,9 @@ export const CONTEXT_STORE_MCP_TOOLS = [
       "Use when an [openmem: continuing session …] pointer says earlier messages were trimmed and you need a detail from them; " +
       "pass that session_id. Without session_id it searches recent sessions registered under this workspace's git root. " +
       "Pass exactly one of query (words) or pattern (JavaScript regex, rg-style); context adds that many neighbouring rows " +
-      "before and after each hit. log_files maps each searched session to its JSONL log, which a shell-capable agent can rg directly. " +
+      "before and after each hit. total_matches counts matching rows; line_matches counts matching lines of row text across every searched row, " +
+      "not only the returned ones (line_matches = grep -c over the saved log; use it for 'how many' questions). " +
+      "log_files maps each searched session to its JSONL log, which a shell-capable agent can rg directly. " +
       "Rows citing [blob:<id>] return blob_ids for smart_compact_get. Not durable project memory: use memory_recall for that. " +
       "Local files only; works with every provider. Read-only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -224,19 +226,31 @@ function termMatch(terms, text) {
   return matched ? { matched, first } : null;
 }
 
+/** Lines of text that contain every term (case-insensitive), the line form of termMatch. */
+function termLineCount(terms, text) {
+  let n = 0;
+  for (const line of text.toLowerCase().split("\n")) if (terms.every((t) => line.includes(t))) n++;
+  return n;
+}
+
 /**
- * Regex hits as [rowIndex, offset] pairs, scanning the first PATTERN_ROW_CHARS of each text.
- * Runs in a vm context so V8 interrupts catastrophic backtracking at the deadline; hits found
- * before the deadline are kept. Returns whether the deadline cut the scan short.
+ * Regex hits as [rowIndex, offset] pairs, scanning the first PATTERN_ROW_CHARS of each text, and
+ * the number of matching lines of those scanned texts added to counter.lines. Runs in a vm context
+ * so V8 interrupts catastrophic backtracking at the deadline; hits and lines counted before the
+ * deadline are kept. Returns whether the deadline cut the scan short.
  */
-function patternScan(re, texts, deadline, out) {
+function patternScan(re, texts, deadline, out, counter) {
   const timeout = Math.floor(deadline - Date.now());
   if (timeout < 1) return true;
-  const sandbox = { re, texts: texts.map((t) => t.slice(0, PATTERN_ROW_CHARS)), out };
+  const sandbox = { re, texts: texts.map((t) => t.slice(0, PATTERN_ROW_CHARS)), out, counter };
   try {
-    vm.runInNewContext("for (let i = 0; i < texts.length; i++) { const m = re.exec(texts[i]); if (m) out.push([i, m.index]); }", sandbox, {
-      timeout,
-    });
+    vm.runInNewContext(
+      // Every row's lines are tested, not only hit rows': `^` and `$` match per line, as in grep -c.
+      "for (let i = 0; i < texts.length; i++) { const m = re.exec(texts[i]); if (m) out.push([i, m.index]); "
+        + "for (const line of texts[i].split('\\n')) if (re.test(line)) counter.lines++; }",
+      sandbox,
+      { timeout },
+    );
     return false;
   } catch (err) {
     if (err?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") return true;
@@ -262,6 +276,7 @@ function search(args, env, cwd) {
 
   const deadline = Date.now() + PATTERN_BUDGET_MS;
   let timedOut = false;
+  const counter = { lines: 0 };
   const hits = [];
   const logs = new Map();
   const logFiles = {};
@@ -275,13 +290,15 @@ function search(args, env, cwd) {
     if (re) {
       if (timedOut) return;
       const found = [];
-      timedOut = patternScan(re, rows.map((r) => r.text), deadline, found);
+      timedOut = patternScan(re, rows.map((r) => r.text), deadline, found, counter);
       for (const [index, at] of found) add(index, 1, at);
       return;
     }
     rows.forEach((row, index) => {
       const m = termMatch(terms, row.text);
-      if (m) add(index, m.matched, m.first);
+      if (!m) return;
+      add(index, m.matched, m.first);
+      if (m.matched === terms.length) counter.lines += termLineCount(terms, row.text);
     });
   });
   hits.sort((a, b) => b.matched - a.matched || a.sessionRank - b.sessionRank || b.seq - a.seq);
@@ -291,6 +308,7 @@ function search(args, env, cwd) {
     sessions_searched: sessions,
     log_files: logFiles,
     total_matches: hits.length,
+    line_matches: counter.lines,
   };
   const overhead = JSON.stringify(envelope, null, 2).length;
   const results = [];

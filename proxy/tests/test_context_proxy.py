@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openmem_context import Settings, process_request  # noqa: E402
 from openmem_context.compress import blob_id, compress_text  # noqa: E402
-from openmem_context.core import pointer_text  # noqa: E402
+from openmem_context.core import STANDING_INSTRUCTION, pointer_text  # noqa: E402
 
 SID = "sess-1"
 BIG = 10_000_000  # threshold no request reaches
@@ -55,8 +55,9 @@ class Base(unittest.TestCase):
         self.calls = []
 
     def settings(self, **kw):
+        # The standing instruction has its own tests (StandingInstructionTests); off here keeps the trim views plain.
         base = dict(trim_at_tokens=BIG, compress_over_tokens=0, compaction_max_chars=12000,
-                    hindsight_url="http://hs.test", context_dir=self.ctx)
+                    hindsight_url="http://hs.test", context_dir=self.ctx, standing_instruction=False)
         base.update(kw)
         return Settings(**base)
 
@@ -631,6 +632,108 @@ class SafetyTests(Base):
         data = anth_request(anth_history(3))
         before = copy.deepcopy(data)
         self.assertEqual(self.run_req(data, "aembedding", trim_at_tokens=1), before)
+
+
+class StandingInstructionTests(Base):
+    """STANDING_INSTRUCTION: on every request from the first, byte-identical, outside the trim."""
+
+    def on(self, data, call_type="anthropic_messages", **kw):
+        return self.run_req(data, call_type, standing_instruction=True, **kw)
+
+    def test_pointer_text_contract(self):
+        self.assertEqual(pointer_text("s1", 3, "/x/s1.log.jsonl"),
+                         "[openmem: continuing session s1; 3 earlier messages are NOT in your context. "
+                         'You MUST call smart_compact_search(session_id="s1", query=... or pattern=...) before '
+                         "answering anything that depends on them; the handoff log is /x/s1.log.jsonl "
+                         "(JSONL, one row per block).]")
+
+    def test_anthropic_first_request_appends_one_block(self):
+        msgs = anth_history(2)
+        out = self.on(anth_request(copy.deepcopy(msgs)))
+        self.assertEqual(out["system"], [{"type": "text", "text": "SYSTEM"},
+                                         {"type": "text", "text": STANDING_INSTRUCTION}])
+        self.assertEqual(out["messages"], msgs)
+        self.assertFalse((self.ctx / "sessions" / f"{SID}.log.jsonl").exists())
+
+    def test_anthropic_string_and_missing_system(self):
+        data = {**anth_request(anth_history(1)), "system": "S"}
+        self.assertEqual(self.on(data)["system"], [{"type": "text", "text": "S"},
+                                                   {"type": "text", "text": STANDING_INSTRUCTION}])
+        data = anth_request(anth_history(1))
+        del data["system"]
+        self.assertEqual(self.on(data)["system"], [{"type": "text", "text": STANDING_INSTRUCTION}])
+
+    def test_identical_across_requests_and_trims(self):
+        msgs = anth_history(3)
+        before = self.on(anth_request(copy.deepcopy(msgs)))["system"]
+        trimmed = self.on(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
+        msgs += [{"role": "assistant", "content": [{"type": "text", "text": "more"}]}]
+        after = self.on(anth_request(copy.deepcopy(msgs)))
+        self.assertEqual(json.dumps(before), json.dumps(trimmed["system"]))
+        self.assertEqual(json.dumps(before), json.dumps(after["system"]))
+        self.assertEqual(trimmed["messages"][1]["content"][0]["text"], self.ptr(7))
+        self.assertEqual(json.dumps(after["messages"][:len(trimmed["messages"])]), json.dumps(trimmed["messages"]))
+
+    def test_absent_when_disabled(self):
+        out = self.run_req(anth_request(anth_history(2)), trim_at_tokens=1)
+        self.assertEqual(out["system"], [{"type": "text", "text": "SYSTEM"}])
+        self.assertTrue(Settings.from_env({}).standing_instruction)
+        self.assertFalse(Settings.from_env({"CONTEXT_STANDING_INSTRUCTION": "0"}).standing_instruction)
+        self.assertFalse(Settings.from_env({"CONTEXT_STANDING_INSTRUCTION": " off "}).standing_instruction)
+        out = process_request(anth_request(anth_history(2)), "anthropic_messages",
+                              Settings(enabled=False, context_dir=self.ctx), http=self.http)
+        self.assertEqual(out["system"], [{"type": "text", "text": "SYSTEM"}])
+
+    def test_not_duplicated_when_present(self):
+        data = anth_request(anth_history(1))
+        data["system"] = [{"type": "text", "text": "SYSTEM"}, {"type": "text", "text": STANDING_INSTRUCTION}]
+        self.assertEqual(len(self.on(data)["system"]), 2)
+        chat = [{"role": "system", "content": STANDING_INSTRUCTION}, *chat_history()]
+        out = self.on({"messages": copy.deepcopy(chat), **headers()}, "acompletion")
+        self.assertEqual(out["messages"], chat)
+        out = self.on({"input": responses_history(), "instructions": f"I\n\n{STANDING_INSTRUCTION}", **headers()},
+                      "aresponses")
+        self.assertEqual(out["instructions"], f"I\n\n{STANDING_INSTRUCTION}")
+
+    def test_cut_and_pairs_unchanged(self):
+        msgs = anth_history(3) + [
+            {"role": "user", "content": "now this"},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "tuX", "name": "Read", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tuX", "content": "x"}]}]
+        on = self.on(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
+        no_ts = lambda rows: [{k: v for k, v in r.items() if k != "ts"} for r in rows]  # noqa: E731
+        on_rows = no_ts(self.log_rows())
+        self.ctx = Path(self.tmp.name) / "context-off"
+        off = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
+        self.assertEqual(json.dumps(on["messages"]).replace("context/", "context-off/"), json.dumps(off["messages"]))
+        self.assertEqual(on["messages"][1]["content"][1:], [{"type": "text", "text": "now this"}])
+        self.assertEqual(on_rows, no_ts(self.log_rows()))
+
+    def test_chat_inserted_after_leading_system(self):
+        msgs = chat_history()
+        out = self.on({"messages": copy.deepcopy(msgs), **headers()}, "acompletion")
+        self.assertEqual(out["messages"], [msgs[0], {"role": "system", "content": STANDING_INSTRUCTION}, *msgs[1:]])
+        trimmed = self.on({"messages": copy.deepcopy(msgs), **headers("t")}, "acompletion", trim_at_tokens=1)
+        kept = trimmed["messages"]
+        self.assertEqual(kept[:3], [msgs[0], {"role": "system", "content": STANDING_INSTRUCTION}, msgs[1]])
+        self.assertEqual(kept[3]["content"], self.ptr(3, "t") + "\n\nsecond")
+        self.assertEqual(kept[4:], msgs[6:])
+        bare = self.on({"messages": chat_history()[1:], **headers("b")}, "acompletion")
+        self.assertEqual(bare["messages"][0], {"role": "system", "content": STANDING_INSTRUCTION})
+
+    def test_responses_appended_to_instructions(self):
+        out = self.on({"input": responses_history(), "instructions": "I", **headers()}, "aresponses", trim_at_tokens=1)
+        self.assertEqual(out["instructions"], f"I\n\n{STANDING_INSTRUCTION}")
+        self.assertEqual(out["input"][2]["content"], self.ptr(4) + "\n\nsecond")
+        out = self.on({"input": responses_history(), **headers("r2")}, "aresponses")
+        self.assertEqual(out["instructions"], STANDING_INSTRUCTION)
+        self.assertEqual(out["input"], responses_history())
+
+    def test_session_id_fallback_ignores_instruction(self):
+        data = {"model": "claude", "system": "S", "messages": anth_history(2)}
+        first = self.on(copy.deepcopy(data), trim_at_tokens=1)["messages"][1]["content"][0]["text"]
+        again = self.run_req(copy.deepcopy(data), trim_at_tokens=1)["messages"][1]["content"][0]["text"]
+        self.assertEqual(first, again)
 
 
 if __name__ == "__main__":

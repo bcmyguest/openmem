@@ -3,7 +3,8 @@
  * Parity between the context proxy core (proxy/openmem_context, python3, Chat adapter) and its JS port
  * (cli/coding-agent/context-trim.mjs, OpenCode 2 parts). The same fixture requests
  * (scripts/tests/fixtures/context-parity.json) run through both; rendered views (pointer, pinned first
- * user turn, cut, compressed text), handoff log rows and blob files must match. Disposable state only.
+ * user turn, cut, compressed text), handoff log rows and blob files must match, and both sides must produce
+ * the fixture's golden standing instruction and pointer text. Disposable state only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -11,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeSessionId } from "../../cli/coding-agent/context-store.mjs";
-import { trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
+import { STANDING_INSTRUCTION, addStandingInstruction, pointerText, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "scripts/tests/fixtures/context-parity.json"), "utf8"));
@@ -23,13 +24,15 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from pathlib import Path
 from openmem_context import Settings, core, process_request
+from openmem_context.core import STANDING_INSTRUCTION, pointer_text
 from openmem_context.store import sanitize_sid
 core._utc_now = lambda: ${JSON.stringify(TS)}
 job = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 ctx = Path(job["state"]) / "context"
 def no_http(*args):
     raise AssertionError("no registration, so no recall")
-out = []
+ptr = job["pointer"]
+out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"], ptr["log_path"]), "views": []}
 for case in job["cases"]:
     views = []
     for req in case["requests"]:
@@ -39,7 +42,7 @@ for case in job["cases"]:
         data = {"messages": req["messages"], "proxy_server_request": {"headers": {"x-openmem-session-id": case["sid"]}}}
         settings = Settings(trim_at_tokens=req["trim_at"], compress_over_tokens=case["compress"], context_dir=ctx)
         views.append(process_request(data, "acompletion", settings, http=no_http)["messages"])
-    out.append(views)
+    out["views"].append(views)
 sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 `;
 
@@ -135,13 +138,29 @@ try {
 
   const job = {
     state: pyState,
+    pointer: FIXTURE.pointer,
     cases: cases.map((c) => ({ sid: c.sid, compress: c.compress, requests: c.requests.map((r) => ({ force: Boolean(r.force), trim_at: r.trim_at, messages: r.history.map(toChat) })) })),
   };
   const py = spawnSync("python3", ["-c", PY_DRIVER, path.join(ROOT, "proxy")], {
     input: JSON.stringify(job), encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
   });
   check("python driver ran", py.status === 0, py.stderr || py.error?.message);
-  const pyViews = py.status === 0 ? JSON.parse(py.stdout) : [];
+  const pyOut = py.status === 0 ? JSON.parse(py.stdout) : { views: [] };
+  const { sid: psid, dropped, log_path: logPath, text: pointerGolden } = FIXTURE.pointer;
+  check("golden standing instruction on both sides", pyOut.standing === FIXTURE.standing_instruction && STANDING_INSTRUCTION === FIXTURE.standing_instruction);
+  check("golden pointer text on both sides", pyOut.pointer === pointerGolden && pointerText(psid, dropped, logPath) === pointerGolden);
+  // The proxy's Chat view carries the instruction as a system message after the leading system messages; the
+  // OpenCode 2 plugin puts it in event.system. Check and remove it so the message views compare as before.
+  const jsSystem = [];
+  addStandingInstruction(jsSystem, trimSettings({}, pyState));
+  const standingMessage = { role: "system", content: jsSystem[0]?.text };
+  const pyViews = pyOut.views.map((views, ci) => views.map((view, ri) => {
+    const at = view.findIndex((m) => m.role !== "system" || m.content === STANDING_INSTRUCTION);
+    const ok = at >= 0 && JSON.stringify(view[at]) === JSON.stringify(standingMessage)
+      && view.filter((m) => m.content === STANDING_INSTRUCTION).length === 1;
+    check(`${FIXTURE.cases[ci].name} #${ri}: one standing instruction after the leading system messages`, ok);
+    return ok ? [...view.slice(0, at), ...view.slice(at + 1)] : view;
+  }));
 
   const sessions = path.join(jsState, "context", "sessions");
   for (const [ci, c] of cases.entries()) {

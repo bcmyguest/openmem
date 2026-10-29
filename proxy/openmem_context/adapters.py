@@ -139,6 +139,17 @@ class AnthropicAdapter:
     def system_text(self, data):
         return _plain_text(data.get("system", ""), ("text",))
 
+    def add_instruction(self, data, text):
+        """Append one text block to `system`; a string system becomes its own leading block."""
+        system = data.get("system")
+        if isinstance(system, list):
+            blocks = list(system)
+        elif isinstance(system, str) and system:
+            blocks = [{"type": "text", "text": system}]
+        else:
+            blocks = []
+        data["system"] = [*blocks, {"type": "text", "text": text}]
+
     def user_text(self, item):
         return _plain_text(item.get("content", ""), ("text",))
 
@@ -231,6 +242,12 @@ class ChatAdapter:
         msgs = data.get("messages") or []
         return "\n".join(_plain_text(m.get("content", ""), ("text",)) for m in msgs if self.is_pinned(m))
 
+    def add_instruction(self, data, text):
+        """Insert a system message after the leading system/developer messages."""
+        msgs = data["messages"]
+        at = next((i for i, m in enumerate(msgs) if not self.is_pinned(m)), len(msgs))
+        data["messages"] = [*msgs[:at], {"role": "system", "content": text}, *msgs[at:]]
+
     def user_text(self, item):
         return _plain_text(item.get("content", ""), ("text",))
 
@@ -307,6 +324,11 @@ class ResponsesAdapter:
             if isinstance(item, dict) and self.is_pinned(item):
                 parts.append(_plain_text(item.get("content", ""), self._TEXT_TYPES))
         return "\n".join(parts)
+
+    def add_instruction(self, data, text):
+        """Append to `instructions`, which precedes every input item and stays fixed for a session."""
+        current = data.get("instructions")
+        data["instructions"] = f"{current}\n\n{text}" if isinstance(current, str) and current else text
 
     def user_text(self, item):
         return _plain_text(item.get("content", ""), self._TEXT_TYPES)
