@@ -15,9 +15,9 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 
 | Feature | Claude Code | Codex CLI | Cursor CLI | OpenCode 1.x | OpenCode 2.x |
 | --- | --- | --- | --- | --- | --- |
-| Unified `memory_*` MCP | ✅ ¹⁴ | 🧪 | ✅ ¹⁴ | ✅ ¹⁴ | ❌ ¹ |
+| Unified `memory_*` MCP | 🧪 ¹⁴ | 🧪 | 🧪 ¹⁴ | 🧪 ¹⁴ | ❌ ¹ |
 | OpenMem skill | 🧪 | 🧪 | 🧪 | 🧪 | ❌ ¹ |
-| Startup banner + recall | 🧪 | 🧪 ² | 🧪 ³ | 🧪 (prompt hook) | ✅ ¹⁵ (prompt hook) |
+| Startup banner + recall | 🧪 | 🧪 ² | 🧪 ³ | 🧪 ²² | 🧪 ¹⁵ ²² |
 | Session registration (`sessions/<sid>.json`) | 🧪 | 🧪 | 🧪 ³ | 🧪 ⁴ | ✅ ¹⁵ ¹⁶ |
 | Per-prompt recall | 🧪 | 🧪 | 🧪 ³ | 🧪 | ✅ ¹⁵ |
 | Turn retention (Stop / idle) | 🧪 | ◐ ⁵ | ◐ ⁶ | 🧪 | ✅ ¹⁵ ¹⁷ |
@@ -40,14 +40,15 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 11. The installer sets `provider.anthropic.options.baseURL` and `headers`; whether OpenCode applies `headers` to its built-in Anthropic provider is unverified. Chat Completions and Responses trimming is unit-tested only.
 12. Tested with a fake `rtk` that records its arguments; flags taken from rtk's README and source. No real rtk binary was run.
 13. Tracked upstream in [rtk-ai/rtk#3463](https://github.com/rtk-ai/rtk/issues/3463).
-14. MCP connection checks recorded in `REVAMP.md` (Claude Code, OpenCode; Cursor listed the tools). The tool list has grown since; the new tools were checked through the facade, not inside each agent.
-15. Checked once live with OpenCode 2.2.1 (`@opencode/cli-linux-x64`, run from a temp directory with temp `HOME`/XDG dirs and `opencode run --standalone`) against a loopback fake OpenAI-compatible model and a fake Hindsight API. Requests reached the fake model with the memory system part, the trimmed messages, the pointer plus recall plus ingest note, and the byte-identical sticky prefix on later turns. A sandbox helper plugin triggered compaction through `ctx.session.compact`; OpenCode stored the plugin's summary as a completed compaction and made no summary model call. Not checked against a real model provider or a real Hindsight server. `scripts/tests/test_opencode2_plugin.mjs` and `test_context_trim.mjs` cover the same paths with a fake `ctx`.
+14. MCP connection checks recorded in `REVAMP.md` (Claude Code, OpenCode; Cursor listed nine tools) ran against the earlier nine-tool list. The current 17 tools add the page, status, initiative and `smart_compact_*` tools, which were checked through the facade only, not listed or called inside any agent.
+15. Checked once live with OpenCode 2.2.1 (`@opencode/cli-linux-x64`, run from a temp directory with temp `HOME`/XDG dirs and `opencode run --standalone`) against a loopback fake OpenAI-compatible model and a fake Hindsight API. Requests reached the fake model with the memory system part, the trimmed messages, the pointer plus recall plus ingest note, and the byte-identical sticky prefix on later turns. A sandbox helper plugin triggered compaction through `ctx.session.compact`; OpenCode stored the plugin's summary as a completed compaction and made no summary model call. Hindsight was a fake server: recall content, retention and the ingest note never touched a real Hindsight. Not checked against a real model provider either. `scripts/tests/test_opencode2_plugin.mjs` and `test_context_trim.mjs` cover the same paths with a fake `ctx`.
 16. OpenCode 2.2.1 loaded the location's plugins after `opencode run` had created the session, so no `session.created` event arrived. The plugin registers on the first `prompt` or `context` hook call instead.
 17. Retention runs from the `experimental.idle` session hook (typed in `@opencode/plugin` 2.2.1; not in the server docs), with `session.execution.succeeded`, `session.status` idle and `session.idle` events as fallbacks. OpenCode 2.2.1 published neither `session.status` nor `session.idle` to the plugin.
 18. Typed `/smart-compact` through `opencode run` arrived as prompt text, and the next request was trimmed. The plugin also registers a `smart-compact` command through `ctx.command.transform`; that path is test-covered only.
 19. OpenCode 2 is never pointed at the context proxy; the plugin trims in its `context` hook ([context proxy](context-proxy.md)). The trim was checked live (footnote 15); tool-result compression is test-covered only, including byte parity with the proxy's `compress_text`.
 20. The installer runs `opencode --version` (major 2 → `"plugins"` directory entry, anything else → `"plugin"` file entry), removes the other shape and skips proxy wiring for OpenCode 2. Tested with a fake `opencode` on `PATH`. The installer itself was not run against a real OpenCode 2 install; the live check configured the plugin directory by hand.
 21. `openmem` mode removes the upstream Hindsight hooks, OpenCode plugin entry, `hindsight` MCP server (only when it runs the upstream `dist/mcp-server.js`) and `hindsight-coding-agent` skill. Locations come from reading `@vectorize-io/hindsight-coding-agents` 0.8.3 `dist/installer.js`; tested against seeded files, not a live upstream install.
+22. At 2c1a245 neither OpenCode plugin emitted a startup banner; banners are being added on this branch and are not yet verified live. For OpenCode 2, per-prompt recall through the prompt hook reached the model live (footnote 15).
 
 Copilot and Pi are not in OpenMem's agent registry. rtk supports both; Pi can point at the context proxy only if it accepts a custom Anthropic base URL (unverified).
 
