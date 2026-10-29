@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { SHIM_AGENT_IDS, SHIM_HARNESSES, SHIM_MARKER } from "./hook-harnesses.mjs";
-import { SMART_COMPACT_MARKER } from "./context-store.mjs";
+import { SMART_COMPACT_MARKER, SMART_COMPACT_COMMAND } from "./context-store.mjs";
 import { SILENT, readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
 
@@ -12,12 +12,6 @@ const OPENMEM_PLUGIN_FILE = "coding-agent/opencode-plugin.mjs";
 const OPENMEM_PLUGIN2_DIR = "coding-agent/opencode2-plugin";
 /** OpenCode 1 reads `plugin` (file paths); OpenCode 2 reads `plugins` (directory paths). */
 const OPENCODE_PLUGIN_KEYS = ["plugin", "plugins"];
-const SMART_COMPACT_COMMAND = `---
-description: Trim this session's context on the next request (OpenMem context proxy)
----
-<!-- ${SMART_COMPACT_MARKER} -->
-The OpenMem context proxy will trim this session's earlier context on the next request. Reply with one short line acknowledging this; do not summarize the conversation. After the trim, use \`smart_compact_search\` with this session's id to look up anything earlier.
-`;
 
 function hookCommand(root, harnessId, phase) {
   return `node ${JSON.stringify(path.join(root, "cli", "coding-agent", "hook-runner.mjs"))} ${harnessId} ${phase}`;

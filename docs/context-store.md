@@ -22,7 +22,7 @@ Root: `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. Su
 2. Replace every Unicode code point outside `[A-Za-z0-9._-]` with one `_` (`😀` becomes `_`, not `__`).
 3. Reject an empty result: hooks write no file, the proxy tries the next source below, the MCP tools return an error.
 
-Dots are kept, so `..` survives (`ses/../x` becomes `ses_.._x`). That is safe because step 2 removes every path separator and each file name appends a suffix (`.json`, `.log.jsonl`, ...), so no sid names a path outside `sessions/`. Registration and trimming accept such ids. The MCP tools additionally reject an explicit `session_id` argument containing `/`, `\` or `..` before sanitizing, so a search for a raw id with those characters fails instead of matching the sanitized file.
+Dots are kept, so `..` survives (`ses/../x` becomes `ses_.._x`). That is safe because step 2 removes every path separator and each file name appends a suffix (`.json`, `.log.jsonl`, ...), so no sid names a path outside `sessions/`. Registration and trimming accept such ids. The MCP tools additionally reject an explicit `session_id` argument that contains `/` or `\`, or that is `.` or `..`; pointers always give the agent the sanitized id, which never has a separator.
 
 The proxy takes the first non-empty id, in order, from:
 
