@@ -555,41 +555,24 @@ function detectedCodingHarnesses() {
 }
 
 async function setupCodingAgents(ctx) {
-  step("8. Coding-agent plugin (optional)");
+  step("8. Coding agents (optional)");
   const pkg = ctx.memoryProvider.codingAgent?.pluginPackage;
   const harnesses = detectedCodingHarnesses();
-  // Link config/coding-agent.json first so the installer can adopt self-hosted settings
-  // (and mem0/Cognee hooks can print their non-plugin guidance).
+  // Link config/coding-agent.json first (mem0/Cognee hooks print their own guidance here).
   await runProviderPhase(ctx, PROVIDER_PHASES.setupCodingAgent, providerHelpers());
-  if (!pkg) {
-    info(`no coding-agent plugin defined for ${ctx.memoryProvider.label}; step skipped`);
-    return;
-  }
+  if (!pkg) info(`no coding-agent plugin defined for ${ctx.memoryProvider.label}; OpenMem hooks cover it`);
   if (!harnesses.length) {
-    info("no supported coding-agent CLIs on PATH (claude, codex, opencode, agent/cursor-agent): plugin skipped");
+    info("no supported coding-agent CLIs on PATH (claude, codex, opencode, agent/cursor-agent): step skipped");
     return;
   }
-  const apiUrl = await resolveApiBase(ctx);
-  // Scripted install: --server/--api-url skip the "Where should memory live?" prompt
-  // (--server/--api-url skip the installer's memory-location prompt.)
-  const installArgs = [
-    ...harnesses,
-    "--server",
-    "self-hosted",
-    "--api-url",
-    apiUrl,
-  ];
-  info(`detected harnesses: ${harnesses.join(" ")} → self-hosted ${apiUrl}`);
-  if (await confirm(ctx, `Install the ${ctx.memoryProvider.label} plugin for them now (npx)?`, "n")) {
-    await act(ctx, `npx --yes ${pkg} install ${installArgs.join(" ")}`, "npx", [
-      "--yes",
-      pkg,
-      "install",
-      ...installArgs,
-    ]);
-    ok("restart Cursor Agent (or your coding agent) so it picks up the new plugin wiring");
+  // install-coding-agent honours [agents] integration (openmem hooks, or the provider's own plugin).
+  const later = "npx @bcmyguest/openmem install-coding-agent --yes";
+  info(`detected coding agents: ${harnesses.join(" ")}`);
+  if (await confirm(ctx, "Wire them now (unified memory MCP, openmem skill, session hooks)?", "n")) {
+    await act(ctx, later, process.execPath, [path.join(ctx.packageRoot, "cli", "install-coding-agent.mjs"), "--yes"]);
+    ok("restart your coding agents so they pick up the new wiring");
   } else {
-    info(`skipped; later: npx --yes ${pkg} install ${installArgs.join(" ")}`);
+    info(`skipped; later: ${later}`);
   }
 }
 
