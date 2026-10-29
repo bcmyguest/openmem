@@ -25,7 +25,13 @@ npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
 - **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
-- **Optional:** `--hindsight-plugin` with `MEMORY_PROVIDER=hindsight` also runs `@vectorize-io/hindsight-coding-agents install` (legacy/alternate hook set).
+- **Exclusive hook sets:** `[agents] integration` in `~/.config/personal-memory/config.toml` picks one. `openmem` (default) installs the hooks above and removes upstream Hindsight hook entries (commands under `hindsight-coding-agents` / `.hindsight/coding-agents`, and the matching OpenCode `plugin` entry). `provider` (`--provider-plugin`, Hindsight only) removes OpenMem's hooks, keeps the unified MCP, and runs `@vectorize-io/hindsight-coding-agents install`. `--no-provider-plugin` switches back; `--hindsight-plugin` is a deprecated alias. Other providers always get OpenMem hooks.
+
+SessionStart output starts with a two-line banner: provider, bank, and the tools to use. It names `memory_pages_search` and `memory_capture_initiative` only when `PROVIDER_CAPABILITIES` marks `knowledge_pages` / `initiatives` for the provider. The same hook writes `sessions/<sid>.json` per [context store](context-store.md); a write failure is ignored. Denied workspaces get no registration.
+
+`/smart-compact`: the installer writes `~/.claude/commands/smart-compact.md`. The prompt hook (Claude Code, Codex, Cursor) and the OpenCode plugin write `sessions/<sid>.force` when the prompt starts with `/smart-compact`, contains `<command-name>/smart-compact</command-name>`, or contains the command body's `openmem:smart-compact` marker; that prompt skips recall. The flag is written even when memory hooks are denied. Claude Code's hook docs say UserPromptSubmit receives the typed `/command args` text; the other two forms cover expanded deliveries.
+
+Cursor hooks live under `hooks` in `~/.cursor/hooks.json` with `version: 1`, as Cursor documents; reinstall moves entries older OpenMem versions wrote at the top level.
 
 See [MCP setup](mcp-setup.md) and [coding agents](coding-agents.md).
 

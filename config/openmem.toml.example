@@ -37,6 +37,18 @@ host = "http://127.0.0.1:13305"
 [model.ollama]
 host = "http://127.0.0.1:11434"
 
+# Coding-agent wiring, written by `install-coding-agent`.
+# integration: "openmem" = OpenMem session hooks; "provider" = the provider's own plugin
+# (Hindsight: @vectorize-io/hindsight-coding-agents). The two hook sets are exclusive.
+[agents]
+integration = "openmem"
+
+# Local LiteLLM context proxy (`install-coding-agent --context-proxy`). When enabled,
+# Claude Code's ANTHROPIC_BASE_URL points at http://127.0.0.1:<port>.
+[context_proxy]
+enabled = false
+port = 4100
+
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]
 # path = "~"

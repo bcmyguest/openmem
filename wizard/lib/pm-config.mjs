@@ -3,6 +3,12 @@ import path from "node:path";
 import TOML from "@iarna/toml";
 import { DEFAULT_PROVIDER_ID } from "./providers/registry.mjs";
 
+/** Tables owned by install-coding-agent; the wizard carries them over when it rewrites the file. */
+const INSTALLER_TABLES = ["agents", "context_proxy"];
+const AGENT_INTEGRATIONS = ["openmem", "provider"];
+const DEFAULT_CONTEXT_PROXY_PORT = 4100;
+const CONFIG_HEADER = "# Written by openmem — mise-like config.\n# Docs: docs/openmem-config.md\n";
+
 /** @param {string} home */
 export function userConfigPath(home) {
   return path.join(home, ".config/personal-memory/config.toml");
@@ -116,7 +122,16 @@ export function syncPmConfig(ctx, sections = {}) {
   const dir = path.dirname(userConfigPath(ctx.home));
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = userConfigPath(ctx.home);
-  fs.writeFileSync(file, buildPmConfigToml(ctx, sections), { mode: 0o600 });
+  let previous = {};
+  try {
+    previous = readTomlFile(file);
+  } catch {
+    // A malformed file is replaced, as before; nothing to carry over.
+  }
+  const kept = Object.fromEntries(
+    INSTALLER_TABLES.filter((t) => previous[t] && !(t in sections)).map((t) => [t, previous[t]]),
+  );
+  fs.writeFileSync(file, buildPmConfigToml(ctx, { ...sections, ...kept }), { mode: 0o600 });
 }
 
 /**
@@ -140,10 +155,53 @@ export function updatePmConfigProvider(home, providerId, opts = {}) {
     provider: providerId,
   };
   doc.memory = memory;
-  const header =
-    "# Written by openmem — mise-like config.\n# Docs: docs/openmem-config.md\n";
-  fs.writeFileSync(file, `${header}${TOML.stringify(doc)}`, { mode: 0o600 });
+  fs.writeFileSync(file, `${CONFIG_HEADER}${TOML.stringify(doc)}`, { mode: 0o600 });
   return "updated";
+}
+
+/**
+ * Merge `values` into one top-level table of the user config.toml, creating the file
+ * (mode 600, directory 700) when it is missing. Other tables are kept.
+ *
+ * @param {string} home
+ * @param {string} table
+ * @param {Record<string, unknown>} values
+ * @param {{ dry?: boolean }} [opts]
+ * @returns {"updated"|"dry-run"}
+ */
+export function updatePmConfigTable(home, table, values, opts = {}) {
+  if (opts.dry) return "dry-run";
+  const file = userConfigPath(home);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const doc = readTomlFile(file);
+  const current = doc[table] && typeof doc[table] === "object" && !Array.isArray(doc[table])
+    ? /** @type {Record<string, unknown>} */ (doc[table])
+    : {};
+  doc[table] = { ...current, ...values };
+  fs.writeFileSync(file, `${CONFIG_HEADER}${TOML.stringify(doc)}`, { mode: 0o600 });
+  return "updated";
+}
+
+/**
+ * `[agents] integration`: "openmem" (OpenMem hooks) or "provider" (the provider's own plugin).
+ * @param {Record<string, unknown>} cfg
+ */
+export function agentIntegrationFromPmConfig(cfg) {
+  const value = String(/** @type {Record<string, unknown>} */ (cfg.agents || {}).integration || "");
+  return AGENT_INTEGRATIONS.includes(value) ? value : "openmem";
+}
+
+/**
+ * `[context_proxy]` with defaults: disabled, port 4100.
+ * @param {Record<string, unknown>} cfg
+ */
+export function contextProxyFromPmConfig(cfg) {
+  const table = /** @type {Record<string, unknown>} */ (cfg.context_proxy || {});
+  const port = Number(table.port);
+  return {
+    enabled: table.enabled === true,
+    port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_CONTEXT_PROXY_PORT,
+  };
 }
 
 /**
