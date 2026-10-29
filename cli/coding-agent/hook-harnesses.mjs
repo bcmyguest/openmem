@@ -54,7 +54,8 @@ export const SHIM_HARNESSES = {
   "cursor-cli": {
     configStyle: "flat",
     settingsPath: (home) => `${home}/.cursor/hooks.json`,
-    rootKey: null,
+    // Cursor reads `{ "version": 1, "hooks": { <event>: [{ command }] } }`.
+    rootKey: "hooks",
     events: {
       sessionStart: { hook: "sessionStart", timeout: 30 },
       prompt: { hook: "beforeSubmitPrompt", timeout: 30 },
