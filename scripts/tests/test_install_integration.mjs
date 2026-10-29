@@ -142,22 +142,18 @@ const count = (text, needle) => text.split(needle).length - 1;
   const persisted = await install(home, {}, { spawn: fakeSpawn(again) });
   check("without a flag the persisted provider choice is used", persisted.integration === "provider" && again.length === 1);
 
-  const dep = [];
-  await install(home, { providerPlugin: true, deprecated: ["--hindsight-plugin is deprecated; use --provider-plugin"] }, { h: { info() {}, ok() {}, warn: (m) => dep.push(m) } });
-  check("deprecation note is printed", dep.some((m) => /deprecated/.test(m)));
-
   const back = await install(home, { providerPlugin: false });
   check("--no-provider-plugin returns to openmem", back.integration === "openmem" && count(hookText(home), "coding-agent/hook-runner.mjs") === 9);
   check("openmem choice persisted", TOML.parse(read(cfgFile)).agents?.integration === "openmem");
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// Legacy hindsightPlugin flag object and non-Hindsight providers.
+// Non-Hindsight providers.
 {
   const home = seedHome();
   const calls = [];
-  const out = await install(home, { hindsightPlugin: true }, { spawn: fakeSpawn(calls) });
-  check("hindsightPlugin alias selects provider", out.integration === "provider" && calls.length === 1);
+  const out = await install(home, { providerPlugin: true }, { spawn: fakeSpawn(calls) });
+  check("--provider-plugin selects provider", out.integration === "provider" && calls.length === 1);
   const mem0 = await install(home, {}, { env: { MEMORY_PROVIDER: "mem0", MEM0_API_URL: "http://127.0.0.1:19999" }, spawn: fakeSpawn(calls) });
   check("provider without a plugin falls back to openmem hooks", mem0.integration === "provider" && calls.length === 1 && hookText(home).includes("coding-agent/hook-runner.mjs"));
   fs.rmSync(home, { recursive: true, force: true });

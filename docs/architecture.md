@@ -201,7 +201,7 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 | `smart_compact_search` | Search the context proxy's handoff logs of trimmed turns (local files, every provider) — [Context store](context-store.md) |
 | `smart_compact_get` | Return the full text of a compressed tool result by blob id, paged at 100k chars (local files, every provider) |
 
-**Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) replaces them on Hindsight stacks: `--provider-plugin` sets `[agents] integration = "provider"`, removes OpenMem's hooks and keeps the unified MCP; `--no-provider-plugin` switches back. `--hindsight-plugin` is a deprecated alias. See [Coding-agent hooks](coding-agent-hooks.md).
+**Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) replaces them on Hindsight stacks: `--provider-plugin` sets `[agents] integration = "provider"`, removes OpenMem's hooks and keeps the unified MCP; `--no-provider-plugin` switches back. `--hindsight-plugin` was renamed to `--provider-plugin`. See [Coding-agent hooks](coding-agent-hooks.md).
 
 ### Other MCP integrations
 
