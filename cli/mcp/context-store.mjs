@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
+import { contextRoot as hookContextRoot, sanitizeSessionId as hookSanitizeSessionId } from "../coding-agent/context-store.mjs";
 
 const DEFAULT_LIMIT = 8;
 const MAX_SESSIONS = 20;
@@ -15,7 +16,6 @@ const EXCERPT_CHARS = 400;
 const BLOB_MAX_CHARS = 100_000;
 const BLOB_ID_RE = /^[0-9a-f]{16}$/;
 const BLOB_REF_RE = /\[blob:([0-9a-f]{16})\]/g;
-const SID_UNSAFE_RE = /[^A-Za-z0-9._-]/g;
 const LOG_SUFFIX = ".log.jsonl";
 const PATTERN_MAX_CHARS = 200;
 const PATTERN_ROW_CHARS = 20_000;
@@ -75,18 +75,24 @@ export const CONTEXT_STORE_MCP_TOOLS = [
 
 export const CONTEXT_STORE_TOOL_NAMES = new Set(CONTEXT_STORE_MCP_TOOLS.map((t) => t.name));
 
-/** `$OPENMEM_STATE_DIR/context`, read at call time. */
+/** `$OPENMEM_STATE_DIR/context` (trimmed), read at call time; same resolver as the hooks. */
 export function contextRoot(env = process.env) {
-  const home = env.HOME || os.homedir();
-  const state = env.OPENMEM_STATE_DIR || path.join(home, ".local", "share", "openmem");
-  return path.join(state, "context");
+  return hookContextRoot(env.HOME || os.homedir(), env);
 }
 
-/** Contract sanitization; rejects ids that try to leave sessions/. */
+/** Hook-side sanitization (docs/context-store.md). An explicit search id containing a path separator, or
+ *  equal to `.`/`..`, is rejected: pointers hand the agent an already-sanitized id, which never has one. */
 export function sanitizeSessionId(raw) {
-  const sid = String(raw ?? "").trim();
-  if (!sid || /[/\\]/.test(sid) || sid.includes("..")) throw new Error(`invalid session_id: ${JSON.stringify(sid)}`);
-  return sid.replace(SID_UNSAFE_RE, "_");
+  const text = String(raw ?? "");
+  if (/[/\\]/.test(text) || /^\s*\.{1,2}\s*$/.test(text)) throw new Error(`invalid session_id: ${JSON.stringify(text)}`);
+  let sid = "";
+  try {
+    sid = hookSanitizeSessionId(text);
+  } catch {
+    // empty after trimming
+  }
+  if (!sid) throw new Error(`invalid session_id: ${JSON.stringify(text)}`);
+  return sid;
 }
 
 function gitRoot(dir) {
