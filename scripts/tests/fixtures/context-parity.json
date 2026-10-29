@@ -1,0 +1,142 @@
+{
+  "description": "Shared inputs for test_context_parity.mjs: each request runs through the proxy (Chat adapter, python3) and context-trim.mjs (OpenCode 2 parts). trim: true sets the threshold to 1 token, false to a threshold no request reaches. A result text may be {\"lines\": template, \"count\": n}, expanded with {i} = 0..n-1 joined by newlines.",
+  "cases": [
+    {
+      "name": "trim, sticky render, moving cut",
+      "sid": "ses_basic",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "system", "text": "You are a coding agent." },
+            { "role": "user", "text": "TASK: port the parser é 😀" },
+            { "role": "assistant", "reasoning": "look first", "calls": [{ "id": "c1", "name": "bash", "input": { "command": "ls -la", "n": 2 } }] },
+            { "role": "tool", "result": { "id": "c1", "name": "bash", "text": "a.py\nb.py" } },
+            { "role": "assistant", "text": "two files" },
+            { "role": "user", "text": "now port b.py" }
+          ]
+        },
+        {
+          "trim": false,
+          "append": [
+            { "role": "assistant", "calls": [{ "id": "c2", "name": "read", "input": { "path": "b.py" } }] },
+            { "role": "tool", "result": { "id": "c2", "name": "read", "text": "def b(): pass" } }
+          ]
+        },
+        {
+          "trim": true,
+          "append": [
+            { "role": "assistant", "text": "ported" },
+            { "role": "user", "text": "<system-reminder>noise</system-reminder>third question" }
+          ]
+        },
+        { "trim": false, "append": [] }
+      ]
+    },
+    {
+      "name": "cut never splits a call/result pair",
+      "sid": "ses_pairs",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "user", "text": "task" },
+            { "role": "assistant", "text": "a" },
+            { "role": "user", "text": "next" },
+            { "role": "assistant", "calls": [{ "id": "w1", "name": "read", "input": {} }] },
+            { "role": "user", "text": "steer" },
+            { "role": "tool", "result": { "id": "w1", "name": "read", "text": "r" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "first user turn in flight",
+      "sid": "ses_flight",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "user", "text": "only task" },
+            { "role": "assistant", "calls": [{ "id": "q1", "name": "bash", "input": { "command": "make" } }] },
+            { "role": "tool", "result": { "id": "q1", "name": "bash", "text": "ok" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "assistant greeting before the first user turn",
+      "sid": "ses_greeting",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "system", "text": "sys" },
+            { "role": "assistant", "text": "hello" },
+            { "role": "user", "text": "task" },
+            { "role": "assistant", "text": "a" },
+            { "role": "user", "text": "next" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compressed tool results, logged by blob",
+      "sid": "ses_blob",
+      "compress": 4000,
+      "requests": [
+        {
+          "trim": false,
+          "messages": [
+            { "role": "user", "text": "search" },
+            { "role": "assistant", "calls": [{ "id": "g1", "name": "grep", "input": { "pattern": "q" } }] },
+            { "role": "tool", "result": { "id": "g1", "name": "grep", "text": { "lines": "row {i} qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq é 😀", "count": 400 } } },
+            { "role": "assistant", "text": "found" },
+            { "role": "user", "text": "next" },
+            { "role": "assistant", "text": "sure" },
+            { "role": "user", "text": "last" }
+          ]
+        },
+        { "trim": true, "append": [] }
+      ]
+    },
+    {
+      "name": ".force below the threshold",
+      "sid": "ses_force",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": false,
+          "force": true,
+          "messages": [
+            { "role": "user", "text": "a" },
+            { "role": "assistant", "text": "b" },
+            { "role": "user", "text": "c" },
+            { "role": "assistant", "text": "d" },
+            { "role": "user", "text": "e" }
+          ]
+        },
+        { "trim": false, "append": [{ "role": "assistant", "text": "f" }] }
+      ]
+    },
+    {
+      "name": "session id sanitizer: ASCII trim, one _ per code point",
+      "sid": "  ses 😀/xé\t",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "user", "text": "u1" },
+            { "role": "assistant", "text": "a1" },
+            { "role": "user", "text": "u2" }
+          ]
+        }
+      ]
+    }
+  ]
+}

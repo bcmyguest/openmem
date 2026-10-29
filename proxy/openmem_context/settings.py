@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .store import ASCII_WHITESPACE
+
 DEFAULT_TRIM_AT_TOKENS = 120000
 DEFAULT_COMPRESS_OVER_TOKENS = 4000
 DEFAULT_COMPACTION_MAX_CHARS = 12000
@@ -50,9 +52,9 @@ class Settings:
     @classmethod
     def from_env(cls, env=None):
         env = os.environ if env is None else env
-        state_dir = str(env.get("OPENMEM_STATE_DIR", "")).strip()
+        state_dir = str(env.get("OPENMEM_STATE_DIR", "")).strip(ASCII_WHITESPACE)
         root = Path(state_dir) if state_dir else Path.home() / ".local" / "share" / "openmem"
-        host_state_dir = str(env.get("OPENMEM_HOST_STATE_DIR", "")).strip()
+        host_state_dir = str(env.get("OPENMEM_HOST_STATE_DIR", "")).strip(ASCII_WHITESPACE)
         return cls(
             enabled=str(env.get("CONTEXT_PROXY_ENABLED", "1")).strip().lower() not in ("0", "false", "no", "off"),
             trim_at_tokens=_int(env, "CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),

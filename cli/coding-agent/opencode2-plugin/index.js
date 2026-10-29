@@ -12,8 +12,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "../bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "../access-policy.mjs";
-import { SMART_COMPACT_MARKER, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
-import { compactionSummary, logFailOpen, trimContext, trimSettings } from "../context-trim.mjs";
+import { SMART_COMPACT_BODY, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
+import { compactionSummary, fingerprint, isTurnStart, logFailOpen, trimContext, trimSettings } from "../context-trim.mjs";
+import { sessionBanner } from "../hook-runner.mjs";
 import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
 import { resolveStackRoot } from "../../stack.mjs";
@@ -25,10 +26,9 @@ const MAX_RETAIN_CHARS = 12000;
 const RECALL_LIMIT = 20;
 const STATUS_TIMEOUT_MS = 2000;
 const RETAIN_TIMEOUT_MS = 10000;
+const MAX_RECALLS_PER_SESSION = 64;
 // OpenCode 2.2.1 publishes session.execution.succeeded; session.status / session.idle are kept for other releases.
 const EVENT_TYPES = ["session.created", "session.execution.succeeded", "session.status", "session.idle"];
-const SMART_COMPACT_BODY = `<!-- ${SMART_COMPACT_MARKER} -->
-OpenMem will trim this session's earlier context on the next request. Reply with one short line acknowledging this; do not summarize the conversation. After the trim, use \`smart_compact_search\` with this session's id to look up anything earlier.`;
 
 /** Text of an OpenCode 2 session message (Session.Message.Info) for retention. */
 function sessionMessageText(info) {
@@ -69,7 +69,12 @@ async function setup(ctx) {
   const bank = allowed ? bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank }) : undefined;
   const settings = trimSettings(process.env, home);
   const nativeCompaction = nativeCompactionEnabled(home, stack.root);
+  // Constant for the session, so it never changes the cached system prefix.
+  const banner = allowed ? sessionBanner(memory.provider, bank) : "";
+  // sessionID -> recall text for the prompt in flight ("" once bound or empty); also gates retention on idle.
   const injections = new Map();
+  // sessionID -> Map(fingerprint of a user message -> recall text bound to it).
+  const recalls = new Map();
   const seen = new Map();
   const retaining = new Set();
   const registered = new Set();
@@ -122,14 +127,57 @@ async function setup(ctx) {
     } catch { /* Memory availability must not interrupt the prompt. */ }
   }
 
+  /**
+   * Per-prompt recall belongs to the user message that prompted it, never to the system prompt: the
+   * first context call after a prompt binds the recall to the newest user message, and every later
+   * request renders that message with the same recall part. Older turns keep their bytes, so the
+   * request only grows at its end and the prompt-cache prefix stays valid.
+   */
+  function bindRecall(sessionID, messages) {
+    const pending = injections.get(sessionID);
+    if (!pending || !Array.isArray(messages)) return;
+    const newest = messages.findLast((m) => m && typeof m === "object" && isTurnStart(m));
+    if (!newest) return;
+    const bound = recalls.get(sessionID) || new Map();
+    remember(bound, fingerprint(newest), pending);
+    while (bound.size > MAX_RECALLS_PER_SESSION) bound.delete(bound.keys().next().value);
+    remember(recalls, sessionID, bound);
+    injections.set(sessionID, "");
+  }
+
+  function recallDecorator(sessionID) {
+    const bound = recalls.get(sessionID);
+    if (!bound?.size) return undefined;
+    return (message) => {
+      if (message?.role !== "user" || !Array.isArray(message.content)) return message;
+      const text = bound.get(fingerprint(message));
+      if (!text) return message;
+      // Trailing blank line: OpenAI-compatible lowering joins text parts with no separator.
+      return { ...message, content: [{ type: "text", text: `Personal memory for ${bank}:\n${text}\n\n` }, ...message.content] };
+    };
+  }
+
   async function onContext(event) {
     register(event.sessionID);
-    const context = allowed ? injections.get(event.sessionID) : "";
-    if (context) event.system.push({ type: "text", text: `Personal memory for ${bank}:\n${context}` });
+    let decorate;
+    if (allowed) {
+      event.system.push({ type: "text", text: banner });
+      try {
+        bindRecall(event.sessionID, event.messages);
+        decorate = recallDecorator(event.sessionID);
+      } catch (error) { logFailOpen(error); }
+    }
+    const original = event.messages;
+    let messages = original;
     try {
-      const messages = await trimContext(event, settings, trimDeps);
-      if (messages !== event.messages) event.messages = messages;
+      messages = await trimContext(event, settings, { ...trimDeps, decorate });
     } catch (error) { logFailOpen(error); }
+    // trimContext returns its input untouched when trimming is off or the request is malformed.
+    if (messages === original && decorate && Array.isArray(original)) {
+      const decorated = original.map(decorate);
+      if (decorated.some((m, i) => m !== original[i])) messages = decorated;
+    }
+    if (messages !== original) event.messages = messages;
   }
 
   async function onCompaction(event) {

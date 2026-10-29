@@ -8,6 +8,8 @@ import {
   contextRoot,
   isSmartCompactPrompt,
   sanitizeSessionId,
+  SMART_COMPACT_BODY,
+  SMART_COMPACT_COMMAND,
   SMART_COMPACT_MARKER,
 } from "../../cli/coding-agent/context-store.mjs";
 import { runHook, sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
@@ -47,6 +49,16 @@ function memoryFetch(calls) {
 }
 
 check("sid sanitizing replaces characters outside [A-Za-z0-9._-]", sanitizeSessionId("a/b c:d.e_f-9") === "a_b_c_d.e_f-9");
+check("sid sanitizing trims ASCII whitespace first", sanitizeSessionId(" \tabc\n") === "abc");
+check("sid sanitizing replaces each code point once", sanitizeSessionId("a😀b c") === "a_b_c");
+check("sid sanitizing keeps dots", sanitizeSessionId("..") === ".." && sanitizeSessionId("ses/../x") === "ses_.._x");
+check("empty sid rejected", ["", "  ", "\t\n", undefined].every((bad) => {
+  try { sanitizeSessionId(bad); return false; } catch { return true; }
+}));
+check("OPENMEM_STATE_DIR is trimmed", contextRoot("/h", { OPENMEM_STATE_DIR: " /state\n" }) === "/state/context"
+  && contextRoot("/h", { OPENMEM_STATE_DIR: "  " }) === "/h/.local/share/openmem/context");
+check("smart-compact command is frontmatter plus the shared body", SMART_COMPACT_COMMAND.startsWith("---\ndescription: ")
+  && SMART_COMPACT_COMMAND.endsWith(`---\n${SMART_COMPACT_BODY}\n`) && isSmartCompactPrompt(SMART_COMPACT_BODY));
 check("default context root", contextRoot("/h", {}) === "/h/.local/share/openmem/context");
 check("OPENMEM_STATE_DIR override", contextRoot("/h", { OPENMEM_STATE_DIR: "/state" }) === "/state/context");
 check("raw /smart-compact detected", isSmartCompactPrompt("/smart-compact") && isSmartCompactPrompt("  /smart-compact now"));

@@ -167,6 +167,15 @@ export function isTurnStart(message) {
   const content = parts(message);
   return content.length > 0 && !content.some((p) => p?.type === "tool-result");
 }
+/** A user message that is not only tool results; the first one is pinned through every trim. */
+export function isFirstUser(message) {
+  return message?.role === "user" && parts(message).some((p) => p?.type !== "tool-result");
+}
+/** Index of the first real user turn, or null. */
+export function firstUserIndex(items) {
+  const i = items.findIndex(isFirstUser);
+  return i >= 0 ? i : null;
+}
 const callIds = (message) => new Set(parts(message).filter((p) => p?.type === "tool-call").map((p) => p.id).filter((id) => id != null));
 const resultIds = (message) => new Set(parts(message).filter((p) => p?.type === "tool-result").map((p) => p.id).filter((id) => id != null));
 
@@ -241,25 +250,30 @@ function toolNames(items) {
   return names;
 }
 
-function rows(items, start, stop, ts) {
+/** Log rows for items[start, stop), skipping pinned messages and the index `skip` (the pinned first user turn). */
+function rows(items, start, stop, ts, skip = null) {
   const names = toolNames(items);
   const out = [];
-  for (const item of items.slice(start, stop)) {
-    if (isPinned(item)) continue;
-    for (const [role, kind, name, text] of logRows(item, names)) out.push({ ts, role, kind, name, text });
+  for (let j = start; j < Math.min(stop, items.length); j++) {
+    if (j === skip || isPinned(items[j])) continue;
+    for (const [role, kind, name, text] of logRows(items[j], names)) out.push({ ts, role, kind, name, text });
   }
   return out;
 }
 
-/** Index of the last real user turn > after whose kept suffix shares no call/result pair with the prefix. */
-export function chooseCut(items, after) {
+const droppable = (items, stop, first) => items.slice(0, stop).filter((x, j) => j !== first && !isPinned(x));
+
+/**
+ * Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part.
+ * The kept part is the suffix from the cut plus the pinned first user turn.
+ */
+export function chooseCut(items, after, first = null) {
   const union = (list, fn) => new Set(list.flatMap((x) => [...fn(x)]));
   for (let i = items.length - 1; i > after; i--) {
     if (!isTurnStart(items[i])) continue;
-    const before = items.slice(0, i);
-    if (!before.some((x) => !isPinned(x))) return null;
-    const dropped = before.filter((x) => !isPinned(x));
-    const kept = items.slice(i);
+    const dropped = droppable(items, i, first);
+    if (!dropped.length) return null;
+    const kept = first !== null && first < i ? [...items.slice(i), items[first]] : items.slice(i);
     const dCalls = union(dropped, callIds);
     const dResults = union(dropped, resultIds);
     const kCalls = union(kept, callIds);
@@ -270,9 +284,15 @@ export function chooseCut(items, after) {
   return null;
 }
 
-export function render(items, cut, note) {
-  if (!cut) return items;
-  return [...items.slice(0, cut).filter(isPinned), prependNote(items[cut], note), ...items.slice(cut + 1)];
+/**
+ * Pinned messages and the first user turn before the cut (in order), then the noted cut turn and the rest.
+ * `decorate(message)` adds per-message parts at render time only; trimming, fingerprints and log rows
+ * always see the undecorated messages.
+ */
+export function render(items, cut, note, first = null, decorate = (m) => m) {
+  if (!cut) return items.map(decorate);
+  const head = items.slice(0, cut).filter((x, j) => j === first || isPinned(x));
+  return [...head.map(decorate), prependNote(decorate(items[cut]), note), ...items.slice(cut + 1).map(decorate)];
 }
 
 function locateCut(items, thread) {
@@ -282,9 +302,10 @@ function locateCut(items, thread) {
   return 0;
 }
 
-export function pointerText(sid, dropped) {
+export function pointerText(sid, dropped, logPath) {
   return `[openmem: continuing session ${sid}; ${dropped} earlier messages trimmed. `
-    + `Use smart_compact_search(session_id="${sid}", query=...) for anything earlier.]`;
+    + `Use smart_compact_search(session_id="${sid}", query=...) for anything earlier; `
+    + `the handoff log is ${logPath} (JSONL, one row per block).]`;
 }
 
 export function pendingText(sid) {
@@ -421,12 +442,13 @@ export function logFailOpen(error) {
   process.stderr.write(`openmem-context: fail-open ${error?.name || typeof error} at ${where}\n`);
 }
 
+
 /**
  * Pointer + recall + ingest note for a cut at items[cut].
  * deps.recall(bank, query, maxChars) and deps.pending(bank) are best effort.
  */
 async function buildNote(items, cut, sid, dropped, store, settings, deps) {
-  const out = [pointerText(sid, dropped)];
+  const out = [pointerText(sid, dropped, store.file(sid, ".log.jsonl"))];
   const bank = store.registration(sid)?.bank;
   if (typeof bank === "string" && bank) {
     const query = cpSlice(stripReminders(userText(items[cut])), 0, RECALL_QUERY_MAX_CHARS);
@@ -451,20 +473,29 @@ function compressAll(messages, settings, store) {
 const validMessages = (messages) => Array.isArray(messages) && messages.length > 0
   && messages.every((m) => m && typeof m === "object" && !Array.isArray(m));
 
+/** Contract session id, or null when the id is empty after trimming. */
+function sessionIdOf(request) {
+  try { return sanitizeSessionId(request.sessionID); } catch { return null; }
+}
+
 /**
  * Context-hook rewrite: compression, sticky trim, recall note. Returns the messages to send
- * (the input array itself when nothing changed).
+ * (the input array itself when nothing changed). `deps.decorate(message)` adds render-only parts
+ * (see render).
  * @param {{ sessionID: string, system?: unknown, tools?: unknown, messages: object[] }} request
  */
 export async function trimContext(request, settings, deps = {}) {
   const original = request.messages;
   if (!settings.enabled || !validMessages(original)) return original;
+  const sid = sessionIdOf(request);
+  if (!sid) return original;
   const store = new Store(settings.contextDir);
   const items = compressAll(original, settings, store);
-  const sid = sanitizeSessionId(request.sessionID);
   const roots = items.filter((m) => !isPinned(m));
   if (!roots.length) return original;
   const root = fingerprint(roots[0]);
+  const first = firstUserIndex(items);
+  const decorate = deps.decorate || ((m) => m);
 
   const view = await withSessionLock(sid, async () => {
     const state = store.loadTrim(sid);
@@ -477,26 +508,37 @@ export async function trimContext(request, settings, deps = {}) {
       note = cut ? thread.note : null;
       if (!cut) threads.delete(root);
     }
-    let rendered = render(items, cut, note);
+    let rendered = render(items, cut, note, first, decorate);
     const force = store.forceRequested(sid);
     if (force || estimateTokens(request.system, request.tools, rendered) >= settings.trimAtTokens) {
-      const next = chooseCut(items, cut);
+      const next = chooseCut(items, cut, first);
       if (next !== null) {
         const ts = utcNow(deps.now?.());
-        store.appendLog(sid, rows(items, cut, next, ts));
-        const dropped = items.slice(0, next).filter((m) => !isPinned(m)).length;
-        note = await buildNote(items, next, sid, dropped, store, settings, deps);
+        store.appendLog(sid, rows(items, cut, next, ts, first));
+        note = await buildNote(items, next, sid, droppable(items, next, first).length, store, settings, deps);
         threads.delete(root);
         threads.set(root, { cut: next, cut_fp: fingerprint(items[next]), note, format: FORMAT, updated: ts });
         while (threads.size > MAX_THREADS) threads.delete(threads.keys().next().value);
         store.saveTrim(sid, state);
         if (force) store.clearForce(sid);
-        rendered = render(items, next, note);
+        rendered = render(items, next, note, first, decorate);
       } else if (thread && !cut) store.saveTrim(sid, state);
     } else if (thread && !cut) store.saveTrim(sid, state);
     return rendered;
   });
   return view.length === original.length && view.every((m, i) => m === original[i]) ? original : view;
+}
+
+/**
+ * First index not yet in the log for a compaction. Trims logged items[0, cut) except the pinned first
+ * user turn. When the stored cut message is no longer in the history, the stored cut index stands in
+ * for it, so earlier rows are not logged twice.
+ */
+function loggedUpTo(items, thread) {
+  if (!thread) return 0;
+  const located = locateCut(items, thread);
+  if (located) return located;
+  return Number.isInteger(thread.cut) && thread.cut > 0 ? Math.min(thread.cut, items.length) : 0;
 }
 
 /**
@@ -506,24 +548,27 @@ export async function trimContext(request, settings, deps = {}) {
 export async function compactionSummary(request, settings, deps = {}) {
   const original = request.messages;
   if (!validMessages(original)) return null;
+  const sid = sessionIdOf(request);
+  if (!sid) return null;
   const store = new Store(settings.contextDir);
   const items = compressAll(original, settings, store);
-  const sid = sanitizeSessionId(request.sessionID);
   const roots = items.filter((m) => !isPinned(m));
   if (!roots.length) return null;
   const root = fingerprint(roots[0]);
+  const first = firstUserIndex(items);
   return withSessionLock(sid, async () => {
     const state = store.loadTrim(sid);
     const thread = state.threads.get(root);
-    // Rows before an earlier trim's cut are already in the log.
-    const start = thread ? locateCut(items, thread) : 0;
+    const start = loggedUpTo(items, thread);
     const ts = utcNow(deps.now?.());
-    store.appendLog(sid, rows(items, start, items.length, ts));
+    // Compaction drops the pinned first user turn too; trims never logged it.
+    const pinned = thread && first !== null && first < start ? rows(items, first, first + 1, ts) : [];
+    store.appendLog(sid, [...pinned, ...rows(items, start, items.length, ts)]);
     let last = -1;
     for (let i = items.length - 1; i >= 0; i--) if (isTurnStart(items[i])) { last = i; break; }
     const note = last >= 0
       ? await buildNote(items, last, sid, roots.length, store, settings, deps)
-      : pointerText(sid, roots.length);
+      : pointerText(sid, roots.length, store.file(sid, ".log.jsonl"));
     if (thread) {
       state.threads.delete(root);
       store.saveTrim(sid, state);

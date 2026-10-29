@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PersonalMemoryPlugin } from "../../cli/coding-agent/opencode-plugin.mjs";
+import { sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "pm-opencode-plugin-"));
 const oldHome = process.env.HOME;
@@ -105,6 +106,29 @@ try {
   const mapped = await PersonalMemoryPlugin({ client, directory: "/tmp/test-project" });
   await mapped["chat.message"]({ sessionID: "mapped" }, { parts: [{ type: "text", text: "mapped prompt" }] });
   assert.equal(backendCalls, 1);
+
+  // P4: the startup banner is a constant system entry, built like the SessionStart hook banner.
+  const bannerSystem = [];
+  await mapped["experimental.chat.system.transform"]({ sessionID: "mapped" }, { system: bannerSystem });
+  assert.equal(bannerSystem.at(-1), sessionBanner("hindsight", "mapped-bank"));
+  const again = [];
+  await mapped["experimental.chat.system.transform"]({ sessionID: "other" }, { system: again });
+  assert.deepEqual(again, [sessionBanner("hindsight", "mapped-bank")], "banner only, no memory, for a session without a prompt");
+
+  // S6: the session header follows `[context_proxy] enabled`, not the proxy env file.
+  const cfg = path.join(home, ".config", "personal-memory");
+  fs.writeFileSync(path.join(cfg, "context-proxy.env"), "LITELLM_MASTER_KEY=sk-test\n");
+  const headersFor = async () => {
+    const p = await PersonalMemoryPlugin({ client, directory: "/tmp/test-project" });
+    const output = { headers: {} };
+    await p["chat.headers"]({ sessionID: "ses_h" }, output);
+    return output.headers;
+  };
+  assert.deepEqual(await headersFor(), {}, "env file alone sends no header");
+  fs.writeFileSync(path.join(cfg, "config.toml"), "[context_proxy]\nenabled = true\n");
+  assert.deepEqual(await headersFor(), { "x-openmem-session-id": "ses_h" });
+  fs.writeFileSync(path.join(cfg, "config.toml"), "[context_proxy]\nenabled = false\n");
+  assert.deepEqual(await headersFor(), {}, "disabled proxy sends no header although the env file remains");
   console.log("all OpenCode plugin lifecycle tests passed");
 } finally {
   globalThis.fetch = oldFetch;
