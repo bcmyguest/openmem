@@ -1,6 +1,6 @@
 # Concepts
 
-OpenMem is a **memory interface for coding agents**: a stable API and operator surface, with pluggable backends underneath.
+OpenMem is a **memory interface for coding agents**: a stable API and operator surface over pluggable memory providers.
 
 ## What’s coding-agent memory?
 
@@ -23,7 +23,7 @@ OpenMem is **not** a memory engine. It is the layer that sits between coding age
 | --- | --- |
 | **Agents** | Claude Code, Codex, Cursor Agent, OpenCode — call stable `memory_*` tools and share one skill |
 | **OpenMem** | Wizard, Compose, indexer, unified MCP, session hooks, import/export formats |
-| **Provider** | Hindsight, mem0, Cognee, or the next manifest — owns semantics, storage, and native APIs |
+| **Memory provider** | The selected memory system; owns storage, semantics, and its native API. See [Provider status](provider-status.md). |
 
 One active provider at a time. `openmem switch` rewires the stack; it does not pretend to migrate your data. Portability is explicit through the format layer (PMM today).
 
@@ -40,12 +40,12 @@ flowchart TB
 
 ## Why an interface layer?
 
-Without a shared front door, every agent and indexer hard-codes one vendor’s SDK or HTTP shape. Switching backends means rewriting hooks, MCP entries, and indexing. Trying a second system means a second install path.
+Without a shared front door, every agent and indexer hard-codes one vendor’s SDK or HTTP shape. Switching providers means rewriting hooks, MCP entries, and indexing. Trying a second system means a second install path.
 
 Standardizing the **agent and ops surface** means:
 
 - Keep using your current memory product
-- Try another backend without rewriting agent prompts and MCP tool names
+- Try another provider without rewriting agent prompts and MCP tool names
 - Share indexer, wizard, and install plumbing across backends
 - Grow a community of providers behind one contract
 
@@ -55,11 +55,11 @@ OpenMem owns machine plumbing. Providers own memory quality.
 
 ### Providers
 
-A **provider** is the translation layer between OpenMem and a memory backend. It maps manifests, Compose fragments, wizard hooks, and an indexer sink onto that product’s API so agents and the indexer stay backend-agnostic.
+A **memory provider** is the selected memory system, such as Hindsight, mem0, or Cognee. OpenMem's adapter under `providers/<id>/` maps its manifest, Compose fragment, wizard hooks, and indexer sink to that provider's API.
 
 Ship a provider as `providers/<id>/` (manifest + hooks + compose). Status (`supported` / `experimental` / `planned`) comes from the manifest. See [Provider status](provider-status.md) and [Pluggable memory providers](memory-providers.md).
 
-Only one provider is registered as active (`MEMORY_PROVIDER`). Switching replaces the active backend for Compose, the indexer sink, and unified MCP.
+Only one provider is active (`MEMORY_PROVIDER`). Switching updates Compose, the indexer sink, and unified MCP to use it.
 
 ### Evaluation API (`memory_*`)
 
