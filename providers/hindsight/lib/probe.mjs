@@ -31,3 +31,24 @@ export function normalizeOpenAiBase(base) {
   if (!b.endsWith("/v1")) b += "/v1";
   return b;
 }
+
+/**
+ * GET `url` and report the HTTP status (0 when nothing answered) and the parsed JSON body.
+ * @param {string} url
+ * @param {{ headers?: Record<string, string>, timeoutMs?: number }} [opts]
+ * @returns {Promise<{ status: number, json: any }>}
+ */
+export async function fetchStatus(url, { headers = {}, timeoutMs = TIMEOUT_MS } = {}) {
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+    let json = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+    return { status: res.status, json };
+  } catch {
+    return { status: 0, json: null };
+  }
+}

@@ -44,8 +44,8 @@ export async function afterProvider(ctx, h) {
 }
 
 /**
- * Step "3. Model backend": lemond, Ollama or a custom OpenAI-compatible URL behind the
- * LiteLLM proxy.
+ * Step "3. Model backend": lemond, Ollama, a custom OpenAI-compatible URL or a Claude
+ * subscription through Meridian, behind the LiteLLM proxy.
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
@@ -78,6 +78,7 @@ export async function hydrate(ctx, h) {
   ctx.model = confGet(ctx, h, "MEMORY_MODEL") || ctx.lemondDefaultModel;
   ctx.apiBase = confGet(ctx, h, "MEMORY_API_BASE") || "";
   ctx.reflectModel = confGet(ctx, h, "MEMORY_REFLECT_MODEL") || "";
+  ctx.meridianBase = confGet(ctx, h, "MEMORY_MERIDIAN_URL") || "";
   ctx.ollamaInCompose = confGet(ctx, h, "MEMORY_OLLAMA_IN_COMPOSE") === "1";
   applyComposeProfiles(ctx);
 }

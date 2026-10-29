@@ -69,6 +69,12 @@ export function validateHindsight(ctx, h) {
   const model = conf("MEMORY_MODEL");
   const shipped = backend === "ollama" ? ctx.ollamaDefaultModel : ctx.lemondDefaultModel;
   const reflect = conf("MEMORY_REFLECT_MODEL");
+  if (backend === "meridian") {
+    if (!fs.existsSync(ctx.litellmOverride)) errors.push("meridian backend without litellm.yaml override");
+    if (!h.envValue(ctx.litellmEnv, "MERIDIAN_API_KEY")) errors.push("litellm.env missing MERIDIAN_API_KEY");
+    checks.push("Meridian route and key");
+    return;
+  }
   if (backend !== "custom" && model !== shipped && !reflect && !fs.existsSync(ctx.litellmOverride)) {
     errors.push("custom model without litellm.yaml override");
   }

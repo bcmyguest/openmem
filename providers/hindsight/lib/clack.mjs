@@ -1,10 +1,24 @@
 /**
- * Hindsight's questions for the Clack setup UI: model backend, models, reflect model.
+ * Hindsight's questions for the Clack setup UI: model backend, models, reflect model
+ * (or, for Meridian, its URL, key and the two Claude models).
  * The meta UI asks the provider-neutral questions (action, provider) and then calls
  * clackSetup; the returned environment is handed to the wizard so it skips its own
  * model prompts (WIZARD_SKIP_BACKEND_STEP).
  */
 import { applyConfigEnv } from "./config.mjs";
+import {
+  bridgeReport,
+  containerApiBase,
+  dockerBridgeIp,
+  existingMeridianKey,
+  MERIDIAN_DEFAULT_BASE,
+  MERIDIAN_GUIDE,
+  MERIDIAN_REFLECT_DEFAULT,
+  MERIDIAN_RETAIN_DEFAULT,
+  normalizeMeridianBase,
+  pickModel,
+  probeMeridian,
+} from "./meridian.mjs";
 import { fetchJson, normalizeOpenAiBase, ollamaModelNames, openAiModelIds } from "./probe.mjs";
 import {
   LEMOND_DEFAULT_MODEL,
@@ -51,10 +65,15 @@ export async function clackSetup(ctx, ui, h) {
       {
         value: "custom",
         label: "OpenAI-compatible URL",
-        hint: "Meridian, hosted API, other",
+        hint: "hosted API, other",
+      },
+      {
+        value: "meridian",
+        label: "Claude subscription (Meridian)",
+        hint: "a Meridian proxy you already run on this host",
       },
     ],
-    initialValue: ["lemond", "ollama", "custom"].includes(backendDefault)
+    initialValue: ["lemond", "ollama", "custom", "meridian"].includes(backendDefault)
       ? backendDefault
       : "lemond",
   });
@@ -67,7 +86,6 @@ export async function clackSetup(ctx, ui, h) {
   let apiBase = "";
   let reflectModel =
     process.env.PM_REFLECT_MODEL ||
-    machine.PM_REFLECT_MODEL ||
     h.envValue(wizardConf, "MEMORY_REFLECT_MODEL") ||
     "";
 
@@ -85,8 +103,6 @@ export async function clackSetup(ctx, ui, h) {
       );
     }
     const defaultModel =
-      machine.PM_DEFAULT_MODEL ||
-      machine.MEMORY_MODEL ||
       h.envValue(wizardConf, "MEMORY_MODEL") ||
       LEMOND_DEFAULT_MODEL;
     if (ids.length > 0) {
@@ -108,7 +124,7 @@ export async function clackSetup(ctx, ui, h) {
     }
     apiBase = "http://host.docker.internal:13305/v1";
   } else if (backend === "ollama") {
-    const ollamaBase = machine.OLLAMA_BASE || "http://127.0.0.1:11434";
+    const ollamaBase = "http://127.0.0.1:11434";
     const spin = ui.spinner();
     spin.start(`Checking Ollama at ${ollamaBase}`);
     const body = await fetchJson(`${ollamaBase}/api/tags`);
@@ -137,8 +153,6 @@ export async function clackSetup(ctx, ui, h) {
       }
     }
     const defaultModel =
-      machine.PM_DEFAULT_MODEL ||
-      machine.MEMORY_MODEL ||
       h.envValue(wizardConf, "MEMORY_MODEL") ||
       OLLAMA_DEFAULT_MODEL;
     if (names.length > 0) {
@@ -160,12 +174,15 @@ export async function clackSetup(ctx, ui, h) {
     }
     apiBase = ollamaInCompose ? OLLAMA_COMPOSE_API_BASE : OLLAMA_HOST_API_BASE;
     if (ollamaInCompose) handoff.MEMORY_OLLAMA_IN_COMPOSE = "1";
+  } else if (backend === "meridian") {
+    const m = await askMeridian(ctx, ui, h);
+    model = m.model;
+    reflectModel = m.reflectModel;
+    apiBase = m.apiBase;
+    Object.assign(handoff, m.env);
   } else {
-    const defaultBase =
-      machine.CUSTOM_DEFAULT_BASE || "http://host.docker.internal:3456/v1";
+    const defaultBase = "http://host.docker.internal:3456/v1";
     const defaultModel =
-      machine.CUSTOM_DEFAULT_MODEL ||
-      machine.PM_DEFAULT_MODEL ||
       h.envValue(wizardConf, "MEMORY_MODEL") ||
       LEMOND_DEFAULT_MODEL;
     const baseInput = await ui.text({
@@ -205,6 +222,24 @@ export async function clackSetup(ctx, ui, h) {
     }
   }
 
+  if (backend !== "meridian") reflectModel = await askReflect(ui, model, reflectModel);
+
+  ui.note("Next: Docker, secrets, indexing, and starting the stack.", "Backend configured");
+
+  handoff.WIZARD_SKIP_BACKEND_STEP = "1";
+  handoff.PM_BACKEND = /** @type {string} */ (backend);
+  handoff.PM_DEFAULT_MODEL = model;
+  handoff.MEMORY_API_BASE = apiBase;
+  handoff.PM_REFLECT_MODEL = reflectModel;
+  return handoff;
+}
+
+/**
+ * @param {typeof import("@clack/prompts")} ui
+ * @param {string} model retain model
+ * @param {string} reflectModel stored or env reflect model
+ */
+async function askReflect(ui, model, reflectModel) {
   const reflectChoice = await ui.select({
     message: "Reflect model (needs tool calls; used for memory-reflect)",
     options: [
@@ -233,13 +268,80 @@ export async function clackSetup(ctx, ui, h) {
   } else {
     reflectModel = "";
   }
+  return reflectModel;
+}
 
-  ui.note("Next: Docker, secrets, indexing, and starting the stack.", "Backend configured");
+/**
+ * Meridian URL, key and models. Detect only: Meridian must already run.
+ * @param {{ home: string, wizardConf: string }} ctx
+ * @param {typeof import("@clack/prompts")} ui
+ * @param {Helpers} h
+ */
+async function askMeridian(ctx, ui, h) {
+  ui.log.info(`The wizard does not install or start Meridian; see ${MERIDIAN_GUIDE}.`);
+  const stored =
+    h.envValue(ctx.wizardConf, "MEMORY_BACKEND") === "meridian"
+      ? h.envValue(ctx.wizardConf, "MEMORY_MERIDIAN_URL")
+      : "";
+  const defaultBase = process.env.MERIDIAN_BASE || stored || MERIDIAN_DEFAULT_BASE;
+  const baseInput = await ui.text({
+    message: "Meridian URL from this host",
+    placeholder: defaultBase,
+    defaultValue: defaultBase,
+  });
+  if (ui.isCancel(baseInput)) process.exit(0);
+  const meridianBase = normalizeMeridianBase(/** @type {string} */ (baseInput));
+  const paths = {
+    meridianEnvFile: `${ctx.home}/.config/meridian/meridian.env`,
+    litellmEnv: `${ctx.home}/.config/hindsight/litellm.env`,
+  };
+  const existing = existingMeridianKey(paths, h);
+  const keyInput = await ui.password({
+    message: `MERIDIAN_API_KEY (blank uses ${existing.source || "no key"})`,
+  });
+  if (ui.isCancel(keyInput)) process.exit(0);
+  const typedKey = String(keyInput || "").trim();
+  const key = typedKey || existing.key;
 
-  handoff.WIZARD_SKIP_BACKEND_STEP = "1";
-  handoff.PM_BACKEND = /** @type {string} */ (backend);
-  handoff.PM_DEFAULT_MODEL = model;
-  handoff.MEMORY_API_BASE = apiBase;
-  handoff.PM_REFLECT_MODEL = reflectModel;
-  return handoff;
+  const bridgeIp = dockerBridgeIp();
+  const spin = ui.spinner();
+  spin.start(`Checking Meridian at ${meridianBase}`);
+  const probe = await probeMeridian(meridianBase, key, bridgeIp);
+  spin.stop(
+    probe.answered ? `Meridian answered (${probe.ids.length} models)` : "Meridian not reachable",
+  );
+  if (!probe.answered) {
+    ui.log.warn(`Start Meridian first (${MERIDIAN_GUIDE}); the route uses the guide's default models.`);
+  } else if (probe.modelsStatus === 401 || probe.modelsStatus === 403) {
+    ui.log.warn(`Meridian rejected the key on /v1/models (HTTP ${probe.modelsStatus}).`);
+  }
+  const apiBase = containerApiBase(meridianBase);
+  const report = bridgeReport({ ...paths, meridianBase, apiBase, dockerBridgeIp: bridgeIp }, h.envValue, probe);
+  if (report) (report.level === "warn" ? ui.log.warn : ui.log.info)(report.text);
+
+  const choose = async (message, preferred, family, candidates) => {
+    const def = pickModel(probe.ids, preferred, family, candidates);
+    const picked = probe.ids.length
+      ? await ui.select({
+          message,
+          options: probe.ids.map((id) => ({ value: id, label: id })),
+          initialValue: def,
+        })
+      : await ui.text({ message, placeholder: def, defaultValue: def });
+    if (ui.isCancel(picked)) process.exit(0);
+    return /** @type {string} */ (picked);
+  };
+  const sameBackend = h.envValue(ctx.wizardConf, "MEMORY_BACKEND") === "meridian";
+  const model = await choose("Retain / consolidate model", MERIDIAN_RETAIN_DEFAULT, /haiku/, [
+    process.env.PM_DEFAULT_MODEL,
+    sameBackend ? h.envValue(ctx.wizardConf, "MEMORY_MODEL") : "",
+  ]);
+  const reflectModel = await choose("Reflect model (needs tool calls)", MERIDIAN_REFLECT_DEFAULT, /sonnet/, [
+    process.env.PM_REFLECT_MODEL,
+    sameBackend ? h.envValue(ctx.wizardConf, "MEMORY_REFLECT_MODEL") : "",
+  ]);
+  /** @type {Record<string, string>} */
+  const env = { MERIDIAN_BASE: meridianBase };
+  if (typedKey) env.MERIDIAN_API_KEY = typedKey;
+  return { model, reflectModel, apiBase, env };
 }
