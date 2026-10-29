@@ -10,6 +10,12 @@ import re
 from .compress import compress_text, compressed_blob_id
 
 _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+_RESULT_TYPES = ("function_call_output", "custom_tool_call_output", "local_shell_call_output")
+_CALL_TYPES = ("function_call", "custom_tool_call", "local_shell_call")
+
+
+class UnsupportedCallType(LookupError):
+    """No adapter handles this LiteLLM call type."""
 
 
 def _compact_json(value):
@@ -105,6 +111,17 @@ class AnthropicAdapter:
             return not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
         return False
 
+    def is_first_user(self, item):
+        """A user message that is not only tool results (the task statement, when it is the first)."""
+        if item.get("role") != "user":
+            return False
+        content = item.get("content")
+        if isinstance(content, str):
+            return bool(content)
+        if isinstance(content, list):
+            return any(not (isinstance(b, dict) and b.get("type") == "tool_result") for b in content)
+        return False
+
     def call_ids(self, item):
         return {b.get("id") for b in self._blocks(item) or () if isinstance(b, dict) and b.get("type") in ("tool_use", "server_tool_use")}
 
@@ -193,6 +210,9 @@ class ChatAdapter:
     def is_turn_start(self, item):
         return item.get("role") == "user"
 
+    def is_first_user(self, item):
+        return item.get("role") == "user"
+
     def call_ids(self, item):
         return {c.get("id") for c in item.get("tool_calls") or () if isinstance(c, dict)}
 
@@ -248,10 +268,6 @@ class ChatAdapter:
         return out
 
 
-_RESULT_TYPES = ("function_call_output", "custom_tool_call_output", "local_shell_call_output")
-_CALL_TYPES = ("function_call", "custom_tool_call", "local_shell_call")
-
-
 class ResponsesAdapter:
     name = "responses"
     items_key = "input"
@@ -271,6 +287,9 @@ class ResponsesAdapter:
 
     def is_turn_start(self, item):
         return self._is_message(item) and item.get("role") == "user"
+
+    def is_first_user(self, item):
+        return self.is_turn_start(item)
 
     def call_ids(self, item):
         return {item.get("call_id")} if item.get("type") in _CALL_TYPES else set()
@@ -324,15 +343,14 @@ class ResponsesAdapter:
         return [("assistant", "text", None, f"[{t}]")]
 
 
-ADAPTERS = {
-    "anthropic_messages": AnthropicAdapter,
-    "acompletion": ChatAdapter,
-    "completion": ChatAdapter,
-    "aresponses": ResponsesAdapter,
-    "responses": ResponsesAdapter,
-}
-
-
 def adapter_for(call_type):
-    cls = ADAPTERS.get(str(getattr(call_type, "value", call_type)))
-    return cls() if cls else None
+    """Adapter for a LiteLLM call type; raises UnsupportedCallType for any other call."""
+    name = str(getattr(call_type, "value", call_type))
+    match name:
+        case "anthropic_messages":
+            return AnthropicAdapter()
+        case "acompletion" | "completion":
+            return ChatAdapter()
+        case "aresponses" | "responses":
+            return ResponsesAdapter()
+    raise UnsupportedCallType(name)

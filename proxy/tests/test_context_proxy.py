@@ -68,6 +68,9 @@ class Base(unittest.TestCase):
             return 200, {"total": 1}
         return 200, {"total": 0}
 
+    def ptr(self, dropped, sid=SID):
+        return pointer_text(sid, dropped, self.ctx / "sessions" / f"{sid}.log.jsonl")
+
     def run_req(self, data, call_type="anthropic_messages", **kw):
         return process_request(data, call_type, self.settings(**kw), http=self.http)
 
@@ -97,10 +100,11 @@ class AnthropicTrimTests(Base):
                                               {"type": "text", "text": "extra text beside a result"}]}]
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
         kept = out["messages"]
-        self.assertEqual(len(kept), 3)
-        self.assertEqual(kept[0]["content"], [{"type": "text", "text": pointer_text(SID, 12)},
+        self.assertEqual(len(kept), 4)
+        self.assertEqual(kept[0], msgs[0])
+        self.assertEqual(kept[1]["content"], [{"type": "text", "text": self.ptr(11)},
                                               {"type": "text", "text": "now this"}])
-        self.assertEqual(kept[1:], msgs[13:])
+        self.assertEqual(kept[2:], msgs[13:])
         self.assertEqual(out["system"], [{"type": "text", "text": "SYSTEM"}])
         self.assertEqual(out["tools"], [{"name": "Bash"}])
 
@@ -108,14 +112,15 @@ class AnthropicTrimTests(Base):
         msgs = anth_history(3)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
         kept = out["messages"]
-        self.assertEqual(kept[0]["content"][0], {"type": "text", "text": pointer_text(SID, 8)})
-        self.assertEqual(kept[0]["content"][1:], msgs[8]["content"])
-        self.assertEqual(kept[1:], msgs[9:])
+        self.assertEqual(kept[0], msgs[0])
+        self.assertEqual(kept[1]["content"][0], {"type": "text", "text": self.ptr(7)})
+        self.assertEqual(kept[1]["content"][1:], msgs[8]["content"])
+        self.assertEqual(kept[2:], msgs[9:])
 
     def test_signed_thinking_kept_byte_identical(self):
         msgs = anth_history(2)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
-        self.assertEqual(json.dumps(out["messages"][1:]), json.dumps(msgs[5:]))
+        self.assertEqual(json.dumps(out["messages"][2:]), json.dumps(msgs[5:]))
 
     def test_single_turn_tool_loop_not_trimmed(self):
         msgs = anth_history(1)
@@ -129,10 +134,12 @@ class AnthropicTrimTests(Base):
         self.assertEqual(set(rows[0]), {"seq", "ts", "role", "kind", "name", "text"})
         self.assertRegex(rows[0]["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         kinds = [(r["role"], r["kind"], r["name"]) for r in rows[:5]]
-        self.assertEqual(kinds, [("user", "text", None), ("assistant", "thinking", None),
-                                 ("assistant", "tool_use", "Bash"), ("tool", "tool_result", "Bash"),
-                                 ("user", "text", None)])
-        self.assertEqual(rows[2]["text"], '{"command":"echo 0"}')
+        # The first user turn is pinned, so the log starts with the reply to it.
+        self.assertEqual(kinds, [("assistant", "thinking", None), ("assistant", "tool_use", "Bash"),
+                                 ("tool", "tool_result", "Bash"), ("user", "text", None),
+                                 ("assistant", "text", None)])
+        self.assertEqual(rows[1]["text"], '{"command":"echo 0"}')
+        self.assertNotIn("question 0", json.dumps(rows))
         self.assertNotIn("SIG", json.dumps(rows))
         mode = stat.S_IMODE(os.stat(self.ctx / "sessions" / f"{SID}.log.jsonl").st_mode)
         self.assertEqual(mode, 0o600)
@@ -163,8 +170,9 @@ class AnthropicTrimTests(Base):
         msgs[-1]["content"][0]["cache_control"] = {"type": "ephemeral"}
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         self.assertEqual(len(self.log_rows()), n_rows)
-        self.assertEqual(out[0]["content"][0]["text"], pointer_text(SID, 8))
-        self.assertEqual(out[1:], msgs[9:])
+        self.assertEqual(out[0], msgs[0])
+        self.assertEqual(out[1]["content"][0]["text"], self.ptr(7))
+        self.assertEqual(out[2:], msgs[9:])
 
     def test_sticky_cut_survives_text_block_to_string_change(self):
         # Observed from Claude Code 2.1: the newest user turn is a cached text block, later a plain string.
@@ -178,9 +186,9 @@ class AnthropicTrimTests(Base):
                  {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tuZ", "content": "ok"}]}]
         second = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         self.assertEqual(len(self.log_rows()), n_rows)
-        self.assertEqual(first[0]["content"][0], second[0]["content"][0])
-        self.assertEqual(second[0]["content"][1], {"type": "text", "text": "run it"})
-        self.assertEqual(second[1:], msgs[-2:])
+        self.assertEqual(first[1]["content"][0], second[1]["content"][0])
+        self.assertEqual(second[1]["content"][1], {"type": "text", "text": "run it"})
+        self.assertEqual(second[2:], msgs[-2:])
 
     def test_cut_moves_on_next_crossing_and_seq_continues(self):
         msgs = anth_history(3)
@@ -195,15 +203,16 @@ class AnthropicTrimTests(Base):
         # Turn 2 moved out: user text, thinking, tool_use, tool_result, reminder text, answer text.
         self.assertEqual(len(rows) - len(first_rows), 6)
         self.assertEqual(rows[len(first_rows)]["text"], "question 2 " + "q" * 200)
-        self.assertEqual(len(out), 2)
-        self.assertEqual(out[0]["content"], [{"type": "text", "text": pointer_text(SID, 12)},
+        self.assertEqual(len(out), 3)
+        self.assertEqual(out[0], msgs[0])
+        self.assertEqual(out[1]["content"], [{"type": "text", "text": self.ptr(11)},
                                              {"type": "text", "text": "brand new question"}])
 
     def test_force_flag_trims_and_is_deleted(self):
         self.force()
         msgs = anth_history(2)
         out = self.run_req(anth_request(copy.deepcopy(msgs)))
-        self.assertEqual(len(out["messages"]), 4)
+        self.assertEqual(len(out["messages"]), 5)
         self.assertFalse((self.ctx / "sessions" / f"{SID}.force").exists())
 
     def test_force_flag_kept_when_nothing_to_trim(self):
@@ -225,7 +234,7 @@ class AnthropicTrimTests(Base):
         (reg / f"{SID}.json").write_text(json.dumps({"session_id": SID, "bank": "coding-agent::x"}))
         msgs = anth_history(3)
         first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
-        note = first[0]["content"][0]["text"]
+        note = first[1]["content"][0]["text"]
         self.assertIn("\n[openmem recall]\nremembered fact", note)
         self.assertIn("may not be in memory yet", note)
         recall_calls = [c for c in self.calls if c[1].endswith("/memories/recall")]
@@ -248,7 +257,7 @@ class AnthropicTrimTests(Base):
         with redirect_stderr(io.StringIO()):
             out = process_request(anth_request(anth_history(3)), "anthropic_messages",
                                   self.settings(trim_at_tokens=1), http=broken)
-        self.assertEqual(out["messages"][0]["content"][0]["text"], pointer_text(SID, 8))
+        self.assertEqual(out["messages"][1]["content"][0]["text"], self.ptr(7))
 
     def test_recall_respects_max_chars(self):
         reg = self.ctx / "sessions"
@@ -257,7 +266,7 @@ class AnthropicTrimTests(Base):
         out = process_request(anth_request(anth_history(3)), "anthropic_messages",
                               self.settings(trim_at_tokens=1, compaction_max_chars=5),
                               http=lambda m, u, b, t: (200, {"results": [{"text": "abcdefghij"}], "total": 0}))
-        self.assertTrue(out["messages"][0]["content"][0]["text"].endswith("[openmem recall]\nabcde"))
+        self.assertTrue(out["messages"][1]["content"][0]["text"].endswith("[openmem recall]\nabcde"))
 
 
 class SessionIdTests(Base):
@@ -280,7 +289,8 @@ class SessionIdTests(Base):
         self.assertTrue((self.ctx / "sessions" / "a_b_c.log.jsonl").exists())
 
     def test_prompt_cache_key(self):
-        data = {"input": [{"role": "user", "content": "x"}, {"role": "user", "content": "y"}],
+        data = {"input": [{"role": "user", "content": "x"}, {"role": "user", "content": "y"},
+                          {"role": "user", "content": "z"}],
                 "prompt_cache_key": "codex-1"}
         self.run_req(data, "aresponses", trim_at_tokens=1)
         self.assertTrue((self.ctx / "sessions" / "codex-1.log.jsonl").exists())
@@ -291,7 +301,7 @@ class SessionIdTests(Base):
         logs = list((self.ctx / "sessions").glob("fp-*.log.jsonl"))
         self.assertEqual(len(logs), 1)
         self.assertRegex(logs[0].name, r"^fp-[0-9a-f]{16}\.log\.jsonl$")
-        self.assertIn("continuing session fp-", out["messages"][0]["content"][0]["text"])
+        self.assertIn("continuing session fp-", out["messages"][1]["content"][0]["text"])
 
 
 def chat_history():
@@ -314,12 +324,12 @@ class ChatTests(Base):
         msgs = chat_history()
         out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)
         kept = out["messages"]
-        self.assertEqual(kept[0], msgs[0])
-        self.assertEqual(kept[1]["content"], pointer_text(SID, 4) + "\n\nsecond")
-        self.assertEqual(kept[2:], msgs[6:])
+        self.assertEqual(kept[:2], msgs[:2])
+        self.assertEqual(kept[2]["content"], self.ptr(3) + "\n\nsecond")
+        self.assertEqual(kept[3:], msgs[6:])
         rows = self.log_rows()
         self.assertEqual([(r["role"], r["kind"], r["name"], r["text"]) for r in rows], [
-            ("user", "text", None, "first"), ("assistant", "tool_use", "ls", '{"a":1}'),
+            ("assistant", "tool_use", "ls", '{"a":1}'),
             ("tool", "tool_result", "ls", "files"), ("assistant", "text", None, "done")])
 
     def test_compress_tool_message(self):
@@ -350,12 +360,12 @@ class ResponsesTests(Base):
         out = self.run_req({"input": copy.deepcopy(items), "instructions": "I", **headers()}, "aresponses",
                            trim_at_tokens=1)
         kept = out["input"]
-        self.assertEqual(kept[0], items[0])
-        self.assertEqual(kept[1]["content"], pointer_text(SID, 5) + "\n\nsecond")
-        self.assertEqual(kept[2:], items[7:])
+        self.assertEqual(kept[:2], items[:2])
+        self.assertEqual(kept[2]["content"], self.ptr(4) + "\n\nsecond")
+        self.assertEqual(kept[3:], items[7:])
         rows = self.log_rows()
         self.assertEqual([(r["role"], r["kind"], r["name"]) for r in rows], [
-            ("user", "text", None), ("assistant", "thinking", None), ("assistant", "tool_use", "shell"),
+            ("assistant", "thinking", None), ("assistant", "tool_use", "shell"),
             ("tool", "tool_result", "shell"), ("assistant", "text", None)])
         self.assertNotIn("ENC", json.dumps(rows))
 
@@ -364,13 +374,13 @@ class ResponsesTests(Base):
         # A user message wedged between a call and its output must not become the cut.
         items.insert(8, {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "wedge"}]})
         out = self.run_req({"input": copy.deepcopy(items), **headers()}, "aresponses", trim_at_tokens=1)
-        self.assertEqual(out["input"][1]["content"], pointer_text(SID, 5) + "\n\nsecond")
+        self.assertEqual(out["input"][2]["content"], self.ptr(4) + "\n\nsecond")
 
     def test_list_content_gets_input_text_block(self):
         items = responses_history()
         items[6] = {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "second"}]}
         out = self.run_req({"input": items, **headers()}, "aresponses", trim_at_tokens=1)
-        self.assertEqual(out["input"][1]["content"][0], {"type": "input_text", "text": pointer_text(SID, 5)})
+        self.assertEqual(out["input"][2]["content"][0], {"type": "input_text", "text": self.ptr(4)})
 
     def test_string_input_untouched(self):
         data = {"input": "hello", **headers()}
@@ -447,6 +457,143 @@ class CompressionTests(Base):
         items[8]["output"] = "z" * 40000
         out = self.run_req({"input": items, **headers()}, "aresponses", compress_over_tokens=100)
         self.assertTrue(out["input"][8]["output"].startswith("[openmem: tool result compressed,"))
+
+
+class FirstUserPinTests(Base):
+    """T1: the first real user turn survives every trim verbatim, before the pointer, and is never logged."""
+
+    def test_anthropic_first_user_pinned_and_sticky(self):
+        msgs = anth_history(3)
+        first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(first[0], msgs[0])
+        self.assertTrue(first[1]["content"][0]["text"].startswith("[openmem: continuing session"))
+        rows = self.log_rows()
+        self.assertFalse(any(r["text"].startswith("question 0") for r in rows))
+        # Later requests: the same bytes for the pinned turn, the pointer turn and everything after.
+        msgs.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "nope", "content": "x"}]})
+        later = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=BIG)["messages"]
+        self.assertEqual(json.dumps(later[:len(first)]), json.dumps(first))
+        # The cut moves; the first turn stays pinned and is still never logged.
+        msgs[-1] = {"role": "user", "content": "follow-up"}
+        moved = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(moved[0], msgs[0])
+        self.assertEqual(moved[1]["content"][0]["text"], self.ptr(11))
+        self.assertEqual(moved[1]["content"][1], {"type": "text", "text": "follow-up"})
+        self.assertFalse(any(r["text"].startswith("question 0") for r in self.log_rows()))
+        self.assertEqual([r["seq"] for r in self.log_rows()], list(range(len(self.log_rows()))))
+
+    def test_anthropic_first_user_with_reminder_blocks_is_pinned(self):
+        msgs = anth_history(2)
+        msgs[0]["content"].insert(0, {"type": "text", "text": "<system-reminder>ctx</system-reminder>"})
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(out[0], msgs[0])
+
+    def test_anthropic_first_user_is_in_flight_turn_unchanged(self):
+        msgs = anth_history(1)
+        msgs += [{"role": "assistant", "content": [{"type": "tool_use", "id": "tuY", "name": "Read", "input": {}}]},
+                 {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tuY", "content": "y"}]}]
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(out, msgs)
+        self.assertEqual(self.log_rows(), [])
+
+    def test_anthropic_cut_still_never_splits_pairs(self):
+        msgs = anth_history(2)
+        # A steer message wedged between tool_use and tool_result must not become the cut.
+        msgs += [{"role": "user", "content": "new task"},
+                 {"role": "assistant", "content": [{"type": "tool_use", "id": "tuW", "name": "Read", "input": {}}]},
+                 {"role": "user", "content": "steer"},
+                 {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tuW", "content": "w"}]}]
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(out[0], msgs[0])
+        self.assertEqual(out[1]["content"][1], {"type": "text", "text": "new task"})
+        self.assertEqual(out[2:], msgs[9:])
+
+    def test_nothing_droppable_besides_first_means_no_trim(self):
+        msgs = [{"role": "user", "content": "task"}, {"role": "user", "content": "more"}]
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assertEqual(out, msgs)
+
+    def test_chat_first_user_pinned(self):
+        msgs = chat_history()
+        msgs += [{"role": "assistant", "content": "ok"}, {"role": "user", "content": "third"}]
+        out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)["messages"]
+        self.assertEqual(out[:2], msgs[:2])
+        self.assertEqual(out[2]["content"], self.ptr(7) + "\n\nthird")
+        self.assertNotIn("first", [r["text"] for r in self.log_rows()])
+        again = self.run_req({"messages": copy.deepcopy(msgs) + [{"role": "assistant", "content": "x"}], **headers()},
+                             "acompletion", trim_at_tokens=BIG)["messages"]
+        self.assertEqual(json.dumps(again[:len(out)]), json.dumps(out))
+
+    def test_chat_first_user_after_assistant_greeting(self):
+        msgs = [{"role": "system", "content": "SYS"}, {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": "task"}, {"role": "assistant", "content": "a"},
+                {"role": "user", "content": "next"}]
+        out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)["messages"]
+        self.assertEqual(out[:2], [msgs[0], msgs[2]])
+        self.assertEqual(out[2]["content"], self.ptr(2) + "\n\nnext")
+        self.assertEqual([r["text"] for r in self.log_rows()], ["hello", "a"])
+
+    def test_chat_first_user_is_in_flight_unchanged(self):
+        msgs = chat_history()[:5]
+        out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)["messages"]
+        self.assertEqual(out, msgs)
+
+    def test_responses_first_user_pinned(self):
+        items = responses_history()
+        out = self.run_req({"input": copy.deepcopy(items), **headers()}, "aresponses", trim_at_tokens=1)["input"]
+        self.assertEqual(out[1], items[1])
+        self.assertTrue(out[2]["content"].startswith(self.ptr(4)))
+        self.assertNotIn("first", [r["text"] for r in self.log_rows()])
+        self.assertEqual(self.run_req({"input": copy.deepcopy(items), **headers()}, "aresponses")["input"], out)
+
+    def test_responses_first_user_is_in_flight_unchanged(self):
+        items = responses_history()[:6]
+        out = self.run_req({"input": copy.deepcopy(items), **headers()}, "aresponses", trim_at_tokens=1)["input"]
+        self.assertEqual(out, items)
+
+
+class ContractTests(Base):
+    def test_sanitize_sid_contract(self):
+        from openmem_context.store import InvalidSessionId, sanitize_sid
+        self.assertEqual(sanitize_sid("  abc\n"), "abc")
+        self.assertEqual(sanitize_sid("a/b c"), "a_b_c")
+        self.assertEqual(sanitize_sid("ses/../x"), "ses_.._x")
+        self.assertEqual(sanitize_sid(".."), "..")
+        self.assertEqual(sanitize_sid("\u00a0x"), "_x")
+        for bad in ("", "   ", "\t\n"):
+            with self.assertRaises(InvalidSessionId):
+                sanitize_sid(bad)
+
+    def test_blank_header_falls_through_to_next_source(self):
+        data = {"messages": anth_history(2),
+                "proxy_server_request": {"headers": {"x-openmem-session-id": "  ", "x-claude-code-session-id": " cc "}}}
+        self.run_req(data, trim_at_tokens=1)
+        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.log.jsonl")], ["cc.log.jsonl"])
+
+    def test_registration_missing_raises(self):
+        from openmem_context.store import RegistrationNotFound, Store
+        store = Store(self.ctx)
+        with self.assertRaises(RegistrationNotFound):
+            store.registration("nobody")
+        (self.ctx / "sessions").mkdir(parents=True)
+        (self.ctx / "sessions" / "list.json").write_text("[]")
+        with self.assertRaises(RegistrationNotFound):
+            store.registration("list")
+
+    def test_adapter_for_unknown_raises(self):
+        from openmem_context.adapters import UnsupportedCallType, adapter_for
+        with self.assertRaises(UnsupportedCallType):
+            adapter_for("aembedding")
+
+    def test_pointer_names_host_log_path(self):
+        s = Settings.from_env({"OPENMEM_STATE_DIR": "/state", "OPENMEM_HOST_STATE_DIR": " /home/u/.local/share/openmem "})
+        self.assertEqual(s.context_dir, Path("/state/context"))
+        self.assertEqual(s.pointer_context_dir, Path("/home/u/.local/share/openmem/context"))
+        self.assertEqual(Settings.from_env({"OPENMEM_STATE_DIR": " /state "}).pointer_context_dir, Path("/state/context"))
+        out = process_request(anth_request(anth_history(2)), "anthropic_messages",
+                              self.settings(trim_at_tokens=1, host_context_dir=Path("/host/context")), http=self.http)
+        self.assertIn("the handoff log is /host/context/sessions/sess-1.log.jsonl (JSONL, one row per block).]",
+                      out["messages"][1]["content"][0]["text"])
 
 
 class SafetyTests(Base):

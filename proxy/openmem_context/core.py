@@ -6,12 +6,13 @@ Pure stdlib. The LiteLLM hook calls process_request(data, call_type); tests call
 import sys
 import time
 import traceback
+from pathlib import Path
 
 from . import recall as recall_mod
-from .adapters import adapter_for, strip_reminders
+from .adapters import UnsupportedCallType, adapter_for, strip_reminders
 from .session import resolve_session_id
 from .settings import Settings
-from .store import Store, session_lock
+from .store import RegistrationNotFound, Store, session_lock
 from .tokens import estimate_tokens, fingerprint
 
 MAX_THREADS = 32
@@ -29,10 +30,11 @@ def _utc_now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def pointer_text(sid, dropped):
+def pointer_text(sid, dropped, log_path):
     return (
         f"[openmem: continuing session {sid}; {dropped} earlier messages trimmed. "
-        f'Use smart_compact_search(session_id="{sid}", query=...) for anything earlier.]'
+        f'Use smart_compact_search(session_id="{sid}", query=...) for anything earlier; '
+        f"the handoff log is {log_path} (JSONL, one row per block).]"
     )
 
 
@@ -43,16 +45,31 @@ def pending_text(sid):
     )
 
 
-def choose_cut(adapter, items, after):
-    """Index of the last real user turn > after whose kept suffix shares no call/result pair with the prefix."""
+def first_user_index(adapter, items):
+    """Index of the first real user turn (pinned through every trim), or None."""
+    for i, item in enumerate(items):
+        if adapter.is_first_user(item):
+            return i
+    return None
+
+
+def _droppable(adapter, items, stop, first):
+    return [x for j, x in enumerate(items[:stop]) if j != first and not adapter.is_pinned(x)]
+
+
+def choose_cut(adapter, items, after, first=None):
+    """Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part.
+
+    The kept part is the suffix from the cut plus the pinned first user turn.
+    """
     for i in range(len(items) - 1, after, -1):
         item = items[i]
         if not adapter.is_turn_start(item):
             continue
-        if not any(not adapter.is_pinned(x) for x in items[:i]):
+        dropped = _droppable(adapter, items, i, first)
+        if not dropped:
             return None
-        dropped = [x for x in items[:i] if not adapter.is_pinned(x)]
-        kept = items[i:]
+        kept = items[i:] + ([items[first]] if first is not None and first < i else [])
         d_calls = set().union(*(adapter.call_ids(x) for x in dropped)) - {None}
         d_results = set().union(*(adapter.result_ids(x) for x in dropped)) - {None}
         k_calls = set().union(*(adapter.call_ids(x) for x in kept)) - {None}
@@ -63,11 +80,12 @@ def choose_cut(adapter, items, after):
     return None
 
 
-def render(adapter, items, cut, note):
+def render(adapter, items, cut, note, first=None):
+    """Pinned items and the first user turn before the cut (in order), then the noted cut turn and the rest."""
     if not cut:
         return items
-    pinned = [x for x in items[:cut] if adapter.is_pinned(x)]
-    return [*pinned, adapter.prepend_note(items[cut], note), *items[cut + 1:]]
+    head = [x for j, x in enumerate(items[:cut]) if j == first or adapter.is_pinned(x)]
+    return [*head, adapter.prepend_note(items[cut], note), *items[cut + 1:]]
 
 
 def _locate_cut(items, thread):
@@ -81,11 +99,19 @@ def _locate_cut(items, thread):
     return 0
 
 
+def _registered_bank(store, sid):
+    try:
+        bank = store.registration(sid).get("bank")
+    except RegistrationNotFound:
+        return None
+    return bank if isinstance(bank, str) and bank else None
+
+
 def _build_note(adapter, items, cut, sid, dropped, store, settings, http):
-    parts = [pointer_text(sid, dropped)]
-    reg = store.registration(sid)
-    bank = reg.get("bank") if reg else None
-    if isinstance(bank, str) and bank:
+    log_path = Path(settings.pointer_context_dir) / "sessions" / store.log_path(sid).name
+    parts = [pointer_text(sid, dropped, log_path)]
+    bank = _registered_bank(store, sid)
+    if bank:
         query = strip_reminders(adapter.user_text(items[cut]))[:RECALL_QUERY_MAX_CHARS]
         if query:
             try:
@@ -104,10 +130,11 @@ def _build_note(adapter, items, cut, sid, dropped, store, settings, http):
     return "\n".join(parts)
 
 
-def _rows(adapter, items, start, stop, names, ts):
+def _rows(adapter, items, start, stop, names, ts, skip=None):
     rows = []
-    for item in items[start:stop]:
-        if adapter.is_pinned(item):
+    for j in range(start, min(stop, len(items))):
+        item = items[j]
+        if j == skip or adapter.is_pinned(item):
             continue
         for role, kind, name, text in adapter.rows(item, names):
             rows.append({"ts": ts, "role": role, "kind": kind, "name": name, "text": text})
@@ -115,8 +142,9 @@ def _rows(adapter, items, start, stop, names, ts):
 
 
 def _rewrite(data, call_type, settings, http):
-    adapter = adapter_for(call_type)
-    if adapter is None:
+    try:
+        adapter = adapter_for(call_type)
+    except UnsupportedCallType:
         return data
     original = adapter.get_items(data)
     if not isinstance(original, list) or not original or not all(isinstance(x, dict) for x in original):
@@ -132,6 +160,7 @@ def _rewrite(data, call_type, settings, http):
     if not roots:
         return data
     root = fingerprint(roots[0])
+    first = first_user_index(adapter, items)
     context = [data.get(k) for k in adapter.context_keys]
 
     with session_lock(sid):
@@ -144,14 +173,14 @@ def _rewrite(data, call_type, settings, http):
             note = thread.get("note") if cut else None
             if not cut:
                 threads.pop(root, None)
-        view = render(adapter, items, cut, note)
+        view = render(adapter, items, cut, note, first)
         force = store.force_requested(sid)
         if force or estimate_tokens(*context, view) >= settings.trim_at_tokens:
-            new_cut = choose_cut(adapter, items, cut)
+            new_cut = choose_cut(adapter, items, cut, first)
             if new_cut is not None:
                 names = adapter.tool_names(items)
-                store.append_log(sid, _rows(adapter, items, cut, new_cut, names, _utc_now()))
-                dropped = sum(1 for x in items[:new_cut] if not adapter.is_pinned(x))
+                store.append_log(sid, _rows(adapter, items, cut, new_cut, names, _utc_now(), skip=first))
+                dropped = len(_droppable(adapter, items, new_cut, first))
                 note = _build_note(adapter, items, new_cut, sid, dropped, store, settings, http)
                 threads.pop(root, None)
                 threads[root] = {"cut": new_cut, "cut_fp": fingerprint(items[new_cut]), "note": note,
@@ -161,7 +190,7 @@ def _rewrite(data, call_type, settings, http):
                 store.save_trim(sid, state)
                 if force:
                     store.clear_force(sid)
-                view = render(adapter, items, new_cut, note)
+                view = render(adapter, items, new_cut, note, first)
             elif thread and not cut:
                 store.save_trim(sid, state)
         elif thread and not cut:
