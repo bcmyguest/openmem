@@ -2,6 +2,7 @@ import { search as cogneeSearch } from "../cognee-mcp.mjs";
 import { callMemoryConsolidate, callMemoryReflect } from "./memory-reflect-consolidate.mjs";
 import { memoryExport, memoryImport } from "./portability.mjs";
 import { KNOWLEDGE_MCP_TOOLS, KNOWLEDGE_TOOL_NAMES, callKnowledgeTool } from "./knowledge.mjs";
+import { CONTEXT_STORE_MCP_TOOLS, CONTEXT_STORE_TOOL_NAMES, callContextStoreTool } from "./context-store.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -212,6 +213,7 @@ export const UNIFIED_MCP_TOOLS = [
     },
   },
   ...KNOWLEDGE_MCP_TOOLS,
+  ...CONTEXT_STORE_MCP_TOOLS,
 ];
 
 export function textResult(value, isError = false) {
@@ -320,6 +322,14 @@ export async function callUnifiedTool(ctx, name, args = {}, fetchFn = fetch) {
   if (name === "memory_consolidate") {
     try {
       return textResult(await callMemoryConsolidate(ctx, args, fetchFn));
+    } catch (err) {
+      return textResult(err instanceof Error ? err.message : String(err), true);
+    }
+  }
+
+  if (CONTEXT_STORE_TOOL_NAMES.has(name)) {
+    try {
+      return textResult(callContextStoreTool(name, args));
     } catch (err) {
       return textResult(err instanceof Error ? err.message : String(err), true);
     }
