@@ -31,7 +31,7 @@ For Codex, installation enables `features.hooks` when unset and preserves an exp
 
 Codex requires review of new or changed non-managed hooks in `/hooks` before they run. [Codex hook documentation](https://developers.openai.com/codex/hooks) describes this trust step.
 
-The command keeps existing agent settings and other MCP servers. With `integration = "openmem"` it removes the upstream Hindsight plugin's hook entries but leaves its MCP server and skill; remove those through the plugin's own uninstaller if you no longer want them.
+The command keeps existing agent settings and other MCP servers. With `integration = "openmem"` it removes what the upstream Hindsight plugin installed: its hook entries, its `hindsight` MCP server (`~/.claude.json`, `~/.codex/config.toml`, `~/.cursor/mcp.json`) and its `hindsight-coding-agent` skill (`~/.claude/skills`, `~/.agents/skills`, `~/.cursor/skills`). An MCP entry goes only when it runs the upstream `hindsight-coding-agents/dist/mcp-server.js`; a skill only when its `SKILL.md` declares `name: hindsight-coding-agent`. A `hindsight` MCP entry of your own that points elsewhere stays. `--dry-run` lists the removals; `provider` mode removes none of these.
 
 Wizard step 8 (Coding agents) offers the same `install-coding-agent --yes` for detected CLIs.
 
