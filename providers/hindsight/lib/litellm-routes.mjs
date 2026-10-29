@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { configToml } from "./config.mjs";
+import { renderMeridianRoutes } from "./meridian.mjs";
 import { OLLAMA_HOST_API_BASE } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -80,6 +81,7 @@ function renderShipped(ctx, litellmModel, reflectLitellmModel) {
  * @returns {string}
  */
 export function litellmConfig(ctx) {
+  if (ctx.backend === "meridian") return renderMeridianRoutes(ctx);
   let prefix = "openai/";
   if (ctx.backend === "ollama") prefix = "ollama_chat/";
   if (ctx.backend === "custom") return renderOverride(ctx, `${prefix}${ctx.model}`);
@@ -112,6 +114,13 @@ export async function removeOverrideIfAsked(ctx, h) {
  * @param {Helpers} h
  */
 export async function writeOverride(ctx, h) {
+  if (ctx.dry && ctx.backend === "meridian") {
+    const backup = fs.existsSync(ctx.litellmOverride) ? " (backs up the existing file)" : "";
+    h.info(
+      `[dry-run] write ${ctx.litellmOverride}${backup}: Meridian routes, retain and consolidate -> anthropic/${ctx.model}, reflect -> anthropic/${ctx.reflectModel || ctx.model}, at ${ctx.apiBase}`,
+    );
+    return;
+  }
   if (ctx.dry) {
     h.info(
       `[dry-run] write ${ctx.litellmOverride} from config/litellm.${ctx.backend}.yaml: retain and consolidate -> ${ctx.model}, reflect -> ${ctx.reflectModel || "shipped"}, at ${ctx.apiBase}`,
@@ -150,7 +159,8 @@ export async function applyRoute(ctx, h) {
   if (ctx.backend === "ollama") shipped = ctx.ollamaDefaultModel;
   const defaultBase = shippedApiBase(ctx.backend);
   const apiMatchesShipped = !ctx.apiBase || ctx.apiBase === defaultBase;
-  if (ctx.backend !== "custom" && ctx.model === shipped && !ctx.reflectModel && apiMatchesShipped) {
+  const ownRoute = ctx.backend === "custom" || ctx.backend === "meridian";
+  if (!ownRoute && ctx.model === shipped && !ctx.reflectModel && apiMatchesShipped) {
     await removeOverrideIfAsked(ctx, h);
   } else {
     await writeOverride(ctx, h);
@@ -173,15 +183,14 @@ export function saveConf(ctx, h) {
     h.info(`[dry-run] record backend ${ctx.backend} in ${ctx.wizardConf}`);
     return;
   }
-  h.saveWizardConf(
-    ctx,
-    {
-      MEMORY_BACKEND: ctx.backend,
-      MEMORY_MODEL: ctx.model,
-      MEMORY_API_BASE: ctx.apiBase,
-      MEMORY_REFLECT_MODEL: ctx.reflectModel,
-      MEMORY_OLLAMA_IN_COMPOSE: ctx.ollamaInCompose ? "1" : "0",
-    },
-    { pmSections: configToml(ctx) },
-  );
+  /** @type {Record<string, string>} */
+  const keys = {
+    MEMORY_BACKEND: ctx.backend,
+    MEMORY_MODEL: ctx.model,
+    MEMORY_API_BASE: ctx.apiBase,
+    MEMORY_REFLECT_MODEL: ctx.reflectModel,
+    MEMORY_OLLAMA_IN_COMPOSE: ctx.ollamaInCompose ? "1" : "0",
+  };
+  if (ctx.backend === "meridian") keys.MEMORY_MERIDIAN_URL = ctx.meridianBase;
+  h.saveWizardConf(ctx, keys, { pmSections: configToml(ctx) });
 }

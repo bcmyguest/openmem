@@ -12,6 +12,7 @@ export function defaultsFromConfig(cfg) {
   const model = /** @type {Record<string, unknown>} */ (cfg.model || {});
   const lemond = /** @type {Record<string, unknown>} */ (model.lemond || {});
   const ollama = /** @type {Record<string, unknown>} */ (model.ollama || {});
+  const meridian = /** @type {Record<string, unknown>} */ (model.meridian || {});
   return {
     apiPort: stack.api_port != null ? String(stack.api_port) : "",
     cpPort: stack.control_plane_port != null ? String(stack.control_plane_port) : "",
@@ -21,6 +22,7 @@ export function defaultsFromConfig(cfg) {
     modelApiBase: String(model.api_base || ""),
     lemondHost: String(lemond.host || ""),
     ollamaHost: String(ollama.host || ""),
+    meridianHost: String(meridian.host || ""),
   };
 }
 
@@ -43,6 +45,7 @@ export function applyConfigEnv(cfg) {
     process.env.MEMORY_API_BASE = d.modelApiBase;
   }
   if (d.lemondHost && !process.env.LEMOND_BASE) process.env.LEMOND_BASE = d.lemondHost;
+  if (d.meridianHost && !process.env.MERIDIAN_BASE) process.env.MERIDIAN_BASE = d.meridianHost;
 }
 
 /**
@@ -62,6 +65,9 @@ export function configToml(ctx) {
   }
   if (ctx.backend === "ollama" || ctx.ollamaBase) {
     model.ollama = { host: ctx.ollamaBase };
+  }
+  if (ctx.backend === "meridian" && ctx.meridianBase) {
+    model.meridian = { host: ctx.meridianBase };
   }
   return {
     stack: {
