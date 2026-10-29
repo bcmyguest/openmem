@@ -124,7 +124,12 @@ OpenMem is not affiliated with these projects; they shape the problem or the pat
 | **[Hindsight](https://github.com/vectorize-io/hindsight)** | Default memory provider in this repo. |
 | **[mem0](https://github.com/mem0ai/mem0)** | Supported memory provider. |
 | **[Cognee](https://github.com/topoteretes/cognee)** | Supported memory provider. |
-| **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks. |
+| **[LiteLLM](https://github.com/BerriAI/litellm)** | Model proxy used on Hindsight stacks; its pre-call hook hosts the context proxy. |
+| **[Hindsight coding agents](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents)** | Reference implementation for knowledge pages, initiative capture and ingest status; OpenMem's hooks replace it in `openmem` mode. |
+| **[Mainplane](https://github.com/mainplane-ai/mainplane)** | Inspiration for smart compaction: continue in a fresh context with a pointer to the saved transcript and retrieve as you go, instead of an LLM summary. |
+| **[rtk](https://github.com/rtk-ai/rtk)** | Compacts shell output before the agent sees it; `install-coding-agent` runs `rtk init` when it is installed. Its proxy's pointer-and-retrieve compression of large tool results inspired the context proxy's (reimplemented, not bundled). |
+| **[Meridian](https://github.com/rynfar/meridian)** | Bridges a Claude subscription to an Anthropic-compatible API; optional Hindsight model backend ([guide](https://bcmyguest.github.io/openmem/docs/model-configuration/)). |
+| **[OpenCode](https://opencode.ai/)** / **[Claude Code hooks](https://code.claude.com/docs/en/hooks)** / **[Codex hooks](https://developers.openai.com/codex/hooks)** | The agent hook and plugin APIs OpenMem translates between ([compatibility](https://bcmyguest.github.io/openmem/docs/compatibility/)). |
 
 More setup analogues (Chezmoi, Home Assistant integrations, …): [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/).
 

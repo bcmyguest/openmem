@@ -104,6 +104,22 @@ A shared **indexer** watches git repos, Obsidian vaults, notes trees, and feed c
 - A guarantee that memories move losslessly between backends (export/import is explicit)
 - A multi-provider fan-out in one process (one active provider; switch to change)
 
+## Related projects and inspiration
+
+OpenMem is not affiliated with these projects.
+
+| Project | Role here |
+| --- | --- |
+| [OpenFeature](https://openfeature.dev/) | Vendor-agnostic interface over pluggable providers — the model for `memory_*` over memory backends |
+| [mise](https://mise.jdx.dev/) / [asdf](https://asdf-vm.com/) | One CLI over many backends with declarative config |
+| [Hindsight](https://github.com/vectorize-io/hindsight) · [mem0](https://github.com/mem0ai/mem0) · [Cognee](https://github.com/topoteretes/cognee) | Memory providers |
+| [Hindsight coding agents](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) | Reference for knowledge pages, initiatives and ingest status; replaced by OpenMem hooks in `openmem` mode |
+| [LiteLLM](https://github.com/BerriAI/litellm) | Model proxy for Hindsight; hosts the [context proxy](context-proxy.md) |
+| [Mainplane](https://github.com/mainplane-ai/mainplane) | Smart compaction model: fresh context plus a pointer to the saved transcript, retrieved on demand |
+| [rtk](https://github.com/rtk-ai/rtk) | Shell-output compaction (`rtk init` when installed); its proxy's pointer-and-retrieve compression of large tool results inspired the context proxy's |
+| [Meridian](https://github.com/rynfar/meridian) | Claude subscription as an Anthropic-compatible API; optional Hindsight model backend ([guide](meridian-litellm.md)) |
+| [OpenCode](https://opencode.ai/) · [Claude Code hooks](https://code.claude.com/docs/en/hooks) · [Codex hooks](https://developers.openai.com/codex/hooks) | Agent APIs OpenMem translates between ([compatibility](compatibility.md)) |
+
 ## Next
 
 | Doc | Use when |
