@@ -10,6 +10,7 @@ import path from "node:path";
 import plugin from "../../cli/coding-agent/opencode2-plugin/index.js";
 import { callContextStoreTool } from "../../cli/mcp/context-store.mjs";
 import { pointerText } from "../../cli/coding-agent/context-trim.mjs";
+import { sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -32,6 +33,7 @@ delete process.env.CONTEXT_TRIM_AT_TOKENS;
 delete process.env.CONTEXT_PROXY_ENABLED;
 
 const sessions = path.join(home, ".local", "share", "openmem", "context", "sessions");
+const ptr = (sid, dropped) => pointerText(sid, dropped, path.join(sessions, `${sid}.log.jsonl`));
 const calls = [];
 let pendingOps = 0;
 globalThis.fetch = async (url, init = {}) => {
@@ -120,7 +122,18 @@ try {
   check("first prompt uses reflect", calls.some((c) => c.url.endsWith("/reflect") && c.body.query === "how do we deploy?"));
   const first = contextEvent("ses_one", [user("how do we deploy?")]);
   await oc.hooks.context(first);
-  check("context hook adds memory as a system part", first.system.length === 2 && first.system[1].type === "text" && /reflected: how do we deploy\?/.test(first.system[1].text) && first.system[1].text.startsWith(`Personal memory for ${registration.bank}:`));
+  check("P4: context hook adds the session banner as a system part", first.system.length === 2 && first.system[1].type === "text"
+    && first.system[1].text === sessionBanner("hindsight", registration.bank));
+  const recallPart = first.messages[0]?.content?.[0]?.text || "";
+  check("P6: prompt recall is a leading part of the newest user message, not system", recallPart.startsWith(`Personal memory for ${registration.bank}:\n`)
+    && /reflected: how do we deploy\?/.test(recallPart) && recallPart.endsWith("\n\n") && first.messages[0].content[1].text === "how do we deploy?"
+    && !first.system.some((p) => p.text.includes("reflected")), JSON.stringify(first.messages));
+  // Later requests in the same session: the recalled turn renders byte-identical, the system prefix is unchanged.
+  const followUp = contextEvent("ses_one", [user("how do we deploy?"), assistant("with compose")]);
+  await oc.hooks.context(followUp);
+  check("P6: recalled turn and system are byte-identical on the next request",
+    JSON.stringify(followUp.messages[0]) === JSON.stringify(first.messages[0]) && JSON.stringify(followUp.system) === JSON.stringify(first.system)
+    && followUp.messages[1].content.length === 1);
 
   oc.setMessages([
     { id: "msg_1", type: "user", text: "how do we deploy?", time: { created: 1 } },
@@ -134,6 +147,12 @@ try {
 
   await oc.hooks.prompt({ sessionID: "ses_one", messageID: "msg_3", prompt: { text: "and rollback?" }, delivery: "steer" });
   check("later prompts use recall", calls.some((c) => c.url.endsWith("/memories/recall") && c.body.query === "and rollback?"));
+  const second = contextEvent("ses_one", [user("how do we deploy?"), assistant("with compose"), user("and rollback?")]);
+  await oc.hooks.context(second);
+  check("P6: new recall attaches to the new user message only; the older turn keeps its bytes",
+    JSON.stringify(second.messages[0]) === JSON.stringify(first.messages[0])
+    && /recalled: and rollback\?/.test(second.messages[2].content[0].text) && second.messages[2].content[1].text === "and rollback?"
+    && !second.messages[0].content[0].text.includes("rollback"), JSON.stringify(second.messages));
   oc.setMessages([
     { id: "msg_1", type: "user", text: "how do we deploy?" },
     { id: "msg_2", type: "assistant", content: [{ type: "text", text: "with compose" }] },
@@ -168,9 +187,10 @@ try {
   const history = [user("earlier question"), assistant("earlier answer"), user("current question")];
   const forced = contextEvent("ses_one", history);
   await oc.hooks.context(forced);
-  const note = forced.messages[0]?.content?.[0]?.text || "";
-  check("forced trim keeps only the in-flight turn", forced.messages.length === 1 && forced.messages[0].content[1].text === "current question");
-  check("pointer carries recall and the ingest note", note.startsWith(pointerText("ses_one", 2)) && note.includes("[openmem recall]\nrecalled: current question") && note.includes("memory ingest is still running"), note);
+  const note = forced.messages[1]?.content?.[0]?.text || "";
+  check("forced trim keeps the first user turn and the in-flight turn", forced.messages.length === 2 && forced.messages[0] === history[0]
+    && forced.messages[1].content[1].text === "current question", JSON.stringify(forced.messages));
+  check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 1)) && note.includes("[openmem recall]\nrecalled: current question") && note.includes("memory ingest is still running"), note);
   check(".force consumed", !fs.existsSync(path.join(sessions, "ses_one.force")));
   const found = callContextStoreTool("smart_compact_search", { query: "earlier answer", session_id: "ses_one" }, { env: process.env, cwd: project });
   const foundText = JSON.stringify(found);
@@ -178,7 +198,7 @@ try {
 
   const repeat = contextEvent("ses_one", [...history, assistant("current answer")]);
   await oc.hooks.context(repeat);
-  check("later request renders the same pointer turn", JSON.stringify(repeat.messages[0]) === JSON.stringify(forced.messages[0]));
+  check("later request renders the same pointer turn", JSON.stringify(repeat.messages.slice(0, 2)) === JSON.stringify(forced.messages));
 
   // Tool-result compression reaches the model request and smart_compact_get returns the full text.
   const big = Array.from({ length: 200 }, (_, i) => `out ${i} ${"v".repeat(100)}`).join("\n");
@@ -197,7 +217,7 @@ try {
   // Native compaction: summary replaces the model call.
   const compaction = contextEvent("ses_one", [...history, assistant("current answer"), user("compact now")]);
   await oc.hooks.compaction(compaction);
-  check("compaction hook sets the result", compaction.result?.summary?.startsWith(pointerText("ses_one", 5)) && compaction.result.summary.includes("[openmem recall]\nrecalled: compact now"), JSON.stringify(compaction.result));
+  check("compaction hook sets the result", compaction.result?.summary?.startsWith(ptr("ses_one", 5)) && compaction.result.summary.includes("[openmem recall]\nrecalled: compact now"), JSON.stringify(compaction.result));
 
   // Fail open: malformed input changes nothing and never throws.
   const bad = { sessionID: "ses_bad", system: [], messages: [null, 3], options: {}, tools: {} };
@@ -240,7 +260,7 @@ try {
   check("denied: /smart-compact still writes .force", fs.existsSync(path.join(sessions, "ses_denied.force")));
   const deniedTrim = contextEvent("ses_denied", [user("a"), assistant("b"), user("c")]);
   await denied.hooks.context(deniedTrim);
-  check("denied: trim has the pointer and no recall", deniedTrim.messages.length === 1 && deniedTrim.messages[0].content[0].text === `${pointerText("ses_denied", 2)}\n\n` && calls.length === deniedCalls);
+  check("denied: trim has the pointer and no recall", deniedTrim.messages.length === 2 && deniedTrim.messages[1].content[0].text === `${ptr("ses_denied", 1)}\n\n` && calls.length === deniedCalls);
   deniedCleanup();
 } finally {
   globalThis.fetch = oldFetch;

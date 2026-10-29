@@ -10,8 +10,8 @@ DIR_MODE = 0o700
 FILE_MODE = 0o600
 TRIM_STATE_VERSION = 1
 _SID_RE = re.compile(r"[^A-Za-z0-9._-]")
-# ASCII whitespace only, so the hook (JS) and the proxy trim the same characters.
-_SID_TRIM = " \t\n\v\f\r"
+# ASCII whitespace only, so the hooks (JS) and the proxy trim the same characters.
+ASCII_WHITESPACE = " \t\n\v\f\r"
 _locks = {}
 _locks_guard = threading.Lock()
 
@@ -26,7 +26,7 @@ class RegistrationNotFound(LookupError):
 
 def sanitize_sid(sid):
     """Contract sanitizer (docs/context-store.md): trim, replace characters outside [A-Za-z0-9._-], reject empty."""
-    clean = _SID_RE.sub("_", str(sid).strip(_SID_TRIM))
+    clean = _SID_RE.sub("_", str(sid).strip(ASCII_WHITESPACE))
     if not clean:
         raise InvalidSessionId("empty session id")
     return clean

@@ -5,16 +5,27 @@ import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
 import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
-import { contextProxyEnvPath } from "./install-context-proxy.mjs";
+import { sessionBanner } from "./hook-runner.mjs";
 import { sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
+import { contextProxyFromPmConfig, loadPmConfig } from "../../wizard/lib/pm-config.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const MAX_SESSIONS = 128;
 const MAX_RETAIN_CHARS = 12000;
+
 function messageText(item) {
   return (item.parts || []).filter((part) => part.type === "text" && part.text).map((part) => part.text).join("\n");
+}
+
+/** `[context_proxy] enabled` in config.toml; false when the file is missing or unreadable. */
+function contextProxyEnabled(home, stackRoot) {
+  try {
+    return contextProxyFromPmConfig(loadPmConfig(home, stackRoot).merged).enabled;
+  } catch {
+    return false;
+  }
 }
 
 /** OpenCode v1 local plugin: prompt recall, system context, and per-turn retention. */
@@ -39,7 +50,8 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
     return true;
   };
   // The context proxy keys trims by session; OpenCode requests carry no session id of their own.
-  const proxied = fs.existsSync(contextProxyEnvPath(home));
+  // Read once per load: enabling or disabling the proxy takes an OpenCode restart.
+  const proxied = contextProxyEnabled(home, stack.root);
   const sessionHeader = async (input, output) => {
     if (proxied && input.sessionID) output.headers["x-openmem-session-id"] = input.sessionID;
   };
@@ -52,6 +64,8 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
     };
   }
   const bank = bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank });
+  // Constant for the session, so it never changes the cached system prefix.
+  const banner = sessionBanner(ctx.provider, bank);
   const injections = new Map();
   const seen = new Map();
 
@@ -81,6 +95,7 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
     "experimental.chat.system.transform": async (input, output) => {
       const context = injections.get(input.sessionID);
       if (context) output.system.push(`Personal memory for ${bank}:\n${context}`);
+      output.system.push(banner);
     },
     event: async ({ event }) => {
       if (event.type === "session.created") {

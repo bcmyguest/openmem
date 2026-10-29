@@ -4,18 +4,35 @@ import path from "node:path";
 
 /** Marker in the installed smart-compact command body; survives command expansion. */
 export const SMART_COMPACT_MARKER = "openmem:smart-compact";
+/** Prompt that `/smart-compact` sends in every agent (Claude Code command file, OpenCode 2 command). */
+export const SMART_COMPACT_BODY = `<!-- ${SMART_COMPACT_MARKER} -->
+OpenMem will trim this session's earlier context on the next request. Reply with one short line acknowledging this; do not summarize the conversation. After the trim, use \`smart_compact_search\` with this session's id to look up anything earlier.`;
+/** Claude Code command file (`~/.claude/commands/smart-compact.md`): frontmatter plus SMART_COMPACT_BODY. */
+export const SMART_COMPACT_COMMAND = `---
+description: Trim this session's context on the next request (OpenMem)
+---
+${SMART_COMPACT_BODY}
+`;
 const SMART_COMPACT_PREFIX = /^\s*\/smart-compact(?:\s|$)/;
 const SMART_COMPACT_TAG = "<command-name>/smart-compact</command-name>";
+/** ASCII whitespace only, so the hooks and the proxy trim the same characters (session ids, OPENMEM_STATE_DIR). */
+const ASCII_TRIM_RE = /^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g;
+const SID_UNSAFE_RE = /[^A-Za-z0-9._-]/gu;
 
-/** `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. */
+/** `$OPENMEM_STATE_DIR/context` (value trimmed), default `~/.local/share/openmem/context`. */
 export function contextRoot(home, env = process.env) {
-  const state = String(env.OPENMEM_STATE_DIR || "").trim() || path.join(home, ".local", "share", "openmem");
+  const state = String(env.OPENMEM_STATE_DIR || "").replace(ASCII_TRIM_RE, "") || path.join(home, ".local", "share", "openmem");
   return path.join(state, "context");
 }
 
-/** Session id with every character outside `[A-Za-z0-9._-]` replaced by `_`. */
+/**
+ * Contract sanitizer (docs/context-store.md): trim surrounding ASCII whitespace, replace every character
+ * outside `[A-Za-z0-9._-]` with `_`, throw on an empty result.
+ */
 export function sanitizeSessionId(sessionId) {
-  return String(sessionId).replace(/[^A-Za-z0-9._-]/g, "_");
+  const sid = String(sessionId ?? "").replace(ASCII_TRIM_RE, "").replace(SID_UNSAFE_RE, "_");
+  if (!sid) throw new Error("empty session id");
+  return sid;
 }
 
 function sessionsDir(home, env) {
