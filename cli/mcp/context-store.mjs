@@ -87,6 +87,23 @@ function gitRoot(dir) {
   }
 }
 
+/** The repository's shared git dir: linked worktrees of one repo resolve to the same path. */
+function repoIdentity(root) {
+  if (!root) return null;
+  const entry = path.join(root, ".git");
+  try {
+    if (fs.statSync(entry).isDirectory()) return fs.realpathSync(entry);
+    const match = /^gitdir:\s*(.+)\s*$/m.exec(fs.readFileSync(entry, "utf8"));
+    if (!match) return null;
+    const gitDir = path.resolve(root, match[1].trim());
+    const common = path.join(gitDir, "commondir");
+    const shared = fs.existsSync(common) ? path.resolve(gitDir, fs.readFileSync(common, "utf8").trim()) : gitDir;
+    return fs.realpathSync(shared);
+  } catch {
+    return null;
+  }
+}
+
 function readJsonFile(file) {
   try {
     const value = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -100,7 +117,8 @@ function within(child, parent) {
   return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`);
 }
 
-/** Registered sessions whose cwd lies in the workspace git root (or equals cwd), newest first. */
+/** Registered sessions whose cwd lies in the workspace git root, equals cwd, or belongs to a linked
+ *  worktree of the same repository, newest first. */
 function workspaceSessions(sessionsDir, cwd) {
   let names;
   try {
@@ -110,13 +128,15 @@ function workspaceSessions(sessionsDir, cwd) {
   }
   const here = path.resolve(cwd);
   const root = gitRoot(here);
+  const repo = repoIdentity(root);
   const found = [];
   for (const file of names) {
     if (!file.endsWith(".json") || file.endsWith(".trim.json")) continue;
     const reg = readJsonFile(path.join(sessionsDir, file));
     if (!reg || typeof reg.cwd !== "string" || !path.isAbsolute(reg.cwd)) continue;
     const regCwd = path.resolve(reg.cwd);
-    if (!(regCwd === here || (root && within(regCwd, root)))) continue;
+    const sameRepo = repo && repoIdentity(gitRoot(regCwd)) === repo;
+    if (!(regCwd === here || (root && within(regCwd, root)) || sameRepo)) continue;
     const at = Date.parse(reg.registered_at);
     found.push({ sid: file.slice(0, -".json".length), at: Number.isFinite(at) ? at : 0 });
   }

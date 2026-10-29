@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { callUnifiedTool, UNIFIED_MCP_TOOLS } from "../../cli/mcp/memory-facade.mjs";
 import { callContextStoreTool, sanitizeSessionId } from "../../cli/mcp/context-store.mjs";
 
@@ -160,6 +161,31 @@ for (const n of ["smart_compact_search", "smart_compact_get"]) {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+{
+  // A session registered in a linked worktree of the same repo is found; another repo's is not.
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "openmem-ctx-wt-"));
+  const git = (...a) => execFileSync("git", a, { cwd: base, stdio: "ignore", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } });
+  git("init", "-q", "main");
+  git("-C", "main", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init");
+  git("-C", "main", "worktree", "add", "-q", "../linked");
+  git("init", "-q", "other");
+  const state = path.join(base, "state");
+  const sessions = path.join(state, "context", "sessions");
+  fs.mkdirSync(sessions, { recursive: true });
+  for (const [sid, hour] of [["wt-main", 1], ["wt-linked", 2], ["wt-other", 3]]) {
+    const cwd = path.join(base, sid.slice(3));
+    fs.writeFileSync(path.join(sessions, `${sid}.json`), JSON.stringify({ session_id: sid, agent: "claude-code", cwd, bank: "b", registered_at: `2026-10-29T1${hour}:00:00Z` }));
+    fs.writeFileSync(path.join(sessions, `${sid}.log.jsonl`), JSON.stringify({ seq: 0, ts: "t", role: "user", kind: "text", name: null, text: "worktree needle" }) + "\n");
+  }
+  const r = callContextStoreTool("smart_compact_search", { query: "worktree needle" }, { env: { OPENMEM_STATE_DIR: state }, cwd: path.join(base, "main") });
+  check(
+    "cwd discovery includes linked worktrees of the same repo only",
+    JSON.stringify(r.sessions_searched) === JSON.stringify(["wt-linked", "wt-main"]),
+    JSON.stringify(r.sessions_searched),
+  );
+  fs.rmSync(base, { recursive: true, force: true });
+}
+
 if (failed) {
   console.log(`\n${failed} failed`);
   process.exit(1);
