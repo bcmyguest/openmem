@@ -151,7 +151,7 @@ Non-interactive: `PM_BACKEND=meridian MERIDIAN_BASE=http://127.0.0.1:3456 MERIDI
 cd ~/personal-memory   # this checkout
 [ -f ~/.config/hindsight/litellm.yaml ] && cp ~/.config/hindsight/litellm.yaml ~/.config/hindsight/litellm.yaml.bak-$(date +%Y%m%d%H%M%S)
 $EDITOR ~/.config/hindsight/litellm.yaml          # paste the route file
-grep -h '^MERIDIAN_API_KEY=' ~/.config/meridian/meridian.env >> ~/.config/hindsight/litellm.env
+grep -h '^MERIDIAN_API_KEY' ~/.config/meridian/meridian.env >> ~/.config/hindsight/litellm.env
 node scripts/setup.mjs
 docker compose up -d --force-recreate litellm
 ```
