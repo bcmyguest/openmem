@@ -18,7 +18,7 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 | Unified `memory_*` MCP | ✅ ¹⁴ | 🧪 | ✅ ¹⁴ | ✅ ¹⁴ | ❌ ¹ |
 | OpenMem skill | 🧪 | 🧪 | 🧪 | 🧪 | ❌ ¹ |
 | Startup banner + recall | 🧪 | 🧪 ² | 🧪 ³ | 🧪 (prompt hook) | ❌ ¹ |
-| Session registration (`sessions/<sid>.json`) | 🧪 | 🧪 | 🧪 ³ | ❌ ⁴ | ❌ ¹ |
+| Session registration (`sessions/<sid>.json`) | 🧪 | 🧪 | 🧪 ³ | 🧪 ⁴ | ❌ ¹ |
 | Per-prompt recall | 🧪 | 🧪 | 🧪 ³ | 🧪 | ❌ ¹ |
 | Turn retention (Stop / idle) | 🧪 | ◐ ⁵ | ◐ ⁶ | 🧪 | ❌ ¹ |
 | `/smart-compact` trim flag | 🧪 ⁷ | 🧪 | 🧪 | 🧪 | ❌ ¹ |
@@ -29,7 +29,7 @@ What OpenMem supports per coding agent and per memory provider, as of branch `fe
 1. OpenCode 2 replaced the plugin API ([migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1/)): plugins export `Plugin.define({ id, setup })`, config uses `"plugins"` instead of `"plugin"`, and v1 plugins do not load. OpenMem's plugin is v1-shaped. The v2 API has the hooks a port needs: `ctx.session.hook("context")` (edit `system` and `messages`), `"prompt"`, `"compaction"`, `"http.request"`, and `ctx.event.subscribe()`.
 2. Codex runs non-managed hooks only after review in `/hooks` ([Codex hooks](https://developers.openai.com/codex/hooks)).
 3. Cursor hooks now go under `"hooks"` in `~/.cursor/hooks.json` (Cursor's documented shape). Earlier OpenMem releases wrote them at the top level, where Cursor does not read them.
-4. The 1.x plugin API has `event` (`session.created`) and `chat.headers` (`sessionID`), so registration and an `x-openmem-session-id` header are possible; neither is built yet. Until then the proxy identifies OpenCode sessions by fingerprint (`fp-…`) and skips recall injection.
+4. The plugin registers on `session.created` and, when `context-proxy.env` exists, sends `x-openmem-session-id` through `chat.headers`, so the proxy keys OpenCode trims by the real session id. Neither is verified in a live OpenCode session.
 5. Codex does not guarantee a stable transcript format; unknown rows are skipped.
 6. Cursor Stop retention parses the observed local `agent-transcripts` JSONL shape; live hook `transcript_path` linkage is unverified.
 7. Detects the typed `/smart-compact`, the expanded `<command-name>` tag, and an `openmem:smart-compact` marker; which form Claude Code passes to UserPromptSubmit is unverified.
