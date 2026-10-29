@@ -1,8 +1,9 @@
 ---
 // Hero figure: how data moves on one machine. Sources are indexed into the
-// active provider; coding agents read and write memory through the provider's
-// own plugin. The provider column is built from the manifests, so its status
-// badges can never disagree with the provider table below.
+// active provider; coding agents read and write memory through OpenMem's host
+// layer (unified MCP, session hooks, optional context proxy). The provider column
+// is built from the manifests, so its status badges can never disagree with the
+// provider table below.
 import { providers, STATUS_LABEL } from '../../lib/content';
 import { withBase } from '../../lib/url';
 import { site } from '../../site.config.mjs';
@@ -16,12 +17,13 @@ const sources = [
 ];
 const indexer = ['Tree-sitter code outlines', 'Poll repos · watch folders', 'Sink → active provider API'];
 const bridge = [
-  'openmem MCP (memory_*)',
-  'Session hooks (all providers)',
-  'Provider MCP (mem0/Cognee, optional)',
-  'NotebookLM MCP (optional)',
+  'openmem MCP (memory_*, pages, smart_compact_*)',
+  'Session hooks · /smart-compact',
+  'Context proxy: trim + compress (optional)',
+  'rtk shell-output rewriting (optional)',
+  'Provider / NotebookLM MCP (optional)',
 ];
-const agents = ['Claude Code', 'Codex', 'OpenCode'];
+const agents = ['Claude Code', 'Codex', 'Cursor CLI', 'OpenCode'];
 const agentPackage = providers.find((p) => p.status === 'supported' && p.codingAgentPackage)?.codingAgentPackage;
 ---
 <figure class="arch not-prose" aria-labelledby="arch-caption">
@@ -60,7 +62,7 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
       <svg class="arch-arrow arch-arrow-bidir" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /><path class="tip-l" d="M10 3L2 8l8 5z" /></svg>
 
       <div class="arch-col" role="group" aria-labelledby="arch-h-bridge">
-        <p id="arch-h-bridge" class="arch-label">MCP &amp; plugins (host)</p>
+        <p id="arch-h-bridge" class="arch-label">Hooks, MCP &amp; proxy (host)</p>
         <ul class="arch-list">
           {bridge.map((s) => <li class="arch-node">{s}</li>)}
         </ul>
@@ -83,6 +85,7 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
   <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
     <strong>Indexing:</strong> repos, vaults, markdown trees, and feed cache → shared indexer → one active provider API (badges from manifests).
     <strong>Agents:</strong> unified <code>memory_*</code> MCP and session hooks on the host; optional provider-native MCP and NotebookLM MCP.
+    <strong>Long sessions:</strong> the optional context proxy replaces old turns with a pointer and recall instead of an LLM summary (<a href={withBase('docs/context-proxy/')}>Context proxy</a>).
     LiteLLM is optional on Hindsight stacks (not shown). Optional upstream Hindsight plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)} replaces the session hooks via <code>--provider-plugin</code>.
     <a href={withBase('docs/architecture/')}>Architecture</a>.
   </figcaption>
