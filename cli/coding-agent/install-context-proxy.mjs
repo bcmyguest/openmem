@@ -99,12 +99,19 @@ function wireOpencode(home, { enabled, port, key }) {
 /**
  * Enable: write the key file and proxy settings. Disable: remove exactly those settings
  * when they still point at the loopback proxy; the key file is kept for a later enable.
+ * OpenCode 2 trims natively in OpenMem's plugin, so it is never pointed at the proxy and earlier
+ * proxy settings are removed; such agents are returned in `native`.
  */
-export function installContextProxy({ home, agents, enabled, port, dry = false, h }) {
+export function installContextProxy({ home, agents, enabled, port, dry = false, h, opencodeMajor = 1 }) {
   const targets = agents.filter((id) => id === "claude-code" || id === "opencode");
+  const nativeTrim = (id) => id === "opencode" && opencodeMajor >= 2;
+  const native = targets.filter(nativeTrim);
   if (dry) {
-    for (const id of targets) h?.info(`[dry-run] ${enabled ? "point" : "unpoint"} ${id} ${enabled ? "at" : "from"} context proxy http://127.0.0.1:${port}`);
-    return { changed: [] };
+    for (const id of targets) {
+      if (nativeTrim(id)) h?.info(`[dry-run] ${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
+      else h?.info(`[dry-run] ${enabled ? "point" : "unpoint"} ${id} ${enabled ? "at" : "from"} context proxy http://127.0.0.1:${port}`);
+    }
+    return { changed: [], native };
   }
   const key = enabled ? ensureContextProxyKey(home) : "";
   // compose mounts this with create_host_path: false, so it must exist (700, host-owned) before `up`.
@@ -113,10 +120,15 @@ export function installContextProxy({ home, agents, enabled, port, dry = false, 
   }
   const changed = [];
   for (const id of targets) {
+    if (nativeTrim(id)) {
+      if (wireOpencode(home, { enabled: false, port, key })) h?.ok(`${id}: removed context proxy settings (OpenCode 2 trims natively)`);
+      if (enabled) h?.info(`${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
+      continue;
+    }
     const done = id === "claude-code" ? wireClaude(home, { enabled, port, key }) : wireOpencode(home, { enabled, port, key });
     if (!done) continue;
     changed.push(id);
     h?.ok(`${id}: context proxy ${enabled ? `→ http://127.0.0.1:${port}` : "settings removed"}`);
   }
-  return { changed };
+  return { changed, native };
 }

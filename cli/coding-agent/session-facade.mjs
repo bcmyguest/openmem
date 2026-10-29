@@ -15,7 +15,7 @@ function toolText(result) {
   }
 }
 
-function recallText(result, limit) {
+function recallText(result, limit, maxChars = HOOK_CONTEXT_MAX_CHARS) {
   try {
     const value = JSON.parse(result?.content?.[0]?.text || "");
     const hits = value?.result?.results;
@@ -24,17 +24,17 @@ function recallText(result, limit) {
         .map((hit) => hit?.text ?? hit?.memory ?? hit?.content ?? "")
         .filter((item) => typeof item === "string" && item.trim())
         .join("\n\n")
-        .slice(0, HOOK_CONTEXT_MAX_CHARS);
+        .slice(0, maxChars);
     }
   } catch { /* use generic result text */ }
-  return toolText(result).slice(0, HOOK_CONTEXT_MAX_CHARS);
+  return toolText(result).slice(0, maxChars);
 }
 
 /** @param {ReturnType<import("../mcp/context.mjs").resolveMcpContext>} ctx */
-export async function sessionRecall(ctx, { query, bank, limit = 10, budget, maxTokens }, fetchFn = fetch) {
+export async function sessionRecall(ctx, { query, bank, limit = 10, budget, maxTokens, maxChars }, fetchFn = fetch) {
   const out = await callUnifiedTool(ctx, "memory_recall", { query, bank, limit, budget, maxTokens }, fetchFn);
   if (out.isError) throw new Error(toolText(out));
-  return recallText(out, limit);
+  return recallText(out, limit, maxChars);
 }
 
 /** @param {ReturnType<import("../mcp/context.mjs").resolveMcpContext>} ctx */
@@ -59,4 +59,19 @@ export async function sessionReflectOrSearch(ctx, { query, bank, limit = 12 }, f
     /* plain text */
   }
   return body;
+}
+
+/**
+ * True when the bank has pending or processing ingest (`memory_status` active > 0).
+ * Synchronous providers (mem0) and providers without ingest status (Cognee) report false.
+ */
+export async function sessionIngestActive(ctx, { bank }, fetchFn = fetch) {
+  const out = await callUnifiedTool(ctx, "memory_status", { bank }, fetchFn);
+  if (out.isError) throw new Error(toolText(out));
+  try {
+    const status = JSON.parse(out?.content?.[0]?.text || "");
+    return status?.supported !== false && Number(status?.active) > 0;
+  } catch {
+    return false;
+  }
 }

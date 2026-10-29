@@ -53,6 +53,12 @@ integration = "openmem"
 enabled = false
 port = 4100
 
+# OpenCode 2 only: when OpenCode compacts a session, OpenMem's plugin supplies the
+# smart_compact_search pointer + recall as the summary instead of a model call.
+# false leaves compaction to OpenCode.
+[compaction]
+native = true
+
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]
 # path = "~"

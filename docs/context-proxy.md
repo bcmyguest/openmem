@@ -8,6 +8,8 @@ The `context-proxy` compose service is a LiteLLM proxy that sits between a codin
 
 The cut is sticky. Later requests with the same history receive the same rewrite, byte for byte, so the prompt cache keeps hitting. The cut moves only on the next threshold crossing or `.force`. Recall is computed once per cut. File layout, row shape and inserted text follow [context-store.md](context-store.md).
 
+**OpenCode 2 trims natively and does not use this proxy.** OpenMem's OpenCode 2 plugin applies the same three steps inside OpenCode's `context` hook (`cli/coding-agent/context-trim.mjs`, a JS port of `core.py` for OpenCode's message parts). It uses the same environment variables and defaults, the same pointer and compressed-result text, and the same store files; compressed output matches `compress_text` byte for byte (tested against the Python). It differs in three places. The pointer is its own text part ending in a blank line, because OpenCode's OpenAI-compatible lowering joins text parts without a separator. The pending-ingest line comes from `memory_status`. Recall goes through the session facade, so every provider can answer, not only Hindsight. OpenCode's own compaction is replaced the same way; see [coding agents](coding-agents.md). `CONTEXT_PROXY_ENABLED=0` also turns the native trim off.
+
 Code: `proxy/openmem_context/` (stdlib only), `proxy/openmem_context_hook.py` (LiteLLM `async_pre_call_hook`), `proxy/config.yaml`. Tests: `python3 -m unittest discover -s proxy/tests` (part of `npm test`).
 
 ## Configuration
