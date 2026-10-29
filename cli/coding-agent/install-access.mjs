@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import TOML from "@iarna/toml";
+import { readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath } from "./opencode-config.mjs";
+import { removeSpans, tomlSpansUnder, tomlStatements } from "./toml-edit.mjs";
 
 const SKILL_TARGETS = {
   "claude-code": ".claude/skills/openmem",
@@ -9,21 +12,21 @@ const SKILL_TARGETS = {
   opencode: ".config/opencode/skills/openmem",
 };
 
-function readJson(file) {
-  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+/** Set `features.hooks = true` unless the file sets it (to any value) already. */
+function enableCodexHooks(text) {
+  const statements = tomlStatements(text);
+  if (statements.some((s) => s.kind === "kv" && s.path.length === 2 && s.path[0] === "features" && s.path[1] === "hooks")) return text;
+  const at = statements.findIndex((s) => s.kind === "table" && s.path.length === 1 && s.path[0] === "features");
+  if (at < 0) return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[features]\nhooks = true\n`;
+  let end = statements[at].end;
+  for (let k = at + 1; k < statements.length && statements[k].kind === "kv"; k++) end = statements[k].end;
+  const head = text.slice(0, end);
+  return `${head}${head.endsWith("\n") ? "" : "\n"}hooks = true\n${text.slice(end)}`;
 }
 
-function writeJson(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-}
-
+/** Codex config with hooks enabled and exactly one current `[mcp_servers.openmem]`; throws on a TOML it cannot edit. */
 function updateCodexToml(text, scriptPath, stackRoot) {
-  const blocks = text.split(/(?=^[ \t]*\[)/m);
-  const featureIndex = blocks.findIndex((block) => /^[ \t]*\[features\][ \t]*(?:#.*)?(?:\r?\n|$)/.test(block));
-  if (featureIndex < 0) blocks.push(`${text && !text.endsWith("\n") ? "\n" : ""}[features]\nhooks = true\n`);
-  else if (!/^hooks\s*=/m.test(blocks[featureIndex])) blocks[featureIndex] = `${blocks[featureIndex].trimEnd()}\nhooks = true\n`;
-  text = blocks.join("");
+  text = enableCodexHooks(text);
   const section = [
     "[mcp_servers.openmem]",
     'command = "node"',
@@ -32,10 +35,11 @@ function updateCodexToml(text, scriptPath, stackRoot) {
     `PM_STACK_ROOT = ${JSON.stringify(stackRoot)}`,
   ].join("\n");
   // Drop current openmem blocks and the pre-rebrand personal-memory name.
-  const oldServer =
-    /^[ \t]*\[mcp_servers\.(?:openmem|"openmem"|'openmem'|personal-memory|"personal-memory"|'personal-memory')(?:\.(?:env|"env"|'env'))?[ \t]*\]/;
-  const retained = text.split(/(?=^[ \t]*\[)/m).filter((block) => !oldServer.test(block));
-  return `${retained.join("").trimEnd()}\n\n${section}\n`;
+  const spans = ["openmem", "personal-memory"].flatMap((name) => tomlSpansUnder(text, ["mcp_servers", name]));
+  const retained = removeSpans(text, spans).trimEnd();
+  const out = `${retained ? `${retained}\n\n` : ""}${section}\n`;
+  TOML.parse(out);
+  return out;
 }
 
 /** Install one shared skill and the unified MCP in each selected agent's global config. */
@@ -58,8 +62,14 @@ export function installAgentAccess({ home, runtimeRoot, stackRoot, agents, dry =
       if (dry) h?.info(`[dry-run] merge openmem MCP into ${file}`);
       else {
         const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, updateCodexToml(current, scriptPath, stackRoot));
+        let next;
+        try {
+          next = updateCodexToml(current, scriptPath, stackRoot);
+        } catch (err) {
+          h?.warn(`codex: left ${file} unchanged; add [mcp_servers.openmem] by hand (${err.message})`);
+          continue;
+        }
+        writeFileAtomic(file, next);
         h?.ok(`codex MCP → ${file}`);
       }
       continue;

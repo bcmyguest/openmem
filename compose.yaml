@@ -176,6 +176,8 @@ services:
       OPENMEM_STATE_DIR: /state
       HINDSIGHT_URL: ${CONTEXT_PROXY_HINDSIGHT_URL:-http://hindsight:8888}
       CONTEXT_PROXY_ENABLED: ${CONTEXT_PROXY_ENABLED:-1}
+      # From config.toml [context_proxy] trim_at_tokens / compress_over_tokens and [compaction] max_chars,
+      # written into .env by scripts/setup.mjs and install-coding-agent; a shell export overrides .env.
       CONTEXT_TRIM_AT_TOKENS: ${CONTEXT_TRIM_AT_TOKENS:-120000}
       CONTEXT_COMPRESS_OVER_TOKENS: ${CONTEXT_COMPRESS_OVER_TOKENS:-4000}
       CONTEXT_COMPACTION_MAX_CHARS: ${CONTEXT_COMPACTION_MAX_CHARS:-12000}
