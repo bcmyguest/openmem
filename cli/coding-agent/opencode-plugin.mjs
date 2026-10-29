@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
+import { isSmartCompactPrompt, writeForceFlag } from "./context-store.mjs";
 import { sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
@@ -30,9 +31,15 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
   const projectDir = worktree && path.parse(worktree).root !== worktree ? worktree : directory;
   const accessConfig = readAccessConfig(home);
   const allowed = accessAllowed(projectDir, accessConfig);
+  // `/smart-compact` sets the context proxy's trim flag whether or not memory is allowed.
+  const flagSmartCompact = (input, output) => {
+    if (!isSmartCompactPrompt(messageText(output))) return false;
+    try { writeForceFlag({ home, env: process.env, sessionId: input.sessionID }); } catch { /* best effort */ }
+    return true;
+  };
   if (!allowed) {
     return {
-      "chat.message": async () => {},
+      "chat.message": async (input, output) => { flagSmartCompact(input, output); },
       "experimental.chat.system.transform": async () => {},
       event: async () => {},
     };
@@ -49,6 +56,7 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
 
   return {
     "chat.message": async (input, output) => {
+      if (flagSmartCompact(input, output)) return;
       const prompt = messageText(output).trim();
       if (!prompt) return;
       injections.delete(input.sessionID);
