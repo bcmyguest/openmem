@@ -1,9 +1,18 @@
 /**
  * Hindsight model routing: how the LiteLLM proxy in front of Hindsight reaches an LLM
- * (lemond, Ollama or a custom OpenAI-compatible URL), plus the reflect-model question and
+ * (lemond, Ollama, a custom OpenAI-compatible URL or Meridian), plus the reflect-model question and
  * `lemonade pull`. The meta wizard knows none of this; it calls configureModelRouting.
  */
 import { applyRoute, litellmConfig, saveConf } from "./litellm-routes.mjs";
+import {
+  chooseMeridian,
+  containerApiBase,
+  existingMeridianKey,
+  MERIDIAN_DEFAULT_BASE,
+  MERIDIAN_REFLECT_DEFAULT,
+  normalizeMeridianBase,
+  writeMeridianKey,
+} from "./meridian.mjs";
 import { ollamaModelNames, openAiModelIds } from "./probe.mjs";
 import {
   backendDefault,
@@ -26,9 +35,9 @@ async function pickBackend(ctx, h) {
     return;
   }
   h.info("Pick a backend first; only that server is contacted.");
-  h.info("1) lemond   2) ollama   3) custom OpenAI-compatible URL");
-  const defNum = def === "lemond" ? "1" : def === "ollama" ? "2" : "3";
-  const choice = await h.ask(ctx, "Model backend (1-3)", defNum);
+  h.info("1) lemond   2) ollama   3) custom OpenAI-compatible URL   4) Claude subscription (Meridian)");
+  const defNum = { lemond: "1", ollama: "2", custom: "3", meridian: "4" }[def] || "1";
+  const choice = await h.ask(ctx, "Model backend (1-4)", defNum);
   switch (choice) {
     case "1":
       ctx.backend = "lemond";
@@ -39,8 +48,11 @@ async function pickBackend(ctx, h) {
     case "3":
       ctx.backend = "custom";
       break;
+    case "4":
+      ctx.backend = "meridian";
+      break;
     default:
-      h.die("choose 1, 2 or 3");
+      h.die("choose 1, 2, 3 or 4");
   }
 }
 
@@ -150,17 +162,18 @@ async function chooseCustom(ctx, h) {
   const defaultBase = storedOr(ctx, h, "custom", "MEMORY_API_BASE", ctx.customDefaultBase);
   const defaultModel = storedOr(ctx, h, "custom", "MEMORY_MODEL", ctx.lemondDefaultModel);
   h.info("The litellm container calls this URL. Host services use host.docker.internal.");
-  h.info("Examples: lemond http://host.docker.internal:13305/v1 ; Meridian http://host.docker.internal:3456/v1");
+  h.info("Example: lemond http://host.docker.internal:13305/v1. For a Claude subscription through Meridian, pick backend 4.");
   ctx.apiBase = await h.ask(ctx, "OpenAI-compatible base URL", defaultBase);
   ctx.model = await h.ask(ctx, "Model id the server serves", defaultModel);
   await askReflectModel(ctx, h);
 }
 
 /**
- * Step "3. Model backend": choose lemond, Ollama or a custom URL, write the LiteLLM route
+ * Step "3. Model backend": choose lemond, Ollama, a custom URL or Meridian, write the LiteLLM route
  * override when the choice differs from the shipped routes, and record it in wizard.conf.
  * With the Clack UI done (ctx.skipBackendStep) the answers come from PM_BACKEND,
- * PM_DEFAULT_MODEL, MEMORY_API_BASE and PM_REFLECT_MODEL instead.
+ * PM_DEFAULT_MODEL, MEMORY_API_BASE and PM_REFLECT_MODEL instead (Meridian adds
+ * MERIDIAN_BASE and MERIDIAN_API_KEY).
  *
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
@@ -179,8 +192,15 @@ export async function chooseModelBackend(ctx, h) {
     if (ctx.backend === "ollama" && !ctx.apiBase) {
       ctx.apiBase = ctx.ollamaInCompose ? OLLAMA_COMPOSE_API_BASE : OLLAMA_HOST_API_BASE;
     }
+    if (ctx.backend === "meridian") {
+      ctx.meridianBase = normalizeMeridianBase(process.env.MERIDIAN_BASE || MERIDIAN_DEFAULT_BASE);
+      ctx.apiBase ||= containerApiBase(ctx.meridianBase);
+      ctx.reflectModel ||= MERIDIAN_REFLECT_DEFAULT;
+      ctx.meridianKey = existingMeridianKey(ctx, h).key;
+    }
     h.ok(`backend ${ctx.backend}, model ${ctx.model} (setup UI)`);
     await applyRoute(ctx, h);
+    if (ctx.backend === "meridian") writeMeridianKey(ctx, h);
     saveConf(ctx, h);
     return;
   }
@@ -205,10 +225,14 @@ export async function chooseModelBackend(ctx, h) {
     case "custom":
       await chooseCustom(ctx, h);
       break;
+    case "meridian":
+      await chooseMeridian(ctx, h);
+      break;
     default:
       h.die(`unknown backend ${ctx.backend}`);
   }
   h.ok(`backend ${ctx.backend}, model ${ctx.model}`);
   await applyRoute(ctx, h);
+  if (ctx.backend === "meridian") writeMeridianKey(ctx, h);
   saveConf(ctx, h);
 }

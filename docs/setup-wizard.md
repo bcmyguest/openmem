@@ -49,7 +49,7 @@ The last line is `wizard: changed=N` (files and containers this run touched). An
 
 | Provider | Step 3 asks for |
 | --- | --- |
-| Hindsight | Model backend: lemond, Ollama (host or compose profile), or custom OpenAI-compatible URL; LiteLLM routes for `memory-retain`, `memory-reflect`, `memory-consolidate` |
+| Hindsight | Model backend: lemond, Ollama (host or compose profile), custom OpenAI-compatible URL, or a Claude subscription through a running Meridian ([guide](meridian-litellm.md#with-the-wizard)); LiteLLM routes for `memory-retain`, `memory-reflect`, `memory-consolidate` |
 | mem0 | Self-hosted REST base URL and API key file path |
 | Cognee | Loopback port and `LLM_API_KEY` for graph build |
 
