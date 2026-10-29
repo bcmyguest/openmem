@@ -278,7 +278,10 @@ export async function callKnowledgeTool(ctx, name, args, fetchFn) {
         },
         fetchFn,
       );
-      pageId = r.json?.page_id || r.json?.id || `initiative-${slugify(title)}`;
+      pageId = String(r.json?.page_id || r.json?.id || "").trim();
+      if (!pageId) {
+        throw new Error(`Hindsight created no page id for initiative "${title}"; no marker retained. Check memory_pages_list before retrying.`);
+      }
     }
     const verb = relatesTo ? "Update to an existing initiative" : "New initiative";
     const retained = await hsJson(
