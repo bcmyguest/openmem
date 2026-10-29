@@ -52,6 +52,16 @@ Thinking is off on all three aliases in the route YAML (`enable_thinking: false`
 
 Retain cap must exceed each retain strategy's chunk size (coding-agent strategies use 12000) or Hindsight returns `400 Invalid retain strategy`.
 
+## Retain extraction mode
+
+OpenMem’s shipped `config/hindsight.env.example` sets:
+
+```env
+HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbatim
+```
+
+**verbatim** keeps each chunk’s text as the memory unit and still calls the retain LLM for entities, time, and location (cheaper than default `concise` fact rewriting). Alternatives: `concise` / `verbose` (LLM facts), `chunks` (no LLM on ingest; pass entities yourself if needed), or `HINDSIGHT_API_LLM_PROVIDER=none` (chunks-only; reflect disabled). Per-bank strategies can override this (the indexer already uses `chunks` for `project-index`).
+
 ## Secrets
 
 `~/.config/hindsight/litellm.env` (mode 600): `LITELLM_MASTER_KEY` (Hindsight uses this as `HINDSIGHT_API_LLM_API_KEY`), plus provider keys referenced as `os.environ/NAME` in the YAML.
