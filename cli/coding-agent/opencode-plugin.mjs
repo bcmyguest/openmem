@@ -4,7 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
-import { isSmartCompactPrompt, writeForceFlag } from "./context-store.mjs";
+import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
+import { contextProxyEnvPath } from "./install-context-proxy.mjs";
 import { sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
@@ -37,8 +38,14 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
     try { writeForceFlag({ home, env: process.env, sessionId: input.sessionID }); } catch { /* best effort */ }
     return true;
   };
+  // The context proxy keys trims by session; OpenCode requests carry no session id of their own.
+  const proxied = fs.existsSync(contextProxyEnvPath(home));
+  const sessionHeader = async (input, output) => {
+    if (proxied && input.sessionID) output.headers["x-openmem-session-id"] = input.sessionID;
+  };
   if (!allowed) {
     return {
+      "chat.headers": sessionHeader,
       "chat.message": async (input, output) => { flagSmartCompact(input, output); },
       "experimental.chat.system.transform": async () => {},
       event: async () => {},
@@ -55,6 +62,7 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
   }
 
   return {
+    "chat.headers": sessionHeader,
     "chat.message": async (input, output) => {
       if (flagSmartCompact(input, output)) return;
       const prompt = messageText(output).trim();
@@ -75,6 +83,11 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
       if (context) output.system.push(`Personal memory for ${bank}:\n${context}`);
     },
     event: async ({ event }) => {
+      if (event.type === "session.created") {
+        const id = event.properties?.info?.id;
+        try { registerSession({ home, env: process.env, sessionId: id, agent: "opencode", cwd: projectDir, bank }); } catch { /* best effort */ }
+        return;
+      }
       if (event.type !== "session.idle") return;
       const sessionID = event.properties?.sessionID;
       if (!sessionID || !injections.has(sessionID)) return;
