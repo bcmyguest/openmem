@@ -23,11 +23,12 @@ npx @bcmyguest/openmem switch mem0 --yes
 npm i -g openmem            # then: openmem setup | up | down | ...
 # From a git checkout (package not required on the registry):
 git clone https://github.com/bcmyguest/openmem && cd openmem
-npm install && npx . setup          # same wizard; also: npm run setup / ./setup
+npm install && npm run setup       # same wizard; also: ./setup
+node cli/openmem.mjs doctor        # any other command
 ```
 
 No global `pm` command is installed: it collides with Android's `pm`. `./pm` and `npm run pm`
-exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `npx . …` in a checkout).
+exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `node cli/openmem.mjs …` in a checkout).
 
 ### Commands
 
@@ -38,7 +39,7 @@ exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `npx . …
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
 | `install-mcp` | merge **openmem** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
-| `install-coding-agent` | `install-mcp` + session hooks for all providers; optional `--hindsight-plugin` runs `@vectorize-io/hindsight-coding-agents` on Hindsight stacks |
+| `install-coding-agent` | `install-mcp` + session hooks for all providers; `--provider-plugin` runs `@vectorize-io/hindsight-coding-agents` instead of OpenMem hooks on Hindsight stacks (saved as `[agents] integration`; `--no-provider-plugin` reverts) |
 | `wiring` | report `MEMORY_PROVIDER`, API URLs, and `mcp.json` alignment (`--json`) |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |

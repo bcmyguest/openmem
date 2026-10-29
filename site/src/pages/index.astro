@@ -172,7 +172,7 @@ npx ${site.npm.package} switch mem0 --yes`;
               <p class="mt-2 text-sm leading-relaxed text-muted">Day-0 and day-2 commands. Run the wizard first; <code>install-coding-agent</code> then registers the unified <code>memory_*</code> MCP and session hooks against that stack.</p>
             ) : (
               <p class="mt-2 text-sm leading-relaxed text-muted">
-                Command shape you will use after publish. Until then, clone and run <code>npx . setup</code> (same subcommands).
+                Command shape you will use after publish. Until then, clone and run <code>npm run setup</code>; other subcommands run as <code>node cli/openmem.mjs &lt;command&gt;</code>.
               </p>
             )}
             <div class="mt-4"><CodeBlock code={npxCommand} label="npx @bcmyguest/openmem commands" copy={site.npm.published} /></div>
@@ -183,7 +183,7 @@ npx ${site.npm.package} switch mem0 --yes`;
               <Badge variant="supported">Works today</Badge>
             </h3>
             <p class="mt-2 text-sm leading-relaxed text-muted">
-              Clone and use <code>npx .</code> for the same CLI. Add <code>--dry-run</code> first to see what setup would do without writing anything.
+              Clone and run <code>npm run setup</code>; <code>node cli/openmem.mjs</code> runs the same CLI. Add <code>--dry-run</code> first to see what setup would do without writing anything.
             </p>
             <div class="mt-4"><CodeBlock code={sourceCommands} label="Clone and run the wizard" /></div>
           </Card>

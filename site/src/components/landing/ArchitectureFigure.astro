@@ -83,7 +83,7 @@ const agentPackage = providers.find((p) => p.status === 'supported' && p.codingA
   <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
     <strong>Indexing:</strong> repos, vaults, markdown trees, and feed cache → shared indexer → one active provider API (badges from manifests).
     <strong>Agents:</strong> unified <code>memory_*</code> MCP and session hooks on the host; optional provider-native MCP and NotebookLM MCP.
-    LiteLLM is optional on Hindsight stacks (not shown). Optional upstream Hindsight plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)} via <code>--hindsight-plugin</code>.
+    LiteLLM is optional on Hindsight stacks (not shown). Optional upstream Hindsight plugin{agentPackage && (<Fragment> (<code>{agentPackage}</code>)</Fragment>)} replaces the session hooks via <code>--provider-plugin</code>.
     <a href={withBase('docs/architecture/')}>Architecture</a>.
   </figcaption>
 </figure>

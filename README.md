@@ -13,7 +13,7 @@
 
 > Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
-**Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/)
+**Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Compatibility](https://bcmyguest.github.io/openmem/docs/compatibility/)
 
 ## Quickstart
 
@@ -27,10 +27,12 @@
 
 ```sh
 git clone https://github.com/bcmyguest/openmem.git && cd openmem
-npm install && npx . setup
+npm install && npm run setup
 ```
 
-**Needs:** Docker Compose v2, Node ≥ 20.12, and an LLM route if you use Hindsight (lemond, Ollama, or OpenAI-compatible — set in the wizard).
+Other commands from a checkout: `node cli/openmem.mjs <command>`.
+
+**Needs:** Docker Compose v2, Node ≥ 20.12, and an LLM route if you use Hindsight (lemond, Ollama, OpenAI-compatible, or a Claude subscription through Meridian — set in the wizard).
 
 Later: `npx @bcmyguest/openmem up` / `down` / `switch <provider> --yes` / `doctor`.
 
@@ -67,7 +69,7 @@ flowchart TB
     AG[Claude Code · Codex · Cursor Agent · OpenCode]
     UMCP["OpenMem MCP\n(memory_*)"]
     SHIM["Session hooks"]
-    PLG["Hindsight plugin\n(optional)"]
+    PLG["Hindsight plugin\n(optional, replaces hooks)"]
     SKILL["openmem skill"]
     PMCP[Provider MCP optional]
     NLMCP[NotebookLM MCP optional]
@@ -96,7 +98,8 @@ flowchart TB
 | Connection | What it is |
 | --- | --- |
 | Sources → indexer → provider | Shared watcher; sink from active manifest (`MEMORY_SINK`) |
-| Agents → MCP / hooks → provider | `install-coding-agent` installs the shared skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode |
+| Agents → MCP / hooks → provider | `install-coding-agent` installs the shared skill, unified `memory_*` MCP, and session hooks for Claude Code, Codex, Cursor Agent, and OpenCode. `[agents] integration` picks OpenMem hooks (default) or the Hindsight plugin (`--provider-plugin`) |
+| Agents → context proxy → model API | Optional (`install-coding-agent --context-proxy`): trims long sessions, compresses tool results, and honours `/smart-compact` ([Context proxy](https://bcmyguest.github.io/openmem/docs/context-proxy/)) |
 | Wizard (dashed) | Writes env, starts compose, registers MCP — not on the hot indexing path |
 
 On Hindsight stacks, `memory_reflect` uses Hindsight's native reflect API and returns its answer with source evidence. On mem0 and Cognee, it searches first and uses the configured LiteLLM route for synthesis when available; otherwise it returns the search hits. See [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for MCP and hooks limits.

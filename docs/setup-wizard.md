@@ -5,7 +5,7 @@ The wizard is a Node program (`wizard/bin/setup.mjs`). It is exposed as:
 | How you run it | When |
 | --- | --- |
 | `npx @bcmyguest/openmem` / `npx @bcmyguest/openmem setup` | Normal install ([Install with npx](npx-install.md)) |
-| `npx . setup` / `npm run setup` / `./setup` | Git checkout (stack root stays in the repo) |
+| `npm run setup` / `./setup` | Git checkout (stack root stays in the repo); other commands: `node cli/openmem.mjs <command>` |
 
 Interactive runs use [@clack/prompts](https://github.com/bombshell-dev/clack). `--yes` and `--dry-run` skip Clack.
 
@@ -40,7 +40,7 @@ Configure runs these steps in order (provider hooks replace or extend some steps
 | 5 | Sources to index | Writes `~/.config/hindsight/index.yml`; lists sources with a dry indexer run |
 | 6 | NotebookLM sync | Opt-in; Google login when enabled |
 | 7 | Start the stack | Build indexer image if inputs changed; health wait; smoke retain/recall (unless `--no-smoke`) |
-| 8 | Coding-agent plugin | Optional `npx` install for detected CLIs; provider-specific MCP hints |
+| 8 | Coding agents (optional) | For detected CLIs (claude, codex, opencode, cursor-agent), offers `install-coding-agent --yes`: unified MCP, OpenMem skill, session hooks; honours `[agents] integration` (OpenMem hooks or the provider plugin). Default answer is no |
 | 9 | Validate memory setup | Provider checks + shared validation |
 
 The last line is `wizard: changed=N` (files and containers this run touched). An unchanged re-run prints `changed=0`.

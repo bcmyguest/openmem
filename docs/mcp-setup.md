@@ -2,7 +2,7 @@
 
 OpenMem registers **stdio MCP servers** in `~/.cursor/mcp.json` (and wires session hooks via `install-coding-agent`). Day-to-day you want the **unified** `openmem` server (`memory_*` tools). Provider-native and NotebookLM servers are optional add-ons.
 
-For why this exists, see [Concepts](concepts.md). Install path: [Quickstart § Wire your coding agent](quickstart.md#3-wire-your-coding-agent-optional).
+For why this exists, see [Concepts](concepts.md). Install path: [Quickstart § Wire your coding agent](quickstart.md#3-wire-your-coding-agent-optional). Per-agent support: [Compatibility matrix](compatibility.md).
 
 ## Quick path (recommended)
 
@@ -34,7 +34,7 @@ Restart **Cursor Agent** (or your agent’s MCP host) after changes.
 | **Provider-native** (`mem0`, `cognee`) | `install-mcp --provider-only` | Upstream / repo-specific names | Same HTTP API, different tool surface |
 | **`notebooklm`** | When NotebookLM sync is on, or `--notebooklm` | `notebooklm_list_banks`, `notebooklm_search` | Search over synced notebooks on the **active** provider — not a memory engine |
 
-Hindsight’s optional in-editor plugin (`--hindsight-plugin`) is **not** an MCP entry; it complements unified MCP on Hindsight stacks. See [Hindsight](hindsight.md).
+Hindsight’s optional in-editor plugin (`install-coding-agent --provider-plugin`) is **not** an MCP entry; it replaces OpenMem’s session hooks on Hindsight stacks and keeps the unified MCP. See [Hindsight](hindsight.md).
 
 ## When to use which
 

@@ -92,7 +92,7 @@ Import/export goes through a **format layer**, not a provider-specific dump. **P
 
 ### Session hooks and skill
 
-OpenMem installs one **skill** and **session hooks** (SessionStart / prompt / Stop) so agents recall and retain without remembering a vendor SDK. Optional: upstream Hindsight plugin via `--hindsight-plugin`.
+OpenMem installs one **skill** and **session hooks** (SessionStart / prompt / Stop) so agents recall and retain without remembering a vendor SDK. Hook sets are exclusive: `[agents] integration` is `openmem` (default) or `provider`, which swaps in the upstream Hindsight plugin (`--provider-plugin`; `--no-provider-plugin` switches back).
 
 ### Indexer
 
@@ -113,4 +113,5 @@ A shared **indexer** watches git repos, Obsidian vaults, notes trees, and feed c
 | [Portable memory (PMM)](memory-portability.md) | Export/import between providers |
 | [Architecture](architecture.md) | Runtime data paths |
 | [Provider status](provider-status.md) | Which backends ship |
+| [Compatibility](compatibility.md) | What each agent and provider supports, with evidence level |
 | [mem0](mem0.md) · [Hindsight](hindsight.md) · [Cognee](cognee.md) | Provider operator guides |

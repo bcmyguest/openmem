@@ -40,11 +40,14 @@ Shipped route templates live in `config/litellm.lemond.yaml` and `config/litellm
 npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
-**Optional:** also install the upstream Hindsight plugin hooks:
+**Optional:** use the upstream Hindsight plugin hooks instead of OpenMem’s. Hook sets are exclusive; the choice is saved as `[agents] integration = "provider"`, OpenMem’s hooks are removed, and the unified MCP stays:
 
 ```sh
-npx @bcmyguest/openmem install-coding-agent --yes --hindsight-plugin
+npx @bcmyguest/openmem install-coding-agent --yes --provider-plugin
+npx @bcmyguest/openmem install-coding-agent --yes --no-provider-plugin   # back to OpenMem hooks
 ```
+
+`--hindsight-plugin` is a deprecated alias for `--provider-plugin`.
 
 MCP without session hooks:
 
