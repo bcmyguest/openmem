@@ -24,7 +24,7 @@ which session features work for the active provider.
 npx @bcmyguest/openmem install-coding-agent --yes
 ```
 
-- **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin (`cli/coding-agent/opencode-plugin.mjs`).
+- **All providers:** unified MCP and [shared skill](../skills/openmem/SKILL.md), plus session hooks (`cli/coding-agent/hook-runner.mjs`) for Claude Code, Codex, Cursor Agent, and a JavaScript OpenCode plugin: `cli/coding-agent/opencode-plugin.mjs` for OpenCode 1, `cli/coding-agent/opencode2-plugin/` for OpenCode 2 (the installer picks one from `opencode --version`).
 - **Exclusive hook sets:** `[agents] integration` in `~/.config/personal-memory/config.toml` picks one. `openmem` (default) installs the hooks above and removes upstream Hindsight hook entries (commands under `hindsight-coding-agents` / `.hindsight/coding-agents`, and the matching OpenCode `plugin` entry). `provider` (`--provider-plugin`, Hindsight only) removes OpenMem's hooks, keeps the unified MCP, and runs `@vectorize-io/hindsight-coding-agents install`. `--no-provider-plugin` switches back; `--hindsight-plugin` is a deprecated alias. Other providers always get OpenMem hooks.
 
 SessionStart output starts with a two-line banner: provider, bank, and the tools to use. It names `memory_pages_search` and `memory_capture_initiative` only when `PROVIDER_CAPABILITIES` marks `knowledge_pages` / `initiatives` for the provider. The same hook writes `sessions/<sid>.json` per [context store](context-store.md); a write failure is ignored. Denied workspaces get no registration.
@@ -36,6 +36,22 @@ Cursor hooks live under `hooks` in `~/.cursor/hooks.json` with `version: 1`, as 
 See [MCP setup](mcp-setup.md) and [coding agents](coding-agents.md).
 
 Claude Code Stop retention parses ordinary message and tool-use rows. Codex Stop retention is best effort because Codex does not guarantee a stable transcript format. Cursor Stop retention has a bounded adapter for the observed local agent-transcripts JSONL shape (top-level user/assistant role and `message.content` parts). Live Cursor Hook `transcript_path` linkage to that format remains unverified; unknown row shapes are skipped. Cursor recall and explicit `memory_add` remain available. OpenCode retention uses its plugin's session messages API.
+
+### OpenCode 2 plugin
+
+OpenCode 2 does not run OpenCode 1 plugins ([migration guide](https://opencode.ai/v2/docs/build/plugins/migrate-v1/)). `cli/coding-agent/opencode2-plugin/index.js` default-exports a plain `{ id: "openmem", setup }` object. `Plugin.define` from `@opencode/plugin` 2.2.1 returns its argument unchanged, and OpenCode reads the default export's `id` and `setup()` ([Support V1](https://opencode.ai/v2/docs/build/plugins/server/#support-v1)), so the plugin adds no runtime dependency. `setup(ctx)` registers:
+
+| Feature | OpenCode 2 API | Behaviour |
+| --- | --- | --- |
+| Registration | `prompt` / `context` hooks, `session.created` event | Writes `sessions/<sid>.json` on the first hook call per session. In OpenCode 2.2.1 a location's plugins loaded after `opencode run` had created the session, so `session.created` never arrived |
+| Prompt recall | `ctx.session.hook("prompt")` | First prompt: `memory_reflect`; later prompts: `memory_recall` |
+| System context | `ctx.session.hook("context")` | Pushes `{ type: "text", text: "Personal memory for <bank>: …" }` onto `event.system` |
+| Native trim | `ctx.session.hook("context")` | Replaces `event.messages` per [context proxy](context-proxy.md) rules (`cli/coding-agent/context-trim.mjs`) |
+| Native compaction | `ctx.session.hook("compaction")` | Sets `event.result.summary` to the pointer + recall; `[compaction] native = false` disables it |
+| `/smart-compact` | `prompt` hook; `ctx.command.transform` adds a `smart-compact` command | Writes `sessions/<sid>.force`; no recall for that prompt |
+| Retention | `ctx.session.hook("experimental.idle")`; `session.execution.succeeded`, `session.status` idle and `session.idle` events as fallbacks | Reads `ctx.session.context()` and retains the new user/assistant text once per turn |
+
+The access policy matches OpenCode 1: denied workspaces get no registration, recall or retention, but `/smart-compact`, trimming and compression still run. As with the proxy, a trim pointer carries recall only when the session's registration names a bank.
 
 Hindsight Stop hooks submit retains with `async: true` so model extraction runs after the hook returns. A successful queue response advances the transcript cursor; later extraction failures must be checked through Hindsight operations. MCP `memory_add` defaults to async; pass `async: false` to wait for extraction.
 SessionStart hooks use recall instead of reflect. Hindsight startup recall requests `budget: low` and `max_tokens: 1200`; all hook recall output is limited to eight hits and 8000 characters. Explicit `memory_reflect` remains available through the MCP.
