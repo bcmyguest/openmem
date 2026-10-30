@@ -131,6 +131,14 @@ class AnthropicAdapter:
     def result_ids(self, item):
         return {b.get("tool_use_id") for b in self._blocks(item) or () if isinstance(b, dict) and b.get("type") == "tool_result"}
 
+    def is_reply(self, item):
+        """An agent message that calls no tool (the answer that closes a turn)."""
+        return item.get("role") == "assistant" and not self.call_ids(item)
+
+    def is_step_start(self, items, j):
+        """Whether items[j] opens one tool exchange of a turn (where an in-turn cut may resume)."""
+        return items[j].get("role") == "assistant"
+
     def tool_names(self, items):
         names = {}
         for item in items:
@@ -233,6 +241,12 @@ class ChatAdapter:
     def result_ids(self, item):
         return {item.get("tool_call_id")} if item.get("role") == "tool" else set()
 
+    def is_reply(self, item):
+        return item.get("role") == "assistant" and not item.get("tool_calls")
+
+    def is_step_start(self, items, j):
+        return items[j].get("role") == "assistant"
+
     def tool_names(self, items):
         names = {}
         for item in items:
@@ -316,6 +330,20 @@ class ResponsesAdapter:
 
     def result_ids(self, item):
         return {item.get("call_id")} if item.get("type") in _RESULT_TYPES else set()
+
+    def is_reply(self, item):
+        return self._is_message(item) and item.get("role") == "assistant"
+
+    def is_step_start(self, items, j):
+        """A reasoning item, or a call or agent message that follows neither reasoning nor another call, so a
+        reasoning item stays with its calls and parallel calls stay together."""
+        item = items[j]
+        if item.get("type") == "reasoning":
+            return True
+        if not (item.get("type") in _CALL_TYPES or self.is_reply(item)):
+            return False
+        prev = items[j - 1] if j > 0 else {}
+        return not (prev.get("type") == "reasoning" or prev.get("type") in _CALL_TYPES)
 
     def tool_names(self, items):
         return {i.get("call_id"): i.get("name", "shell" if i.get("type") == "local_shell_call" else None)
