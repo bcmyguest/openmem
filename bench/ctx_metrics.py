@@ -30,7 +30,7 @@ SEARCH = "mcp__openmem__smart_compact_search"
 SQL = "mcp__openmem__smart_compact_sql"  # run D
 GET = "mcp__openmem__smart_compact_get"
 D_TOOLS = (SEARCH, GET, SQL)
-TRIM_AT = {"D": 120000, "Dsmoke": 20000}
+TRIM_AT = {"D": 95000, "Dsmoke": 20000}  # D: the proxy's Haiku threshold (run with TRIM_AT= empty)
 RECALL = "mcp__openmem__memory_recall"  # run C arm s3d-recall: its lookup tool in place of SEARCH
 KV_RE = re.compile(r"<<<\s*ANSWER\s+key\s*=\s*([^\s>]+)\s*>>>(.*?)<<<\s*ANSWER\s+END\s*>>>", re.S | re.I)
 LOG_RE = re.compile(r"<<<\s*ANSWER\s+qid\s*=\s*([0-9]+)\s*>>>(.*?)<<<\s*ANSWER\s+END\s*>>>", re.S | re.I)
