@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { callUnifiedTool, UNIFIED_MCP_TOOLS } from "../../cli/mcp/memory-facade.mjs";
 import { callContextStoreTool, sanitizeSessionId } from "../../cli/mcp/context-store.mjs";
+import { writeSessionRows } from "./fixtures/session-db.mjs";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -36,71 +37,67 @@ function register(sid, cwd, at) {
     JSON.stringify({ session_id: sid, agent: "claude-code", cwd, bank: "coding-agent::repo", registered_at: at }),
   );
 }
-function log(sid, rows) {
-  fs.writeFileSync(path.join(sessions, `${sid}.log.jsonl`), rows.map((r) => (typeof r === "string" ? r : JSON.stringify(r))).join("\n") + "\n");
-}
-const row = (seq, text, extra = {}) => ({ seq, ts: "2026-10-29T17:00:00Z", role: "assistant", kind: "text", name: null, text, ...extra });
+const log = (sid, rows) => writeSessionRows(sessions, sid, rows);
+// Stored in order: seq is the position plus one. User rows, which the default role filter searches.
+const row = (text, extra = {}) => ({ role: "user", kind: "text", name: null, text, ...extra });
 
 register("old", repo, "2026-10-28T10:00:00Z");
 register("new", path.join(repo, "sub"), "2026-10-29T10:00:00Z");
 register("elsewhere", other, "2026-10-29T11:00:00Z");
-log("old", [row(0, "proxy port is 8787 in compose"), row(1, "port only")]);
+log("old", [row("proxy port is 8787 in compose"), row("port only")]);
 log("new", [
-  row(0, "the proxy listens on a port"),
-  "{not json",
-  "",
-  row(1, "just proxy"),
-  row(2, `[openmem: tool result compressed, 900 tokens — smart_compact_get(id="${BLOB}") returns the full text] [blob:${BLOB}] proxy log`, {
-    role: "tool",
-    kind: "tool_result",
-    name: "Bash",
-  }),
-  JSON.stringify({ seq: 3, text: 42 }),
+  row("the proxy listens on a port"),
+  row("just proxy"),
+  row("full proxy log text", { role: "tool", kind: "tool_result", name: "Bash", blob_id: BLOB }),
+  row("assistant says proxy port", { role: "assistant" }),
 ]);
-log("elsewhere", [row(0, "proxy port elsewhere")]);
+log("elsewhere", [row("proxy port elsewhere")]);
 fs.writeFileSync(path.join(blobs, `${BLOB}.txt`), "x".repeat(250_000));
 
 const search = (args, cwd = repo) => callContextStoreTool("smart_compact_search", args, { env: ENV, cwd });
 const get = (args) => callContextStoreTool("smart_compact_get", args, { env: ENV });
 
 const names = UNIFIED_MCP_TOOLS.map((t) => t.name);
-for (const n of ["smart_compact_search", "smart_compact_get"]) {
+for (const n of ["smart_compact_search", "smart_compact_get", "smart_compact_sql"]) {
   const tool = UNIFIED_MCP_TOOLS.find((t) => t.name === n);
   check(`tools/list includes ${n}`, names.includes(n));
   check(`${n} is read-only`, tool?.annotations?.readOnlyHint === true && tool?.annotations?.destructiveHint === false);
 }
 
 {
-  const r = search({ query: "Proxy PORT", session_id: "new" });
+  const r = await search({ query: "Proxy PORT", session_id: "new" });
   check("session filter searches only that session", r.results.every((x) => x.session_id === "new"), JSON.stringify(r));
-  check("all-terms row ranks first", r.results[0]?.seq === 0 && r.results[0]?.matched_terms === 2, JSON.stringify(r.results[0]));
-  check("partial ties break by seq desc", r.results[1]?.seq === 2 && r.results[2]?.seq === 1, JSON.stringify(r.results.map((x) => x.seq)));
-  check("malformed and non-string rows skipped", r.total_matches === 3, String(r.total_matches));
-  check("blob ids surfaced", r.results[1]?.blob_ids?.[0] === BLOB && !r.results[0].blob_ids, JSON.stringify(r.results[1]));
-  check("row fields present", r.results[1]?.role === "tool" && r.results[1]?.kind === "tool_result" && r.results[1]?.name === "Bash");
+  check("all-terms row ranks first", r.results[0]?.seq === 1 && r.results[0]?.matched_terms === 2, JSON.stringify(r.results[0]));
+  // Partial matches rank by BM25: the shorter row first.
+  check("partial matches rank by BM25", r.results[1]?.seq === 2 && r.results[2]?.seq === 3, JSON.stringify(r.results.map((x) => x.seq)));
+  check("assistant rows excluded by default", r.total_matches === 3 && r.roles.join(",") === "user,tool", JSON.stringify(r));
+  check("blob ids surfaced", r.results[2]?.blob_ids?.[0] === BLOB && !r.results[0].blob_ids, JSON.stringify(r.results[2]));
+  check("row fields present", r.results[2]?.role === "tool" && r.results[2]?.kind === "tool_result" && r.results[2]?.name === "Bash");
+  const all = await search({ query: "Proxy PORT", session_id: "new", role: "all" });
+  check("role all includes assistant rows", all.total_matches === 4 && all.results.some((x) => x.role === "assistant"), JSON.stringify(all.results));
 }
 
 {
-  const r = search({ query: "proxy port" });
+  const r = await search({ query: "proxy port" });
   check("cwd discovery skips sessions outside the git root", !r.sessions_searched.includes("elsewhere"), JSON.stringify(r.sessions_searched));
   check("cwd discovery orders newest registration first", r.sessions_searched.join(",") === "new,old", JSON.stringify(r.sessions_searched));
   check(
     "full matches across sessions rank above partial, newer session first",
-    r.results[0]?.session_id === "new" && r.results[0]?.seq === 0 && r.results[1]?.session_id === "old" && r.results[1]?.seq === 0,
+    r.results[0]?.session_id === "new" && r.results[0]?.seq === 1 && r.results[1]?.session_id === "old" && r.results[1]?.seq === 1,
     JSON.stringify(r.results.slice(0, 2)),
   );
-  check("limit applies", search({ query: "proxy port", limit: 2 }).results.length === 2);
+  check("limit applies", (await search({ query: "proxy port", limit: 2 })).results.length === 2);
 }
 
 {
-  const r = search({ query: "proxy" }, other);
+  const r = await search({ query: "proxy" }, other);
   check("non-git cwd matches registration equal to cwd", r.sessions_searched.join(",") === "elsewhere", JSON.stringify(r.sessions_searched));
 }
 
 {
   const big = "a".repeat(5000) + " needle " + "b".repeat(5000);
-  log("big", Array.from({ length: 40 }, (_, i) => row(i, big)));
-  const r = search({ query: "needle", session_id: "big", limit: 40 });
+  log("big", Array.from({ length: 40 }, () => row(big)));
+  const r = await search({ query: "needle", session_id: "big", limit: 40 });
   const size = JSON.stringify(r, null, 2).length;
   check("excerpt centres on match", r.results[0]?.text.includes("needle") && r.results[0].text.length < 500, r.results[0]?.text.length);
   check("result stays under ~8000 chars and reports truncation", size < 8500 && r.truncated === true, String(size));
@@ -110,31 +107,31 @@ for (const n of ["smart_compact_search", "smart_compact_get"]) {
   let threw = 0;
   for (const bad of ["../old", "a/../../etc", "..", "x\\y"]) {
     try {
-      search({ query: "proxy", session_id: bad });
+      await search({ query: "proxy", session_id: bad });
     } catch {
       threw++;
     }
   }
   check("path traversal session ids rejected", threw === 4, String(threw));
   check("unsafe chars sanitized", sanitizeSessionId("a b:c") === "a_b_c");
-  check("unknown session returns empty", search({ query: "proxy", session_id: "nope" }).results.length === 0);
+  check("unknown session returns empty", (await search({ query: "proxy", session_id: "nope" })).results.length === 0);
 }
 
 {
-  const r = callContextStoreTool("smart_compact_search", { query: "proxy" }, { env: { ...ENV, OPENMEM_STATE_DIR: path.join(tmp, "missing") }, cwd: repo });
+  const r = await callContextStoreTool("smart_compact_search", { query: "proxy" }, { env: { ...ENV, OPENMEM_STATE_DIR: path.join(tmp, "missing") }, cwd: repo });
   check("missing directory returns empty", r.results.length === 0 && r.sessions_searched.length === 0);
 }
 
 {
-  const a = get({ id: BLOB });
+  const a = await get({ id: BLOB });
   check("blob get caps at 100k and reports truncation", a.text.length === 100_000 && a.truncated && a.next_offset === 100_000 && a.total_chars === 250_000);
-  const b = get({ id: BLOB, offset: 200_000 });
+  const b = await get({ id: BLOB, offset: 200_000 });
   check("blob offset pages to the end", b.text.length === 50_000 && b.truncated === false && b.next_offset === undefined);
-  check("missing blob is not an error", get({ id: "ffffffffffffffff" }).found === false);
+  check("missing blob is not an error", (await get({ id: "ffffffffffffffff" })).found === false);
   let bad = 0;
   for (const id of ["0123456789ABCDEF", "0123", "../../etc/passwd", "0123456789abcdef0"]) {
     try {
-      get({ id });
+      await get({ id });
     } catch {
       bad++;
     }
@@ -175,9 +172,9 @@ fs.rmSync(tmp, { recursive: true, force: true });
   for (const [sid, hour] of [["wt-main", 1], ["wt-linked", 2], ["wt-other", 3]]) {
     const cwd = path.join(base, sid.slice(3));
     fs.writeFileSync(path.join(sessions, `${sid}.json`), JSON.stringify({ session_id: sid, agent: "claude-code", cwd, bank: "b", registered_at: `2026-10-29T1${hour}:00:00Z` }));
-    fs.writeFileSync(path.join(sessions, `${sid}.log.jsonl`), JSON.stringify({ seq: 0, ts: "t", role: "user", kind: "text", name: null, text: "worktree needle" }) + "\n");
+    writeSessionRows(sessions, sid, [{ role: "user", kind: "text", name: null, text: "worktree needle" }]);
   }
-  const r = callContextStoreTool("smart_compact_search", { query: "worktree needle" }, { env: { OPENMEM_STATE_DIR: state }, cwd: path.join(base, "main") });
+  const r = await callContextStoreTool("smart_compact_search", { query: "worktree needle" }, { env: { OPENMEM_STATE_DIR: state }, cwd: path.join(base, "main") });
   check(
     "cwd discovery includes linked worktrees of the same repo only",
     JSON.stringify(r.sessions_searched) === JSON.stringify(["wt-linked", "wt-main"]),

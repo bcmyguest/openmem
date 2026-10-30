@@ -174,16 +174,22 @@ services:
       HOME: /tmp
       PYTHONDONTWRITEBYTECODE: "1"
       OPENMEM_STATE_DIR: /state
-      # Host path of the context dir, so the proxy's pointer names a file the agent can open.
-      OPENMEM_HOST_STATE_DIR: ${OPENMEM_STATE_DIR:-${HOME}/.local/share/openmem}
       HINDSIGHT_URL: ${CONTEXT_PROXY_HINDSIGHT_URL:-http://hindsight:8888}
       CONTEXT_PROXY_ENABLED: ${CONTEXT_PROXY_ENABLED:-1}
-      # From config.toml [context_proxy] trim_at_tokens / compress_over_tokens / standing_instruction and [compaction] max_chars,
+      # From config.toml [context_proxy] trim_at_tokens / compress_over_tokens / standing_instruction / chars_per_token, [compaction] max_chars
+      # and [context_store] ttl_days / embedding_model,
       # written into .env by scripts/setup.mjs and install-coding-agent; a shell export overrides .env.
       CONTEXT_TRIM_AT_TOKENS: ${CONTEXT_TRIM_AT_TOKENS:-120000}
       CONTEXT_COMPRESS_OVER_TOKENS: ${CONTEXT_COMPRESS_OVER_TOKENS:-4000}
       CONTEXT_COMPACTION_MAX_CHARS: ${CONTEXT_COMPACTION_MAX_CHARS:-12000}
       CONTEXT_STANDING_INSTRUCTION: ${CONTEXT_STANDING_INSTRUCTION:-1}
+      CONTEXT_CHARS_PER_TOKEN: ${CONTEXT_CHARS_PER_TOKEN:-2.5}
+      # Session databases (docs/context-store.md): [context_store] ttl_days and embedding_model. Vectors are off while
+      # CONTEXT_EMBEDDING_MODEL is empty; the embeddings URL is the container's view of an OpenAI-compatible
+      # /embeddings endpoint (Ollama on the host by default). CONTEXT_EMBEDDING_API_KEY, if needed, goes in the env file.
+      CONTEXT_STORE_TTL_DAYS: ${CONTEXT_STORE_TTL_DAYS:-30}
+      CONTEXT_EMBEDDING_MODEL: ${CONTEXT_EMBEDDING_MODEL:-}
+      CONTEXT_EMBEDDING_URL: ${CONTEXT_PROXY_EMBEDDING_URL:-http://host.docker.internal:11434/v1}
     volumes:
       - ./proxy:/app/proxy:ro
       # Create it first (mode 700, host-owned); compose would otherwise create a root-owned directory.

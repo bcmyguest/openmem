@@ -10,7 +10,7 @@ Get from zero to a running stack in one wizard run. **Choose your memory provide
 | Requirement | Why |
 | --- | --- |
 | Docker + Compose v2 | Runs the stack; your user must run `docker` without sudo |
-| Node.js ≥ 20.12 | CLI and setup wizard |
+| Node.js ≥ 22.16 | CLI, setup wizard, and the session context store (`node:sqlite` with FTS5) |
 | LLM for Hindsight (default provider) | lemond, Ollama, OpenAI-compatible, or a Claude subscription through [Meridian](https://github.com/bcmyguest/openmem/blob/main/docs/meridian-litellm.md) — wizard wires LiteLLM |
 | git, curl | Wizard preflight |
 

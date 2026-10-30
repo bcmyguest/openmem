@@ -52,13 +52,24 @@ integration = "openmem"
 # trim_at_tokens / compress_over_tokens (and [compaction] max_chars) reach the proxy
 # container through the stack .env (written by ./setup and install-coding-agent) and the
 # OpenCode 2 plugin; the env vars CONTEXT_TRIM_AT_TOKENS, CONTEXT_COMPRESS_OVER_TOKENS,
-# CONTEXT_STANDING_INSTRUCTION and CONTEXT_COMPACTION_MAX_CHARS override them.
+# CONTEXT_STANDING_INSTRUCTION, CONTEXT_CHARS_PER_TOKEN and CONTEXT_COMPACTION_MAX_CHARS override them.
 [context_proxy]
 enabled = false
 port = 4100
 trim_at_tokens = 120000     # trim a session once its request exceeds this many tokens
 compress_over_tokens = 4000 # compress tool results larger than this
 standing_instruction = true # constant system-prompt note telling the agent to search trimmed turns
+chars_per_token = 2.5       # token estimate before a session reports usage; reported usage calibrates it after
+
+# Session databases (sessions/<sid>.db, docs/context-store.md): every message of a trimmed session.
+# ttl_days: delete sessions idle longer than this, checked at proxy / MCP start at most once a day (0 = keep).
+# embedding_model: OpenAI-compatible embedding model for hybrid smart_compact_search; empty = vectors off.
+# The stack ships no embedding route; e.g. `ollama pull nomic-embed-text` and set it here.
+# embedding_url: that endpoint as this host sees it (the proxy container uses CONTEXT_PROXY_EMBEDDING_URL).
+[context_store]
+ttl_days = 30
+embedding_model = ""
+embedding_url = "http://127.0.0.1:11434/v1"
 
 # native (OpenCode 2 only): when OpenCode compacts a session, OpenMem's plugin supplies the
 # smart_compact_search pointer + recall as the summary instead of a model call.

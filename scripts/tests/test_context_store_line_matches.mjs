@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { callContextStoreTool, CONTEXT_STORE_MCP_TOOLS } from "../../cli/mcp/context-store.mjs";
+import { writeSessionRows } from "./fixtures/session-db.mjs";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -21,52 +22,51 @@ fs.mkdirSync(sessions, { recursive: true });
 const repo = path.join(tmp, "repo");
 fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
 const ENV = { OPENMEM_STATE_DIR: state, HOME: tmp };
-const row = (seq, text) => ({ seq, ts: "2026-10-29T17:00:00Z", role: "tool", kind: "tool_result", name: "bash", text });
-function log(sid, rows) {
-  fs.writeFileSync(path.join(sessions, `${sid}.log.jsonl`), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-}
+const row = (text) => ({ role: "tool", kind: "tool_result", name: "bash", text });
+const log = (sid, rows) => writeSessionRows(sessions, sid, rows);
 const search = (args) => callContextStoreTool("smart_compact_search", args, { env: ENV, cwd: repo });
 
 try {
   // 30 rows of 4 lines each; two lines per row name a key, one of them twice.
-  log("many", Array.from({ length: 30 }, (_, i) => row(i, `KEY-${i} set\nKEY-${i} KEY-${i} again\nother line\nkey lowercase`)));
+  log("many", Array.from({ length: 30 }, (_, i) => row(`KEY-${i} set\nKEY-${i} KEY-${i} again\nother line\nkey lowercase`)));
 
   {
     const tool = CONTEXT_STORE_MCP_TOOLS.find((t) => t.name === "smart_compact_search");
-    check("description explains line_matches", tool.description.includes("line_matches = grep -c over the saved log; use it for 'how many' questions"));
+    check("description explains line_matches", tool.description.includes("line_matches is an exact count of matching lines")
+      && tool.description.includes("use it for 'how many' questions"));
   }
 
   {
-    const r = search({ pattern: "KEY-\\d+", session_id: "many", limit: 3 });
+    const r = await search({ pattern: "KEY-\\d+", session_id: "many", limit: 3 });
     check("pattern: line_matches counts every matching line, past the limit", r.line_matches === 60 && r.total_matches === 30 && r.results.length === 3,
       JSON.stringify({ line_matches: r.line_matches, total: r.total_matches, n: r.results.length }));
-    const i = search({ pattern: "^key", ignore_case: true, session_id: "many", limit: 1 });
+    const i = await search({ pattern: "^key", ignore_case: true, session_id: "many", limit: 1 });
     check("pattern: anchors apply per line, ignore_case honoured", i.line_matches === 90, String(i.line_matches));
-    const none = search({ pattern: "absent", session_id: "many" });
+    const none = await search({ pattern: "absent", session_id: "many" });
     check("pattern: zero when nothing matches", none.line_matches === 0 && none.total_matches === 0);
   }
 
   {
     // Row-level `^` matches only the text start; per-line `^` also finds later lines (grep -c semantics).
-    log("anchor", [row(0, "intro\nERROR one\nERROR two")]);
-    const r = search({ pattern: "^ERROR", session_id: "anchor" });
+    log("anchor", [row("intro\nERROR one\nERROR two")]);
+    const r = await search({ pattern: "^ERROR", session_id: "anchor" });
     check("pattern: a row without a row-level hit still counts its matching lines", r.total_matches === 0 && r.line_matches === 2, JSON.stringify(r));
   }
 
   {
-    const r = search({ query: "key-7 again", session_id: "many", limit: 1 });
+    const r = await search({ query: "key-7 again", session_id: "many", limit: 1 });
     check("query: lines containing every term, case-insensitive", r.line_matches === 1, String(r.line_matches));
-    const all = search({ query: "KEY", session_id: "many", limit: 2 });
+    const all = await search({ query: "KEY", session_id: "many", limit: 2 });
     check("query: counts across all rows, not only returned ones", all.line_matches === 90 && all.results.length === 2, String(all.line_matches));
-    const partial = search({ query: "lowercase again", session_id: "many" });
+    const partial = await search({ query: "lowercase again", session_id: "many" });
     check("query: rows matching only some terms add no lines", partial.total_matches === 30 && partial.line_matches === 0, JSON.stringify({ t: partial.total_matches, l: partial.line_matches }));
   }
 
   {
     // (a+)+$ backtracks exponentially on "aaaa…b"; the count stops at the budget and stays partial.
-    log("evil", [row(0, "aaa"), ...Array.from({ length: 3 }, (_, i) => row(i + 1, "a".repeat(5000) + "b"))]);
+    log("evil", [row("aaa"), ...Array.from({ length: 3 }, () => row("a".repeat(5000) + "b"))]);
     const started = Date.now();
-    const r = search({ pattern: "(a+)+$", session_id: "evil" });
+    const r = await search({ pattern: "(a+)+$", session_id: "evil" });
     check("pattern timeout returns the partial line count and timed_out", r.timed_out === true && r.line_matches === 1 && Date.now() - started < 3000,
       JSON.stringify({ timed_out: r.timed_out, line_matches: r.line_matches }));
   }

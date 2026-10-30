@@ -3,8 +3,9 @@
  * Parity between the context proxy core (proxy/openmem_context, python3, Chat adapter) and its JS port
  * (cli/coding-agent/context-trim.mjs, OpenCode 2 parts). The same fixture requests
  * (scripts/tests/fixtures/context-parity.json) run through both; rendered views (pointer, pinned first
- * user turn, cut, compressed text), handoff log rows and blob files must match, and both sides must produce
- * the fixture's golden standing instruction and pointer text. Disposable state only.
+ * user turn, cut, compressed text), session database rows (messages and lines, every column) and schema,
+ * and blob files must match, and both sides must produce the fixture's golden standing instruction and
+ * pointer text. Disposable state only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -32,7 +33,7 @@ ctx = Path(job["state"]) / "context"
 def no_http(*args):
     raise AssertionError("no registration, so no recall")
 ptr = job["pointer"]
-out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"], ptr["log_path"]), "views": []}
+out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"]), "views": []}
 for case in job["cases"]:
     views = []
     for req in case["requests"]:
@@ -111,12 +112,21 @@ function normalizeChat(m) {
   return [m.role, ...segments];
 }
 
+function dbRows(file, sql) {
+  if (!fs.existsSync(file)) return [];
+  const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+  const db = new DatabaseSync(file, { readOnly: true });
+  try { return db.prepare(sql).all().map((r) => ({ ...r })); } finally { db.close(); }
+}
+
 function storeSnapshot(state, sid) {
   const ctx = path.join(state, "context");
-  const log = path.join(ctx, "sessions", `${sanitizeSessionId(sid)}.log.jsonl`);
+  const file = path.join(ctx, "sessions", `${sanitizeSessionId(sid)}.db`);
   const blobs = path.join(ctx, "blobs");
   return {
-    log: fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : [],
+    log: dbRows(file, "SELECT * FROM messages ORDER BY seq"),
+    lines: dbRows(file, "SELECT * FROM lines ORDER BY id"),
+    schema: dbRows(file, "SELECT type, name, sql FROM sqlite_master ORDER BY name").concat(dbRows(file, "PRAGMA user_version")),
     blobs: fs.existsSync(blobs) ? Object.fromEntries(fs.readdirSync(blobs).sort().map((f) => [f, fs.readFileSync(path.join(blobs, f), "utf8")])) : {},
   };
 }
@@ -146,9 +156,9 @@ try {
   });
   check("python driver ran", py.status === 0, py.stderr || py.error?.message);
   const pyOut = py.status === 0 ? JSON.parse(py.stdout) : { views: [] };
-  const { sid: psid, dropped, log_path: logPath, text: pointerGolden } = FIXTURE.pointer;
+  const { sid: psid, dropped, text: pointerGolden } = FIXTURE.pointer;
   check("golden standing instruction on both sides", pyOut.standing === FIXTURE.standing_instruction && STANDING_INSTRUCTION === FIXTURE.standing_instruction);
-  check("golden pointer text on both sides", pyOut.pointer === pointerGolden && pointerText(psid, dropped, logPath) === pointerGolden);
+  check("golden pointer text on both sides", pyOut.pointer === pointerGolden && pointerText(psid, dropped) === pointerGolden);
   // The proxy's Chat view carries the instruction as a system message after the leading system messages; the
   // OpenCode 2 plugin puts it in event.system. Check and remove it so the message views compare as before.
   const jsSystem = [];
@@ -177,18 +187,23 @@ try {
     }
     const js = scrub(storeSnapshot(jsState, c.sid), jsState);
     const pyv = scrub(storeSnapshot(pyState, c.sid), pyState);
-    check(`${c.name}: same log rows`, JSON.stringify(js.log) === JSON.stringify(pyv.log), `\n  js: ${JSON.stringify(js.log)}\n  py: ${JSON.stringify(pyv.log)}`);
+    check(`${c.name}: same database rows`, JSON.stringify(js.log) === JSON.stringify(pyv.log), `\n  js: ${JSON.stringify(js.log)}\n  py: ${JSON.stringify(pyv.log)}`);
+    check(`${c.name}: same lines rows`, js.lines.length > 0 && JSON.stringify(js.lines) === JSON.stringify(pyv.lines));
+    check(`${c.name}: same schema and user_version`, js.schema.length > 0 && JSON.stringify(js.schema) === JSON.stringify(pyv.schema), `\n  js: ${JSON.stringify(js.schema)}\n  py: ${JSON.stringify(pyv.schema)}`);
   }
   // Blobs are shared by every session, so compare them once after all cases.
   const jsBlobs = storeSnapshot(jsState, "any").blobs;
   const pyBlobs = storeSnapshot(pyState, "any").blobs;
   check("same blob files", JSON.stringify(jsBlobs) === JSON.stringify(pyBlobs), `js ${Object.keys(jsBlobs)} py ${Object.keys(pyBlobs)}`);
   const sidCase = cases.find((c) => c.name.startsWith("session id"));
-  check("sanitized id used for files on both sides", fs.existsSync(path.join(pyState, "context", "sessions", "ses___x_.log.jsonl"))
-    && fs.existsSync(path.join(sessions, "ses___x_.log.jsonl")) && sanitizeSessionId(sidCase.sid) === "ses___x_");
-  check("fixture exercised a compressed result and a pinned first turn",
+  check("sanitized id used for files on both sides", fs.existsSync(path.join(pyState, "context", "sessions", "ses___x_.db"))
+    && fs.existsSync(path.join(sessions, "ses___x_.db")) && sanitizeSessionId(sidCase.sid) === "ses___x_");
+  const basic = storeSnapshot(jsState, "ses_basic").log;
+  check("fixture exercised a compressed result, trimmed rows and a pinned first turn",
     Object.keys(storeSnapshot(jsState, "ses_blob").blobs).length === 1
-    && storeSnapshot(jsState, "ses_basic").log.length > 5 && storeSnapshot(jsState, "ses_basic").log.every((row) => !row.text.includes("TASK")));
+    && storeSnapshot(jsState, "ses_blob").log.some((row) => row.blob_id)
+    && basic.filter((row) => row.in_context === 0).length > 5
+    && basic.filter((row) => row.text.includes("TASK")).every((row) => row.in_context === 1));
 } finally {
   fs.rmSync(pyState, { recursive: true, force: true });
   fs.rmSync(jsState, { recursive: true, force: true });

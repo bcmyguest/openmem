@@ -1,21 +1,28 @@
 """Request rewriting: tool-result compression, sticky trim, recall injection.
 
-Pure stdlib. The LiteLLM hook calls process_request(data, call_type); tests call it directly.
+Pure stdlib. The LiteLLM hook calls process_request(data, call_type) before each request and
+process_usage(kwargs, response) after each success; tests call them directly.
 """
 
 import sys
+import threading
 import time
 import traceback
-from pathlib import Path
+from collections import OrderedDict
 
+from . import embed as embed_mod
 from . import recall as recall_mod
+from . import sessiondb
+from . import ttl as ttl_mod
 from .adapters import UnsupportedCallType, adapter_for, strip_reminders
 from .session import resolve_session_id
 from .settings import Settings
 from .store import RegistrationNotFound, Store, session_lock
-from .tokens import estimate_tokens, fingerprint
+from .tokens import DEFAULT_CHARS_PER_TOKEN, estimate_prompt_tokens, fingerprint, record_usage, request_chars
 
 MAX_THREADS = 32
+# Requests awaiting their usage report, by litellm_call_id: (sid, thread root, request chars).
+MAX_PENDING = 256
 RECALL_QUERY_MAX_CHARS = 2000
 # Added to the system prompt of every request while trimming is on, before any trim; constant, so the cached
 # prefix never changes. Same text as STANDING_INSTRUCTION in cli/coding-agent/context-trim.mjs.
@@ -24,8 +31,11 @@ STANDING_INSTRUCTION = (
     "[openmem: …] pointer. Removed content is saved, not forgotten. Before answering anything that depends on "
     "earlier content you cannot see in your context — values, ids, keys, counts, decisions — call "
     "smart_compact_search (use `pattern` for exact ids/keys, `context` for neighbouring rows; `line_matches` gives "
-    "exact counts); never guess or answer from memory you cannot see."
+    "exact counts) or smart_compact_sql for counts and aggregates over the session store; never guess or answer "
+    "from memory you cannot see."
 )
+_pending = OrderedDict()
+_pending_guard = threading.Lock()
 
 
 def _log_error(exc):
@@ -39,11 +49,12 @@ def _utc_now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def pointer_text(sid, dropped, log_path):
+def pointer_text(sid, dropped):
     return (
         f"[openmem: continuing session {sid}; {dropped} earlier messages are NOT in your context. "
         f'You MUST call smart_compact_search(session_id="{sid}", query=... or pattern=...) before answering '
-        f"anything that depends on them; the handoff log is {log_path} (JSONL, one row per block).]"
+        f'anything that depends on them; every message of this session is stored and queryable with '
+        f'smart_compact_search and smart_compact_sql(session_id="{sid}", sql=...).]'
     )
 
 
@@ -123,8 +134,7 @@ def _registered_bank(store, sid):
 
 
 def _build_note(adapter, items, cut, sid, dropped, store, settings, http):
-    log_path = Path(settings.pointer_context_dir) / "sessions" / store.log_path(sid).name
-    parts = [pointer_text(sid, dropped, log_path)]
+    parts = [pointer_text(sid, dropped)]
     bank = _registered_bank(store, sid)
     if bank:
         query = strip_reminders(adapter.user_text(items[cut]))[:RECALL_QUERY_MAX_CHARS]
@@ -145,15 +155,45 @@ def _build_note(adapter, items, cut, sid, dropped, store, settings, http):
     return "\n".join(parts)
 
 
-def _rows(adapter, items, start, stop, names, ts, skip=None):
+def stored_rows(adapter, original, items, names, cut, first):
+    """Database rows for every non-pinned message of the request, chained (sessiondb.chain).
+
+    Text comes from the original messages, so a compressed tool result is stored in full with its blob_id. keep
+    is False for messages the view drops (before the cut, except the pinned first user turn). Returns (rows,
+    cut_row), cut_row being the index of the cut turn's first row or None.
+    """
     rows = []
-    for j in range(start, min(stop, len(items))):
-        item = items[j]
-        if j == skip or adapter.is_pinned(item):
+    cut_row = None
+    for j, item in enumerate(original):
+        if adapter.is_pinned(item):
             continue
-        for role, kind, name, text in adapter.rows(item, names):
-            rows.append({"ts": ts, "role": role, "kind": kind, "name": name, "text": text})
-    return rows
+        base = adapter.rows(item, names)
+        shown = base if items[j] is item else adapter.rows(items[j], names)
+        if cut and j == cut and base:
+            cut_row = len(rows)
+        keep = not (j < cut and j != first)
+        for k, (role, kind, name, text) in enumerate(base):
+            blob = sessiondb.blob_ref(shown[k][3]) if shown is not base and k < len(shown) else None
+            rows.append({"role": role, "kind": kind, "name": name, "text": text, "blob_id": blob, "keep": keep})
+    return (sessiondb.chain(rows) if rows else rows), cut_row
+
+
+def _store_messages(store, sid, adapter, original, items, cut, first, settings):
+    """Write the request's messages to sessions/<sid>.db. Never raises: a database error is logged and the
+    request goes on."""
+    path = store.db_path(sid)
+    try:
+        rows, cut_row = stored_rows(adapter, original, items, adapter.tool_names(items), cut, first)
+        if not rows:
+            return
+        store.ensure_sessions()
+        added = sessiondb.open_session(path).sync(rows, cut_row, _utc_now())
+        if added and settings.embedding_model:
+            embed_mod.embedder.notify(path, settings.embedding_model, settings.embedding_url,
+                                      settings.embedding_api_key)
+    except Exception as exc:
+        sessiondb.drop_session(path)
+        _log_error(exc)
 
 
 def _rewrite(data, call_type, settings, http):
@@ -192,11 +232,11 @@ def _rewrite(data, call_type, settings, http):
                 threads.pop(root, None)
         view = render(adapter, items, cut, note, first)
         force = store.force_requested(sid)
-        if force or estimate_tokens(*context, view) >= settings.trim_at_tokens:
+        ratio = settings.chars_per_token if settings.chars_per_token > 0 else DEFAULT_CHARS_PER_TOKEN
+        tokens = estimate_prompt_tokens(request_chars(*context, view), state.get("usage"), root, ratio)
+        if force or tokens >= settings.trim_at_tokens:
             new_cut = choose_cut(adapter, items, cut, first)
             if new_cut is not None:
-                names = adapter.tool_names(items)
-                store.append_log(sid, _rows(adapter, items, cut, new_cut, names, _utc_now(), skip=first))
                 dropped = len(_droppable(adapter, items, new_cut, first))
                 note = _build_note(adapter, items, new_cut, sid, dropped, store, settings, http)
                 threads.pop(root, None)
@@ -208,17 +248,110 @@ def _rewrite(data, call_type, settings, http):
                 if force:
                     store.clear_force(sid)
                 view = render(adapter, items, new_cut, note, first)
+                cut = new_cut
             elif thread and not cut:
                 store.save_trim(sid, state)
         elif thread and not cut:
             store.save_trim(sid, state)
+        _store_messages(store, sid, adapter, original, items, cut, first, settings)
 
+    # Measured like the estimate, before the standing instruction, so calibration compares like with like.
+    _await_usage(data.get("litellm_call_id"), sid, root, request_chars(*context, view))
     if not (len(view) == len(original) and all(a is b for a, b in zip(view, original))):
         data[adapter.items_key] = view
     if settings.standing_instruction:
         # After trimming, so the cut, the token estimate and the session id never see it.
         add_standing_instruction(adapter, data)
     return data
+
+
+def _await_usage(call_id, sid, root, chars):
+    if not isinstance(call_id, str) or not call_id:
+        return
+    with _pending_guard:
+        _pending.pop(call_id, None)
+        _pending[call_id] = (sid, root, chars)
+        while len(_pending) > MAX_PENDING:
+            _pending.popitem(last=False)
+
+
+def _field(obj, name):
+    return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+
+def _count(value):
+    return value if type(value) is int and value >= 0 else None
+
+
+def prompt_tokens_from_usage(usage):
+    """Prompt tokens in a usage object, cache reads and writes included, or None.
+
+    LiteLLM Usage (chat, and /v1/messages logged as a ModelResponse) has prompt_tokens, which already includes
+    Anthropic cache tokens. Anthropic's own usage has input_tokens without them plus cache_read_input_tokens and
+    cache_creation_input_tokens. Responses API usage has input_tokens, cached tokens included.
+    """
+    if usage is None:
+        return None
+    prompt = _count(_field(usage, "prompt_tokens"))
+    if prompt:
+        return prompt
+    base = _count(_field(usage, "input_tokens"))
+    if base is None:
+        return None
+    total = base + (_count(_field(usage, "cache_read_input_tokens")) or 0) \
+        + (_count(_field(usage, "cache_creation_input_tokens")) or 0)
+    return total or None
+
+
+def response_prompt_tokens(response, kwargs):
+    """Prompt tokens LiteLLM reports for a finished call: the response's usage (or its .response's, for a Responses
+    stream's completed event), else standard_logging_object.prompt_tokens; None when none is reported."""
+    for obj in (response, _field(response, "response")):
+        if obj is not None:
+            tokens = prompt_tokens_from_usage(_field(obj, "usage"))
+            if tokens:
+                return tokens
+    slo = kwargs.get("standard_logging_object") if isinstance(kwargs, dict) else None
+    tokens = _count(_field(slo, "prompt_tokens")) if slo is not None else None
+    return tokens or None
+
+
+def process_usage(kwargs, response, settings=None):
+    """Calibrate the session of a finished call from its reported prompt tokens. Never raises."""
+    try:
+        call_id = kwargs.get("litellm_call_id") if isinstance(kwargs, dict) else None
+        if not isinstance(call_id, str):
+            return
+        with _pending_guard:
+            entry = _pending.pop(call_id, None)
+        if entry is None:
+            return
+        settings = settings or Settings.from_env()
+        tokens = response_prompt_tokens(response, kwargs)
+        if not settings.enabled or tokens is None:
+            return
+        sid, root, chars = entry
+        store = Store(settings.context_dir)
+        with session_lock(sid):
+            state = store.load_trim(sid)
+            if record_usage(state, root, chars, tokens):
+                store.save_trim(sid, state)
+    except Exception as exc:
+        _log_error(exc)
+
+
+def startup(settings=None):
+    """Proxy start: TTL cleanup of old sessions (at most once a day), on a daemon thread. Returns the thread."""
+    def run():
+        try:
+            s = settings or Settings.from_env()
+            if s.enabled:
+                ttl_mod.maybe_sweep(s.context_dir, s.ttl_days)
+        except Exception as exc:
+            _log_error(exc)
+    thread = threading.Thread(target=run, name="openmem-ttl", daemon=True)
+    thread.start()
+    return thread
 
 
 def process_request(data, call_type, settings=None, http=None):
