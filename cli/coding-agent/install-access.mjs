@@ -12,21 +12,25 @@ const SKILL_TARGETS = {
   opencode: ".config/opencode/skills/openmem",
 };
 
-/** Set `features.hooks = true` unless the file sets it (to any value) already. */
-function enableCodexHooks(text) {
+/** Set `[table] key = true` unless the file sets it (to any value) already. */
+function enableTomlFlag(text, table, key) {
   const statements = tomlStatements(text);
-  if (statements.some((s) => s.kind === "kv" && s.path.length === 2 && s.path[0] === "features" && s.path[1] === "hooks")) return text;
-  const at = statements.findIndex((s) => s.kind === "table" && s.path.length === 1 && s.path[0] === "features");
-  if (at < 0) return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[features]\nhooks = true\n`;
+  if (statements.some((s) => s.kind === "kv" && s.path.length === 2 && s.path[0] === table && s.path[1] === key)) return text;
+  const at = statements.findIndex((s) => s.kind === "table" && s.path.length === 1 && s.path[0] === table);
+  if (at < 0) return `${text}${text && !text.endsWith("\n") ? "\n" : ""}[${table}]\n${key} = true\n`;
   let end = statements[at].end;
   for (let k = at + 1; k < statements.length && statements[k].kind === "kv"; k++) end = statements[k].end;
   const head = text.slice(0, end);
-  return `${head}${head.endsWith("\n") ? "" : "\n"}hooks = true\n${text.slice(end)}`;
+  return `${head}${head.endsWith("\n") ? "" : "\n"}${key} = true\n${text.slice(end)}`;
 }
 
-/** Codex config with hooks enabled and exactly one current `[mcp_servers.openmem]`; throws on a TOML it cannot edit. */
+/**
+ * Codex config with hooks enabled, network allowed in the workspace-write sandbox (Codex defaults it off,
+ * so curl and package installs fail) and exactly one current `[mcp_servers.openmem]`; throws on a TOML it cannot edit.
+ */
 function updateCodexToml(text, scriptPath, stackRoot) {
-  text = enableCodexHooks(text);
+  text = enableTomlFlag(text, "features", "hooks");
+  text = enableTomlFlag(text, "sandbox_workspace_write", "network_access");
   const section = [
     "[mcp_servers.openmem]",
     'command = "node"',
