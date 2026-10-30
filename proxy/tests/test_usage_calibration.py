@@ -111,6 +111,11 @@ class EstimateTests(unittest.TestCase):
         self.assertEqual(len(state["usage"]["threads"]), 32)
         self.assertNotIn("r", state["usage"]["threads"])
 
+    def test_schema_property_named_type_is_counted(self):
+        # Claude Code tool schemas have parameters named "type" whose value is a dict.
+        tools = [{"input_schema": {"properties": {"type": {"type": "string"}}}}]
+        self.assertEqual(request_chars(tools), len("input_schema" "properties" "type" "type" "string"))
+
 
 class UsageShapeTests(unittest.TestCase):
     def test_litellm_usage_prompt_tokens(self):
