@@ -1,5 +1,6 @@
 /**
- * Provider-independent smart_compact_* tools over the session databases (`sessions/<sid>.db`) and blobs.
+ * Provider-independent smart_compact_* tools over the session databases (`sessions/<sid>.db`) and blobs, and
+ * context_status over their events tables.
  * Schema and file layout follow docs/context-store.md. Reads only: search and get open each database
  * read-only; smart_compact_sql runs in a child process on a read-only connection.
  */
@@ -12,7 +13,8 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { contextRoot as hookContextRoot, sanitizeSessionId as hookSanitizeSessionId } from "../coding-agent/context-store.mjs";
 import {
-  DB_SUFFIX, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, sqlite, storeSettings, vectorCounts,
+  DB_SUFFIX, EVENT_WINDOW_HOURS, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, proxyCodeVersion, sqlite,
+  storeSettings, summarizeEvents, vectorCounts,
 } from "../coding-agent/session-db.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -37,6 +39,7 @@ const SQL_ROW_CAP = 200;
 const SQL_CELL_MAX_CHARS = 2000;
 const SQL_RESULT_MAX_CHARS = 30_000;
 const SQL_MAX_CHARS = 10_000;
+const STATUS_MAX_HOURS = 24 * 30;
 /** Words that may not appear outside string literals and quoted identifiers in smart_compact_sql. */
 const SQL_FORBIDDEN = new Set([
   "ATTACH", "DETACH", "PRAGMA", "INSERT", "UPDATE", "DELETE", "UPSERT", "CREATE", "DROP", "ALTER",
@@ -47,7 +50,8 @@ const SCHEMA_TEXT = "messages(seq INTEGER PRIMARY KEY, fingerprint, thread, role
   + "kind 'text'|'tool_use'|'tool_result'|'thinking', name (tool name or NULL), text, blob_id, in_context 0|1, "
   + "trimmed_at_seq, trimmed_at, created_at); lines(id, message_seq, line_no (1-based), role, text) with one row per "
   + "line of each message; messages_fts(text) and lines_fts(text): FTS5 indexes whose rowid is messages.seq / lines.id; "
-  + "vectors(message_seq, model, dim, blob).";
+  + "vectors(message_seq, model, dim, blob); events(id, at, kind 'trim'|'fail_open', version, location, error, "
+  + "tokens_before, tokens_after, dropped), one row per trim or fail-open, token figures estimated.";
 
 export const CONTEXT_STORE_MCP_TOOLS = [
   {
@@ -128,6 +132,23 @@ export const CONTEXT_STORE_MCP_TOOLS = [
         sql: { type: "string", description: `One SELECT or WITH statement, at most ${SQL_MAX_CHARS} characters` },
       },
       required: ["session_id", "sql"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "context_status",
+    title: "Context management health",
+    description:
+      "Summarize context management over recent sessions from the session store: trims, estimated tokens saved, "
+      + "fail-opens with their error type and location, and the proxy code version (stale when it differs from the "
+      + "checkout). A fail-open means the request still succeeded but was sent untrimmed. Use this instead of docker "
+      + "logs; per-session detail is in smart_compact_sql's events table.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        hours: { type: "number", description: `Window in hours, 1-${STATUS_MAX_HOURS} (default ${EVENT_WINDOW_HOURS})` },
+      },
       additionalProperties: false,
     },
   },
@@ -616,6 +637,21 @@ function getBlob(args, env) {
   };
 }
 
+function contextStatusTool(args, env) {
+  const hours = given(args.hours) ? Number(args.hours) : EVENT_WINDOW_HOURS;
+  if (!Number.isFinite(hours) || hours < 1 || hours > STATUS_MAX_HOURS) throw new Error(`hours must be 1-${STATUS_MAX_HOURS}`);
+  let checkout = null;
+  try { checkout = proxyCodeVersion(path.join(PKG_ROOT, "proxy", "openmem_context")); } catch { /* installed runtime has no proxy/ */ }
+  const events = summarizeEvents(path.join(contextRoot(env), "sessions"), { hours });
+  const running = events.latest.proxy || null;
+  return {
+    ...events,
+    checkout_proxy_version: checkout,
+    proxy_stale: running && checkout ? running !== checkout : null,
+    not_recorded: "fail-opens before the session id is known or from the session database itself (proxy stderr only)",
+  };
+}
+
 /**
  * @param {string} name
  * @param {Record<string, unknown>} args
@@ -626,5 +662,6 @@ export async function callContextStoreTool(name, args = {}, opts = {}) {
   if (name === "smart_compact_search") return search(args, env, opts.cwd || process.cwd(), opts);
   if (name === "smart_compact_get") return getBlob(args, env);
   if (name === "smart_compact_sql") return runSql(args, env);
+  if (name === "context_status") return contextStatusTool(args, env);
   throw new Error(`unknown tool: ${name}`);
 }

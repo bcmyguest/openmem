@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { callUnifiedTool, UNIFIED_MCP_TOOLS } from "../../cli/mcp/memory-facade.mjs";
 import { callContextStoreTool, sanitizeSessionId } from "../../cli/mcp/context-store.mjs";
+import { openSession } from "../../cli/coding-agent/session-db.mjs";
 import { writeSessionRows } from "./fixtures/session-db.mjs";
 
 let failed = 0;
@@ -58,10 +59,24 @@ const search = (args, cwd = repo) => callContextStoreTool("smart_compact_search"
 const get = (args) => callContextStoreTool("smart_compact_get", args, { env: ENV });
 
 const names = UNIFIED_MCP_TOOLS.map((t) => t.name);
-for (const n of ["smart_compact_search", "smart_compact_get", "smart_compact_sql"]) {
+for (const n of ["smart_compact_search", "smart_compact_get", "smart_compact_sql", "context_status"]) {
   const tool = UNIFIED_MCP_TOOLS.find((t) => t.name === n);
   check(`tools/list includes ${n}`, names.includes(n));
   check(`${n} is read-only`, tool?.annotations?.readOnlyHint === true && tool?.annotations?.destructiveHint === false);
+}
+
+{
+  const db = openSession(path.join(sessions, "ses_status.db"));
+  db.addEvent("trim", new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), "proxy:aaaaaaaaaaaa",
+    { tokens_before: 1000, tokens_after: 300, dropped: 9 });
+  const s = await callContextStoreTool("context_status", {}, { env: ENV });
+  check("context_status summarizes events", s.trims === 1 && s.tokensSaved === 700 && s.failOpens === 0
+    && /^proxy:[0-9a-f]{12}$/.test(s.checkout_proxy_version) && s.proxy_stale === true, JSON.stringify(s));
+  let bad = null;
+  try { await callContextStoreTool("context_status", { hours: 0 }, { env: ENV }); } catch (error) { bad = error; }
+  check("context_status rejects an out-of-range window", /hours must be/.test(String(bad)));
+  const sql = await callContextStoreTool("smart_compact_sql", { session_id: "ses_status", sql: "SELECT kind, dropped FROM events" }, { env: ENV });
+  check("smart_compact_sql reads events", JSON.stringify(sql.rows) === JSON.stringify([{ kind: "trim", dropped: 9 }]), JSON.stringify(sql));
 }
 
 {
