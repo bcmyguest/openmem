@@ -131,6 +131,10 @@ try {
   check("P6: prompt recall is a leading part of the newest user message, not system", recallPart.startsWith(`Personal memory for ${registration.bank}:\n`)
     && /reflected: how do we deploy\?/.test(recallPart) && recallPart.endsWith("\n\n") && first.messages[0].content[1].text === "how do we deploy?"
     && !first.system.some((p) => p.text.includes("reflected")), JSON.stringify(first.messages));
+  check("prompt recall framed as untrusted data, outside event.system",
+    recallPart.startsWith(`Personal memory for ${registration.bank}:\n${RECALL_PREFACE}\n${RECALL_OPEN}\n`)
+    && recallPart.endsWith(`\n${RECALL_CLOSE}\n\n`) && recallPart.includes("reflected: how do we deploy?")
+    && !first.system.some((p) => p.text.includes(RECALL_OPEN)), recallPart);
   // Later requests in the same session: the recalled turn renders byte-identical, the system prefix is unchanged.
   const followUp = contextEvent("ses_one", [user("how do we deploy?"), assistant("with compose")]);
   await oc.hooks.context(followUp);

@@ -6,7 +6,7 @@ import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
 import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { sessionBanner } from "./hook-runner.mjs";
-import { sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
+import { hookRecallBlock, sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
 import { contextProxyFromPmConfig, loadPmConfig } from "../../wizard/lib/pm-config.mjs";
@@ -89,7 +89,7 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
         const context = seen.has(input.sessionID)
           ? await sessionRecall(ctx, { query, bank, limit: 8 })
           : await sessionReflectOrSearch(ctx, { query, bank, limit: 12 });
-        injections.set(input.sessionID, context);
+        injections.set(input.sessionID, hookRecallBlock(context));
       } catch { /* Memory availability must not interrupt the prompt. */ }
     },
     "experimental.chat.system.transform": async (input, output) => {

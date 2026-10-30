@@ -1,6 +1,7 @@
 import { callUnifiedTool } from "../mcp/memory-facade.mjs";
+import { recallBlock } from "./recall-frame.mjs";
 
-const HOOK_CONTEXT_MAX_CHARS = 8000;
+export const HOOK_CONTEXT_MAX_CHARS = 8000;
 
 function toolText(result) {
   const t = result?.content?.[0]?.text;
@@ -28,6 +29,14 @@ function recallText(result, limit, maxChars = HOOK_CONTEXT_MAX_CHARS) {
     }
   } catch { /* use generic result text */ }
   return toolText(result).slice(0, maxChars);
+}
+
+/**
+ * Hook or plugin recall text framed as untrusted data (recall-frame.mjs), at most HOOK_CONTEXT_MAX_CHARS
+ * characters frame included; "" for empty text.
+ */
+export function hookRecallBlock(text) {
+  return recallBlock(String(text ?? "").trim(), HOOK_CONTEXT_MAX_CHARS);
 }
 
 /** @param {ReturnType<import("../mcp/context.mjs").resolveMcpContext>} ctx */
