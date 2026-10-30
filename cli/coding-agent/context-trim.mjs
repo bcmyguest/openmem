@@ -357,7 +357,8 @@ function storeMessages(store, sid, settings, original, items, cut, first, ts, de
     if (!rows.length) return;
     const added = openSession(file).sync(rows, cutRow, ts);
     if (added && settings.embeddingModel) {
-      void scheduleEmbedding(file, { model: settings.embeddingModel, url: settings.embeddingUrl, apiKey: settings.embeddingApiKey },
+      void scheduleEmbedding(file, { model: settings.embeddingModel, url: settings.embeddingUrl, apiKey: settings.embeddingApiKey,
+        timeoutS: settings.embeddingTimeoutS, maxChars: settings.embeddingMaxChars },
         { fetchFn: deps.fetch, onError: logFailOpen });
     }
   } catch (error) {

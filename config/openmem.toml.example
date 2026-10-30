@@ -66,10 +66,16 @@ chars_per_token = 2.5       # token estimate before a session reports usage; rep
 # embedding_model: OpenAI-compatible embedding model for hybrid smart_compact_search; empty = vectors off.
 # The stack ships no embedding route; e.g. `ollama pull nomic-embed-text` and set it here.
 # embedding_url: that endpoint as this host sees it (the proxy container uses CONTEXT_PROXY_EMBEDDING_URL).
+# embedding_timeout_s: seconds per row of a background embeddings call (a batch of n rows gets n times this).
+#   Batches start at 4 rows, double while calls finish well inside the timeout and halve on a failure.
+# embedding_max_chars: characters of each row's head that are embedded; the vector covers only that part.
+#   4000 fits nomic-embed-text's 2048-token context; raise it only for a model with a longer one.
 [context_store]
 ttl_days = 30
 embedding_model = ""
 embedding_url = "http://127.0.0.1:11434/v1"
+embedding_timeout_s = 30
+embedding_max_chars = 4000
 
 # Optional per-agent overrides (written by the wizard and `openmem context on|off --agents`).
 # claude-code and opencode1 go through the context-proxy service, which install-coding-agent starts

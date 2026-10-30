@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { contextRoot as hookContextRoot, sanitizeSessionId as hookSanitizeSessionId } from "../coding-agent/context-store.mjs";
 import {
-  DB_SUFFIX, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, sqlite, storeSettings,
+  DB_SUFFIX, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, sqlite, storeSettings, vectorCounts,
 } from "../coding-agent/session-db.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -383,7 +383,7 @@ function lexicalSession(db, terms, filter) {
 }
 
 function vectorModel(db, preferred) {
-  const models = db.prepare("SELECT model, count(*) AS n FROM vectors GROUP BY model ORDER BY n DESC, model").all();
+  const models = db.prepare("SELECT model, count(*) AS n FROM vectors WHERE dim > 0 GROUP BY model ORDER BY n DESC, model").all();
   if (!models.length) return null;
   return models.find((m) => m.model === preferred)?.model ?? models[0].model;
 }
@@ -454,6 +454,15 @@ async function search(args, env, cwd, opts) {
 
     const settings = re ? null : opts.settings || await contextStoreSettings(env, opts);
     const withVectors = re ? [] : vectorDbs.map((v) => ({ ...v, model: vectorModel(v.db, settings.embeddingModel) })).filter((v) => v.model);
+    // Background embedding progress of the searched sessions: rows with a vector, still waiting, skipped.
+    let vectorStatus;
+    for (const v of re ? [] : vectorDbs) {
+      const model = vectorModel(v.db, settings.embeddingModel) ?? settings.embeddingModel;
+      if (!model) continue;
+      const counts = vectorCounts(v.db, model);
+      vectorStatus ??= { filled: 0, pending: 0, skipped: 0 };
+      for (const k of Object.keys(vectorStatus)) vectorStatus[k] += counts[k];
+    }
     let mode = "lexical";
     let embeddingError;
     let ranked = lexical.map((h) => ({ ...h, key: `${h.sid}\u0000${h.seq}` }));
@@ -497,6 +506,7 @@ async function search(args, env, cwd, opts) {
       databases,
       total_matches: lexical.length,
       line_matches: lineMatches,
+      ...(vectorStatus ? { vectors: vectorStatus } : {}),
       ...(embeddingError ? { embedding_error: embeddingError } : {}),
     };
     const overhead = JSON.stringify(envelope, null, 2).length;

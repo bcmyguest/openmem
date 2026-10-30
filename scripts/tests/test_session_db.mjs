@@ -11,7 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { callContextStoreTool, checkReadOnlySql, CONTEXT_STORE_MCP_TOOLS, startContextStore } from "../../cli/mcp/context-store.mjs";
 import {
-  maybeSweepContextStore, nearest, openSession, packVector, scheduleEmbedding, sqlite, sweepContextStore, unpackVector,
+  EMBED_MAX_FAILURES, embeddingBatchSize, maybeSweepContextStore, nearest, openSession, packVector, pendingRows, scheduleEmbedding,
+  sqlite, sweepContextStore, unpackVector, vectorCounts,
 } from "../../cli/coding-agent/session-db.mjs";
 import { writeSessionRows } from "./fixtures/session-db.mjs";
 
@@ -151,7 +152,7 @@ try {
       return { ok: true, json: async () => ({ data: input.map((t, index) => ({ index, embedding: [t.split("a").length - 1, t.split("b").length - 1, 0.5] })) }) };
     };
     const stored = await scheduleEmbedding(file, { model: "fake", url: "http://x/v1" }, { fetchFn });
-    check("blank rows are not embedded", stored === 2 && calls.length === 1 && calls[0].join("|") === "aaaa|bbbb", JSON.stringify(calls));
+    check("blank rows are not embedded, newest first", stored === 2 && calls.length === 1 && calls[0].join("|") === "bbbb|aaaa", JSON.stringify(calls));
     check("second run finds nothing new", (await scheduleEmbedding(file, { model: "fake", url: "http://x/v1" }, { fetchFn })) === 0 && calls.length === 1);
     const row = openSession(file).db.prepare("SELECT dim, blob FROM vectors WHERE message_seq = 1").get();
     check("vector round-trips", JSON.stringify(unpackVector(row.blob, row.dim)) === "[4,0,0.5]");
@@ -168,6 +169,79 @@ try {
     const down = await scheduleEmbedding(path.join(sessions, "s1.db"), { model: "fake", url: "http://x/v1" }, { fetchFn: async () => { throw new Error("down"); }, onError: () => errors++ });
     check("embedding failure is reported, not thrown", down === 0 && errors === 1);
     check("failed database waits before retrying", (await scheduleEmbedding(path.join(sessions, "s1.db"), { model: "fake", url: "http://x/v1" }, { fetchFn })) === 0 && calls.length === 1);
+  }
+
+  // Adaptive batches on a slow endpoint, trimmed rows newest first, row skipping, and the search's vector status.
+  {
+    const rows = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", text: `row ${i + 1} ${"x".repeat(20)}`, in_context: !(i >= 1 && i <= 5) }));
+    const file = writeSessionRows(sessions, "a1", rows);
+    const fakeVectors = (input) => ({ ok: true, json: async () => ({ data: input.map((t, index) => ({ index, embedding: [t.length, 1, 0] })) }) });
+    const calls = [];
+    // Like a CPU-only Ollama: more than two rows per call never finish inside the timeout.
+    const slow = async (_url, init) => {
+      const { input } = JSON.parse(init.body);
+      calls.push(input);
+      if (input.length > 2) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      return fakeVectors(input);
+    };
+    const logs = [];
+    const config = { model: "m", url: "http://slow/v1", timeoutS: 30, maxChars: 6 };
+    const stored = await scheduleEmbedding(file, config, { fetchFn: slow, log: (m) => logs.push(m) });
+    const sizes = calls.map((c) => c.length);
+    check("slow endpoint: every row gets a vector", stored === 20 && vectorCounts(openSession(file).db, "m").filled === 20, `${stored} ${sizes}`);
+    check("slow endpoint: one failed probe at 4, then batches of at most 2", sizes[0] === 4 && sizes.slice(1).every((n) => n <= 2)
+      && embeddingBatchSize("http://slow/v1", "m") === 2, String(sizes));
+    check("trimmed rows first, newest first, head only", calls[1].join("|") === "row 6 |row 5 " && calls.flat().every((t) => t.length <= 6), JSON.stringify(calls[1]));
+    check("one log line per batch", logs[0] === "embedding batch failed TimeoutError rows=4 seconds=0.0 batch=2"
+      && logs[1].startsWith("embedded rows=2 seconds=") && logs.length === calls.length, JSON.stringify(logs.slice(0, 2)));
+
+    const grow = [];
+    const fast = async (_url, init) => {
+      const { input } = JSON.parse(init.body);
+      grow.push(input.length);
+      return fakeVectors(input);
+    };
+    const big = writeSessionRows(sessions, "a2", Array.from({ length: 40 }, (_, i) => ({ text: `r${i}` })));
+    await scheduleEmbedding(big, { model: "m", url: "http://fast/v1" }, { fetchFn: fast, log: () => {} });
+    check("fast endpoint: batches grow", grow.join() === "4,8,16,12" && embeddingBatchSize("http://fast/v1", "m") === 32, grow.join());
+
+    const poisoned = writeSessionRows(sessions, "a3", [{ text: "good 1" }, { text: "poison" }, { text: "good 2" }, { text: "good 3" }]);
+    let picky = 0;
+    const pickyFetch = async (_url, init) => {
+      const { input } = JSON.parse(init.body);
+      picky++;
+      if (input.includes("poison")) throw new Error("embeddings HTTP 500");
+      return fakeVectors(input);
+    };
+    const skipLogs = [];
+    for (let i = 0; i < EMBED_MAX_FAILURES; i++) await scheduleEmbedding(poisoned, { model: "m", url: "http://picky/v1" }, { fetchFn: pickyFetch, log: (m) => skipLogs.push(m) });
+    const counts = vectorCounts(openSession(poisoned).db, "m");
+    check("row failing alone is skipped and recorded", JSON.stringify(counts) === '{"filled":3,"pending":0,"skipped":1}'
+      && skipLogs.includes(`embedding skipped seq=2 after ${EMBED_MAX_FAILURES} failures`), `${JSON.stringify(counts)} ${skipLogs}`);
+    const before = picky;
+    await scheduleEmbedding(poisoned, { model: "m", url: "http://picky/v1" }, { fetchFn: pickyFetch, log: () => {} });
+    check("skipped row is not retried", picky === before);
+    check("skipped row never ranks", !nearest(openSession(poisoned).db, [1, 1, 0], "m", 10).some(([seq]) => seq === 2));
+
+    // Python picks the same rows in the same order.
+    const fresh = writeSessionRows(sessions, "a4", rows);
+    const py = spawnSync("python3", ["-c", [
+      "import sys, json, sqlite3",
+      `sys.path.insert(0, ${JSON.stringify(path.join(ROOT, "proxy"))})`,
+      "from openmem_context.embed import pending_rows",
+      `c = sqlite3.connect(${JSON.stringify(fresh)})`,
+      "print(json.dumps([s for s, _ in pending_rows(c, 'm', 8, {3, 9})], separators=(',', ':')))",
+    ].join("\n")], { encoding: "utf8" });
+    const jsOrder = pendingRows(openSession(fresh).db, "m", 8, [3, 9]).map((r) => r.seq);
+    check("Python and JS embed rows in the same order", py.status === 0 && py.stdout.trim() === JSON.stringify(jsOrder)
+      && jsOrder.join() === "6,5,4,2,20,19,18,17", `${py.stdout} ${py.stderr} vs ${jsOrder}`);
+
+    const half = writeSessionRows(sessions, "a5", [{ text: "alpha one" }, { text: "alpha two" }, { text: "beta" }]);
+    openSession(half).db.prepare("INSERT INTO vectors VALUES (1, 'm', 3, ?)").run(packVector([1, 0, 0]));
+    const status = await search({ query: "alpha", session_id: "a5", mode: "lexical" }, { settings: { ...NO_CONFIG, embeddingModel: "m" } });
+    check("search reports vector progress", JSON.stringify(status.vectors) === '{"filled":1,"pending":2,"skipped":0}', JSON.stringify(status.vectors));
+    const none = await search({ query: "alpha", session_id: "s1" });
+    check("no vector status without a model", none.vectors === undefined);
   }
 
   // TTL: JS and Python delete the same sessions from the same layout; the stamp limits runs to one a day.

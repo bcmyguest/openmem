@@ -228,7 +228,7 @@ class TtlTests(unittest.TestCase):
                          (0, "nomic-embed-text", "http://x:1/v1", "k"))
 
 
-def fake_embed(url, model, key, texts):
+def fake_embed(url, model, key, texts, timeout=None):
     # Deterministic 3-d vectors: counts of "a", "b" and other characters.
     return [[float(t.count("a")), float(t.count("b")), float(len(t) - t.count("a") - t.count("b"))] for t in texts]
 
@@ -265,11 +265,98 @@ class EmbeddingTests(DbBase):
         with redirect_stderr(err):
             embedder.notify(self.path(), "m", "http://x")
             embedder.drain()
+            first_run = len(calls)
             embedder.notify(self.path(), "m", "http://x")
             embedder.drain()
-        self.assertEqual(len(calls), 1)
+        # 4 rows: batches of 4 and 2, then MAX_FAILURES single rows; no retry before RETRY_S.
+        self.assertEqual((first_run, len(calls)), (5, 5))
         self.assertIn("openmem-context: embedding failed OSError", err.getvalue())
         self.assertEqual(self.query("SELECT count(*) FROM vectors")[0][0], 0)
+
+    def notify_all(self, embedder, max_chars=embed_mod.DEFAULT_MAX_CHARS, runs=1):
+        with redirect_stderr(io.StringIO()) as err:
+            for _ in range(runs):
+                embedder.notify(self.path(), "m", "http://x", "", 30.0, max_chars)
+                embedder.drain()
+        return err.getvalue()
+
+    def test_slow_endpoint_shrinks_batches_until_vectors_fill(self):
+        self.run_req(history(5))
+        conn = sqlite3.connect(self.path())
+        conn.execute("UPDATE messages SET in_context = 0 WHERE seq BETWEEN 2 AND 6")
+        conn.commit()
+        conn.close()
+        calls = []
+
+        def slow(url, model, key, texts, timeout):
+            # Like a CPU-only Ollama: more than two rows per call never finish inside the timeout.
+            calls.append((list(texts), timeout))
+            if len(texts) > 2:
+                raise TimeoutError("timed out")
+            return fake_embed(url, model, key, texts)
+        embedder = embed_mod.Embedder(embed=slow)
+        log = self.notify_all(embedder, max_chars=6)
+        sizes = [len(t) for t, _ in calls]
+        self.assertEqual(sizes[:2], [4, 2])
+        self.assertEqual(self.query("SELECT count(*) FROM vectors WHERE dim = 3")[0][0], 20)
+        self.assertEqual(embedder.batch_size("http://x", "m"), 2)
+        # One failed probe at 4, then the run never grows past the size that failed.
+        self.assertEqual(sizes.count(4), 1)
+        self.assertTrue(all(n <= 2 for n in sizes[1:]), sizes)
+        self.assertTrue(all(timeout == 30.0 * len(t) for t, timeout in calls))
+        # Trimmed rows first, newest first; each row's head only.
+        texts = self.query("SELECT seq, substr(text, 1, 6) FROM messages ORDER BY seq")
+        self.assertEqual(calls[1][0], [texts[5][1], texts[4][1]])
+        self.assertTrue(all(len(t) <= 6 for batch, _ in calls for t in batch))
+        self.assertIn("openmem-context: embedded rows=2 seconds=", log)
+        self.assertIn("openmem-context: embedding batch failed TimeoutError rows=4", log)
+
+    def test_fast_endpoint_grows_batches(self):
+        self.run_req(history(10))
+        sizes = []
+
+        def fast(url, model, key, texts, timeout):
+            sizes.append(len(texts))
+            return fake_embed(url, model, key, texts)
+        embedder = embed_mod.Embedder(embed=fast)
+        log = self.notify_all(embedder)
+        self.assertEqual(sizes, [4, 8, 16, 12])
+        self.assertEqual(embedder.batch_size("http://x", "m"), 32)
+        self.assertIn("embedded rows=16 seconds=0.0 batch=32", log)
+
+    def test_row_failing_alone_is_skipped_and_recorded(self):
+        self.run_req(history(2))
+        poison = self.query("SELECT seq FROM messages WHERE text = 'out 1'")[0][0]
+        calls = []
+
+        def picky(url, model, key, texts, timeout):
+            calls.append(len(texts))
+            if "out 1" in texts:
+                raise ValueError("bad input")
+            return fake_embed(url, model, key, texts)
+        embedder = embed_mod.Embedder(embed=picky)
+        log = self.notify_all(embedder, runs=embed_mod.MAX_FAILURES)
+        rows = dict(self.query("SELECT message_seq, dim FROM vectors WHERE model = 'm'"))
+        self.assertEqual(rows.pop(poison), 0)
+        self.assertEqual(set(rows.values()), {3})
+        self.assertEqual(len(rows), 7)
+        self.assertIn(f"embedding skipped seq={poison} after {embed_mod.MAX_FAILURES} failures", log)
+        before = len(calls)
+        self.notify_all(embedder)
+        self.assertEqual(len(calls), before)
+        conn = sqlite3.connect(self.path())
+        try:
+            self.assertNotIn(poison, [seq for seq, _ in sessiondb.nearest(conn, [1.0, 1.0, 1.0], "m", 10)])
+        finally:
+            conn.close()
+
+    def test_embedding_settings_from_env(self):
+        s = Settings.from_env({})
+        self.assertEqual((s.embedding_timeout_s, s.embedding_max_chars), (30.0, 4000))
+        s = Settings.from_env({"CONTEXT_EMBEDDING_TIMEOUT_S": "120", "CONTEXT_EMBEDDING_MAX_CHARS": "2000"})
+        self.assertEqual((s.embedding_timeout_s, s.embedding_max_chars), (120.0, 2000))
+        s = Settings.from_env({"CONTEXT_EMBEDDING_TIMEOUT_S": "0", "CONTEXT_EMBEDDING_MAX_CHARS": "-5"})
+        self.assertEqual((s.embedding_timeout_s, s.embedding_max_chars), (30.0, 4000))
 
     def test_embedding_off_by_default(self):
         self.assertEqual(Settings().embedding_model, "")
