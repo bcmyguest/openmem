@@ -43,6 +43,7 @@ try {
   assert.deepEqual(codex.mcp_servers["openmem"].args, [script]);
   assert.equal(codex.features.hooks, true);
   assert.equal(codex.sandbox_workspace_write.network_access, true);
+  assert.equal(codex.sandbox_mode, "workspace-write");
   assert.equal((codexText.match(/\[mcp_servers\.openmem\]/g) || []).length, 1);
   const opencode = JSON.parse(fs.readFileSync(path.join(home, ".config", "opencode", "opencode.json"), "utf8"));
   assert.equal(opencode.mcp.keep.type, "local");
@@ -99,6 +100,14 @@ try {
   const sandbox = TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8")).sandbox_workspace_write;
   assert.equal(sandbox.network_access, false);
   assert.deepEqual(sandbox.writable_roots, []);
+  fs.writeFileSync(path.join(explicitHome, ".codex", "config.toml"), 'sandbox_mode = "read-only"\n[features]\nhooks = true\n');
+  installAgentAccess({ home: explicitHome, runtimeRoot, stackRoot, agents: ["codex"], h: logger });
+  assert.equal(TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8")).sandbox_mode, "read-only");
+  fs.writeFileSync(path.join(explicitHome, ".codex", "config.toml"), "[features]\nhooks = true\n");
+  installAgentAccess({ home: explicitHome, runtimeRoot, stackRoot, agents: ["codex"], h: logger });
+  const tabled = TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8"));
+  assert.equal(tabled.sandbox_mode, "workspace-write");
+  assert.equal(tabled.features.sandbox_mode, undefined);
   fs.writeFileSync(path.join(explicitHome, ".codex", "config.toml"), '[mcp_servers."openmem"]\ncommand = "old"\n[mcp_servers."openmem".env]\nKEEP = "old"\n');
   installAgentAccess({ home: explicitHome, runtimeRoot, stackRoot, agents: ["codex"], h: logger });
   assert.deepEqual(TOML.parse(fs.readFileSync(path.join(explicitHome, ".codex", "config.toml"), "utf8")).mcp_servers["openmem"].args, [script]);

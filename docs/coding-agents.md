@@ -30,7 +30,7 @@ The two hook sets are exclusive; see [hook parity](coding-agent-hooks.md#install
 
 This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../.agents/skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
 
-For Codex, installation enables `features.hooks` and `sandbox_workspace_write.network_access` (Codex turns sandbox network off by default, which breaks `curl` and package installs) when unset, and preserves an explicit `false`. For OpenCode, the plugin and MCP entry go into the existing `opencode.jsonc` or `opencode.json`; unrelated settings and JSONC comments outside the updated fields are retained.
+For Codex, installation sets `sandbox_mode = "workspace-write"` and enables `features.hooks` and `sandbox_workspace_write.network_access` when unset, and preserves explicit values. Codex otherwise defaults to a read-only sandbox without network, which breaks `curl` and package installs. For OpenCode, the plugin and MCP entry go into the existing `opencode.jsonc` or `opencode.json`; unrelated settings and JSONC comments outside the updated fields are retained.
 
 Codex requires review of new or changed non-managed hooks in `/hooks` before they run. [Codex hook documentation](https://developers.openai.com/codex/hooks) describes this trust step.
 
