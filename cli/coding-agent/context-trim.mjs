@@ -523,11 +523,33 @@ export async function withSessionLock(sid, fn) {
   }
 }
 
+function whereOf(error) {
+  const frame = String(error?.stack || "").split("\n").find((line) => /^\s+at /.test(line)) || "";
+  return /([^/\\(\s]+:\d+)(?::\d+)?\)?\s*$/.exec(frame)?.[1] || "?";
+}
+
 /** One stderr line: exception type and location only, never message content. */
 export function logFailOpen(error) {
-  const frame = String(error?.stack || "").split("\n").find((line) => /^\s+at /.test(line)) || "";
-  const where = /([^/\\(\s]+:\d+)(?::\d+)?\)?\s*$/.exec(frame)?.[1] || "?";
-  process.stderr.write(`openmem-context: fail-open ${error?.name || typeof error} at ${where}\n`);
+  process.stderr.write(`openmem-context: fail-open ${error?.name || typeof error} at ${whereOf(error)}\n`);
+}
+
+/** The events table's version column for rows this plugin writes: "opencode:<package version>". */
+export const VERSION = (() => {
+  try {
+    const manifest = new URL("../../package.json", import.meta.url);
+    return `opencode:${JSON.parse(fs.readFileSync(manifest, "utf8")).version || "unknown"}`;
+  } catch { return "opencode:unknown"; }
+})();
+
+/** Append an events row to sessions/<sid>.db (core._record_event); never throws or logs. */
+function recordEvent(store, sid, kind, fields, ts) {
+  let file = null;
+  try {
+    file = store.dbPath(sid);
+    openSession(file).addEvent(kind, ts, VERSION, fields);
+  } catch {
+    if (file) dropSession(file);
+  }
 }
 
 
@@ -585,7 +607,17 @@ export async function trimContext(request, settings, deps = {}) {
   const root = fingerprint(roots[0]);
   const first = firstUserIndex(items);
   const decorate = deps.decorate || ((m) => m);
+  try {
+    return await trimSession(request, settings, deps, { original, sid, store, items, root, first, decorate });
+  } catch (error) {
+    // The caller logs and sends the request untrimmed; the session keeps the record.
+    recordEvent(store, sid, "fail_open", { location: whereOf(error), error: error?.name || typeof error }, utcNow(deps.now?.()));
+    throw error;
+  }
+}
 
+async function trimSession(request, settings, deps, { original, sid, store, items, root, first, decorate }) {
+  let trim = null;
   const view = await withSessionLock(sid, async () => {
     const state = store.loadTrim(sid);
     const { threads } = state;
@@ -613,9 +645,13 @@ export async function trimContext(request, settings, deps = {}) {
         if (force) store.clearForce(sid);
         rendered = render(items, next, note, first, decorate);
         cut = next;
+        const after = estimatePromptTokens(requestChars(request.system, request.tools, rendered), state.usage, root, ratio);
+        trim = { tokens_before: tokens, tokens_after: after, dropped: droppable(items, next, first).length };
       } else if (thread && !cut) store.saveTrim(sid, state);
     } else if (thread && !cut) store.saveTrim(sid, state);
-    storeMessages(store, sid, settings, original, items, cut, first, utcNow(deps.now?.()), deps);
+    const ts = utcNow(deps.now?.());
+    storeMessages(store, sid, settings, original, items, cut, first, ts, deps);
+    if (trim) recordEvent(store, sid, "trim", trim, ts);
     return rendered;
   });
   // Measured like the estimate, so a later recordPromptUsage compares like with like.

@@ -371,6 +371,28 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     && b[1].content[1].text === "now");
 }
 
+{
+  // Events: one trim row with tokens before > after; a fail-open row with type and location, no content.
+  const events = (sid) => {
+    const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+    const db = new DatabaseSync(path.join(sessions, `${sid}.db`), { readOnly: true });
+    try { return db.prepare("SELECT * FROM events ORDER BY id").all().map((r) => ({ ...r })); } finally { db.close(); }
+  };
+  const history = [user("task"), assistant("a".repeat(4000)), user("next"), assistant("b".repeat(4000)), user("now")];
+  await trimContext({ sessionID: "ses_ev_trim", messages: history }, settingsFor({ trimAtTokens: 1 }));
+  const [trim, ...rest] = events("ses_ev_trim");
+  check("trim event recorded", rest.length === 0 && trim.kind === "trim" && /^opencode:/.test(trim.version)
+    && trim.tokens_before > trim.tokens_after && trim.dropped === 3 && trim.error === null, JSON.stringify(trim));
+  await trimContext({ sessionID: "ses_ev_none", messages: history }, settingsFor());
+  check("no trim, no event", events("ses_ev_none").length === 0);
+  const broken = { decorate: () => { throw new TypeError("task must not leak"); } };
+  let threw = false;
+  try { await trimContext({ sessionID: "ses_ev_fail", messages: history }, settingsFor({ trimAtTokens: 1 }), broken); } catch { threw = true; }
+  const [fail] = events("ses_ev_fail");
+  check("fail-open event recorded and rethrown", threw && fail?.kind === "fail_open" && fail.error === "TypeError"
+    && /^test_context_trim\.mjs:\d+(:\d+)?$/.test(fail.location) && !JSON.stringify(fail).includes("task"), JSON.stringify(fail));
+}
+
 fs.rmSync(state, { recursive: true, force: true });
 if (failed) process.exit(1);
 console.log("all context trim tests passed");
