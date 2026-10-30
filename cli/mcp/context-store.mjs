@@ -247,14 +247,16 @@ function workspaceSessions(sessionsDir, cwd) {
   return found.sort((a, b) => b.at - a.at).slice(0, MAX_SESSIONS).map((s) => s.sid);
 }
 
-/** Read-only connection to a session database, or null when it is missing or of another schema version. */
+/** Read-only connection to a session database, or null when it is missing or of a newer schema version (a v1
+ * database, not yet migrated by a writer, reads the same except that it has no events table). */
 function openReadOnly(file) {
   if (!fs.existsSync(file)) return null;
   const { DatabaseSync } = sqlite();
   const db = new DatabaseSync(file, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 1000");
-    if (db.prepare("PRAGMA user_version").get().user_version !== SCHEMA_VERSION) {
+    const version = db.prepare("PRAGMA user_version").get().user_version;
+    if (version < 1 || version > SCHEMA_VERSION) {
       db.close();
       return null;
     }

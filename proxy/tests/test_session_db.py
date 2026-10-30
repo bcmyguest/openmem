@@ -98,7 +98,7 @@ class StoreEveryMessageTests(DbBase):
         shadow = ("_data", "_idx", "_docsize", "_config")
         names = [r[0] for r in self.query("SELECT name FROM sqlite_master WHERE type IN ('table', 'trigger') ORDER BY name")
                  if not r[0].endswith(shadow)]
-        self.assertEqual(names, ["lines", "lines_fts", "lines_fts_insert", "messages", "messages_fts",
+        self.assertEqual(names, ["events", "lines", "lines_fts", "lines_fts_insert", "messages", "messages_fts",
                                  "messages_fts_insert", "vectors"])
 
     def test_trim_marks_rows_out_of_context_with_cut_seq(self):
@@ -176,6 +176,21 @@ class FailOpenTests(DbBase):
         self.assertEqual(len(out["messages"]), 4)
         self.assertIn("UnsupportedSchema", err.getvalue())
         self.assertEqual(self.query("PRAGMA user_version")[0][0], 99)
+
+    def test_version_1_database_migrates_in_place(self):
+        (self.ctx / "sessions").mkdir(parents=True)
+        conn = sqlite3.connect(self.path())
+        for ddl in sessiondb.SCHEMA:
+            conn.execute(ddl)
+        conn.execute("INSERT INTO messages (fingerprint, thread, role, kind, text, created_at) "
+                     "VALUES ('old', 'old', 'user', 'text', 'kept', 't')")
+        conn.execute("PRAGMA user_version = 1")
+        conn.commit()
+        conn.close()
+        self.run_req(history(1))
+        self.assertEqual(self.query("PRAGMA user_version")[0][0], sessiondb.SCHEMA_VERSION)
+        self.assertEqual(self.query("SELECT text FROM messages WHERE fingerprint = 'old'"), [("kept",)])
+        self.assertEqual(self.query("SELECT count(*) FROM events"), [(0,)])
 
 
 class TtlTests(unittest.TestCase):

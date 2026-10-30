@@ -15,9 +15,8 @@ from pathlib import Path
 
 from .tokens import fingerprint
 
-SCHEMA_VERSION = 1
-# Executed in order on an empty database, then PRAGMA user_version = SCHEMA_VERSION. Same strings as SCHEMA in
-# cli/coding-agent/session-db.mjs.
+SCHEMA_VERSION = 2
+# Version 1, executed in order on an empty database. Same strings as SCHEMA in cli/coding-agent/session-db.mjs.
 SCHEMA = (
     "CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL, "
     "role TEXT NOT NULL, kind TEXT NOT NULL, name TEXT, text TEXT NOT NULL, blob_id TEXT, "
@@ -34,6 +33,15 @@ SCHEMA = (
     "CREATE TABLE vectors (message_seq INTEGER NOT NULL REFERENCES messages (seq), model TEXT NOT NULL, "
     "dim INTEGER NOT NULL, blob BLOB NOT NULL, PRIMARY KEY (message_seq, model))",
 )
+# (version, DDL) run in order after SCHEMA on a new database, or from the stored version up on an older one; then
+# PRAGMA user_version = SCHEMA_VERSION. Same strings as MIGRATIONS in cli/coding-agent/session-db.mjs.
+MIGRATIONS = (
+    # Trims and fail-opens: kind 'trim' | 'fail_open'; version names the writer ("proxy:<hash>", "opencode:<v>").
+    (2, ("CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, "
+         "location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER)",)),
+)
+EVENT_COLUMNS = ("at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped")
+_INSERT_EVENT = f"INSERT INTO events ({', '.join(EVENT_COLUMNS)}) VALUES ({', '.join('?' * len(EVENT_COLUMNS))})"
 DB_SUFFIX = ".db"
 FILE_MODE = 0o600
 DIR_MODE = 0o700
@@ -89,12 +97,18 @@ def connect(path, create=True):
         conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
-        if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+        if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
-                    for ddl in SCHEMA:
-                        conn.execute(ddl)
+                version = conn.execute("PRAGMA user_version").fetchone()[0]
+                if version < SCHEMA_VERSION:
+                    if version == 0:
+                        for ddl in SCHEMA:
+                            conn.execute(ddl)
+                    for target, ddls in MIGRATIONS:
+                        if target > max(version, 1):
+                            for ddl in ddls:
+                                conn.execute(ddl)
                     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 conn.execute("COMMIT")
             except BaseException:
@@ -197,6 +211,12 @@ class SessionDB:
             raise
         self.data_version = conn.execute("PRAGMA data_version").fetchone()[0]
         return added
+
+
+    def add_event(self, kind, at, version, **fields):
+        """Append one events row; fields are the other EVENT_COLUMNS (location, error, tokens_before, ...)."""
+        values = {"at": at, "kind": kind, "version": version, **fields}
+        self.conn.execute(_INSERT_EVENT, tuple(values.get(c) for c in EVENT_COLUMNS))
 
 
 def open_session(path):
