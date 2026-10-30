@@ -11,12 +11,14 @@ import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openmem_context import Settings, process_request  # noqa: E402
 from openmem_context import embed as embed_mod  # noqa: E402
 from openmem_context import sessiondb, ttl  # noqa: E402
+from openmem_context import core  # noqa: E402
 from openmem_context.core import startup  # noqa: E402
 
 SID = "db-1"
@@ -153,6 +155,37 @@ class StoreEveryMessageTests(DbBase):
                 pass
         self.run_req(history(1))
         self.assertEqual(self.query("SELECT count(*) FROM messages")[0][0], 4)
+
+
+class EventTests(DbBase):
+    def test_trim_records_tokens_before_and_after(self):
+        self.run_req(history(3), trim_at_tokens=1)
+        rows = self.query("SELECT kind, version, tokens_before, tokens_after, dropped, error FROM events")
+        self.assertEqual(len(rows), 1)
+        kind, version, before, after, dropped, error = rows[0]
+        self.assertEqual((kind, version, error), ("trim", core.VERSION, None))
+        self.assertGreater(before, after)
+        self.assertEqual(dropped, 7)
+
+    def test_request_without_trim_records_nothing(self):
+        self.run_req(history(3))
+        self.assertEqual(self.query("SELECT count(*) FROM events"), [(0,)])
+
+    def test_fail_open_is_recorded_without_content(self):
+        def broken(*args, **kwargs):
+            raise RuntimeError("question 0 must not leak")
+
+        with mock.patch.object(core, "choose_cut", broken), redirect_stderr(io.StringIO()):
+            out = self.run_req(history(3), trim_at_tokens=1)
+        self.assertEqual(len(out["messages"]), 12)
+        rows = self.query("SELECT kind, version, error, location FROM events")
+        self.assertEqual([r[:3] for r in rows], [("fail_open", core.VERSION, "RuntimeError")])
+        self.assertRegex(rows[0][3], r"^test_session_db\.py:\d+$")
+        self.assertEqual(self.query("SELECT count(*) FROM events WHERE location LIKE '%question%'"), [(0,)])
+
+    def test_code_hash_names_the_package_sources(self):
+        self.assertRegex(core.VERSION, r"^proxy:[0-9a-f]{12}$")
+        self.assertEqual(core.VERSION, f"proxy:{core.code_hash(Path(core.__file__).parent)}")
 
 
 class FailOpenTests(DbBase):
