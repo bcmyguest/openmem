@@ -245,6 +245,67 @@ export function dropSession(file) {
   entry?.close();
 }
 
+/** Hours of events `openmem context status` and the context_status MCP tool summarize by default. */
+export const EVENT_WINDOW_HOURS = 24;
+const LAST_ERRORS = 5;
+
+/**
+ * Summary of the events rows written in the last `hours` across `sessions/*.db` (only files modified in that
+ * window are opened): trims, estimated tokens saved, fail-opens, the newest errors, row counts per version and the
+ * newest version per writer (`latest.proxy`, `latest.opencode`).
+ * Token figures are the writers' calibrated estimates, not provider-billed counts.
+ */
+export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now = Date.now() } = {}) {
+  const sinceMs = now - hours * 3_600_000;
+  const since = new Date(sinceMs).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const out = { hours, since, sessions: 0, trims: 0, tokensBefore: 0, tokensAfter: 0, tokensSaved: 0, dropped: 0,
+    failOpens: 0, lastErrors: [], versions: {}, latest: {}, unreadable: 0 };
+  let names = [];
+  try { names = fs.readdirSync(sessionsDir).filter((n) => n.endsWith(DB_SUFFIX)); } catch { return out; }
+  const errors = [];
+  const latestAt = {};
+  for (const name of names) {
+    const file = path.join(sessionsDir, name);
+    try { if (fs.statSync(file).mtimeMs < sinceMs) continue; } catch { continue; }
+    let db;
+    try {
+      db = new (sqlite().DatabaseSync)(file, { readOnly: true });
+      db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+      if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").get()) continue;
+      const rows = db.prepare("SELECT * FROM events WHERE at >= ? ORDER BY id").all(since);
+      if (!rows.length) continue;
+      out.sessions++;
+      const sid = name.slice(0, -DB_SUFFIX.length);
+      for (const r of rows) {
+        out.versions[r.version] = (out.versions[r.version] || 0) + 1;
+        const writer = String(r.version).split(":")[0];
+        if (r.at >= (latestAt[writer] || "")) [latestAt[writer], out.latest[writer]] = [r.at, r.version];
+        if (r.kind === "trim") {
+          out.trims++;
+          out.tokensBefore += r.tokens_before ?? 0;
+          out.tokensAfter += r.tokens_after ?? 0;
+          out.dropped += r.dropped ?? 0;
+        } else if (r.kind === "fail_open") {
+          out.failOpens++;
+          errors.push({ at: r.at, session: sid, error: r.error, location: r.location, version: r.version });
+        }
+      }
+    } catch { out.unreadable++; } finally { db?.close(); }
+  }
+  out.tokensSaved = out.tokensBefore - out.tokensAfter;
+  out.lastErrors = errors.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, LAST_ERRORS);
+  return out;
+}
+
+/** "proxy:" + first 12 hex of SHA-256 over dir's *.py files (name, NUL, bytes, NUL, by name): core.code_hash. */
+export function proxyCodeVersion(dir) {
+  const hash = crypto.createHash("sha256");
+  for (const name of fs.readdirSync(dir).filter((n) => n.endsWith(".py")).sort()) {
+    hash.update(Buffer.concat([Buffer.from(`${name}\0`), fs.readFileSync(path.join(dir, name)), Buffer.from("\0")]));
+  }
+  return `proxy:${hash.digest("hex").slice(0, 12)}`;
+}
+
 // Vectors: float32 little-endian, brute-force cosine (sessions hold thousands of rows).
 export function packVector(values) {
   const buffer = Buffer.alloc(values.length * 4);

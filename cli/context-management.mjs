@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { contextRoot } from "./coding-agent/context-store.mjs";
+import { proxyCodeVersion, summarizeEvents } from "./coding-agent/session-db.mjs";
 import { agentsPointedAtContextProxy, ensureContextProxyKey, probeContextProxy } from "./coding-agent/install-context-proxy.mjs";
 import { isMainModule } from "./is-main.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -45,7 +46,8 @@ Usage:
                                            when a proxy-routed agent is on)
   ${BIN} off [--dry-run] [--agents a,b]   save <agent> = false, re-run install-coding-agent (stops
                                            the service when no proxy-routed agent is on)
-  ${BIN} status [--json]                  per-agent values, proxy health, agents pointed at it
+  ${BIN} status [--json]                  per-agent values, proxy health, agents pointed at it, and
+                                           the last 24 h of trims and fail-opens from the session store
 
 Agents: ${CONTEXT_AGENT_KEYS.join(", ")} (default: all). claude-code, opencode1 and codex go through
 the context-proxy service (codex keeps its ChatGPT login); opencode2 trims in its own plugin (on when
@@ -115,11 +117,20 @@ export function ensureContextProxyService({ home, stackRoot, project, on, dry = 
   return run([...base, "stop", CONTEXT_PROXY_SERVICE]) === 0 ? (dry ? "dry-run" : "stopped") : "failed";
 }
 
+/** Proxy code version of the checkout the compose service mounts (stack root, else this package), or null. */
+function checkoutProxyVersion(stackRoot) {
+  for (const root of [stackRoot, PKG_ROOT].filter(Boolean)) {
+    try { return proxyCodeVersion(path.join(root, "proxy", "openmem_context")); } catch { /* not there */ }
+  }
+  return null;
+}
+
 /**
- * Current state: per-agent values, port, whether the proxy answers, which agents point at it.
- * @param {{ home: string, stackRoot?: string, fetch?: typeof fetch }} opts
+ * Current state: per-agent values, port, whether the proxy answers, which agents point at it, and the
+ * session store's recent events (summarizeEvents) with the checkout's proxy code version to compare.
+ * @param {{ home: string, stackRoot?: string, fetch?: typeof fetch, env?: NodeJS.ProcessEnv, now?: number }} opts
  */
-export async function contextStatus({ home, stackRoot, fetch }) {
+export async function contextStatus({ home, stackRoot, fetch, env = process.env, now }) {
   const cfg = loadPmConfig(home, stackRoot || home).merged;
   const { port } = contextProxyFromPmConfig(cfg);
   const { agents, saved, enabledSaved } = contextAgentsFromPmConfig(cfg);
@@ -130,7 +141,25 @@ export async function contextStatus({ home, stackRoot, fetch }) {
     port,
     proxyUp: await probeContextProxy(port, fetch ? { fetch } : {}),
     pointedAgents: agentsPointedAtContextProxy(home),
+    events: summarizeEvents(path.join(contextRoot(home, env), "sessions"), now === undefined ? {} : { now }),
+    checkoutProxyVersion: checkoutProxyVersion(stackRoot),
   };
+}
+
+/** Text lines for the events part of `status`. */
+export function eventLines(s) {
+  const e = s.events;
+  const lines = [`last ${e.hours} h (${e.sessions} session${e.sessions === 1 ? "" : "s"}): ${e.trims} trim${e.trims === 1 ? "" : "s"}`
+    + (e.trims ? `, ~${e.tokensSaved} tokens saved (estimated ${e.tokensBefore} -> ${e.tokensAfter}), ${e.dropped} messages dropped` : "")
+    + `, ${e.failOpens} fail-open${e.failOpens === 1 ? "" : "s"} (request sent untrimmed)`];
+  for (const x of e.lastErrors) lines.push(`  ${x.at} ${x.error} at ${x.location} (${x.version}, session ${x.session})`);
+  const running = e.latest.proxy;
+  if (running && s.checkoutProxyVersion) {
+    lines.push(`proxy code: ${running === s.checkoutProxyVersion ? `${running}, matches the checkout`
+      : `${running} in the last event, checkout is ${s.checkoutProxyVersion}; restart the context-proxy service to load it`}`);
+  }
+  lines.push("not recorded here: fail-opens before the session id is known or from the session database itself (proxy stderr only)");
+  return lines;
 }
 
 function parseArgs(argv) {
@@ -170,7 +199,7 @@ export async function runContextCommand(opts) {
     return 2;
   }
   if (flags.action === "status") {
-    const s = await contextStatus({ home, stackRoot, fetch: opts.fetch });
+    const s = await contextStatus({ home, stackRoot, fetch: opts.fetch, env });
     if (flags.json) log.info(JSON.stringify(s, null, 2));
     else {
       for (const [k, a] of Object.entries(s.agents)) {
@@ -178,6 +207,7 @@ export async function runContextCommand(opts) {
       }
       log.info(`context proxy http://127.0.0.1:${s.port}: ${s.proxyUp ? "up" : "not answering"}`);
       log.info(`agents pointed at the proxy: ${s.pointedAgents.length ? s.pointedAgents.join(", ") : "none"}`);
+      for (const line of eventLines(s)) log.info(line);
     }
     return 0;
   }

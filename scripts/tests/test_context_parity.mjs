@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeSessionId } from "../../cli/coding-agent/context-store.mjs";
+import { proxyCodeVersion } from "../../cli/coding-agent/session-db.mjs";
 import { STANDING_INSTRUCTION, addStandingInstruction, pointerText, recallBlock, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -236,6 +237,13 @@ try {
 } finally {
   fs.rmSync(pyState, { recursive: true, force: true });
   fs.rmSync(jsState, { recursive: true, force: true });
+}
+
+{
+  const py = spawnSync("python3", ["-c", "import sys; sys.path.insert(0, sys.argv[1]); from openmem_context import core; print(core.VERSION)",
+    path.join(ROOT, "proxy")], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+  const js = proxyCodeVersion(path.join(ROOT, "proxy", "openmem_context"));
+  check("proxy code version: JS hash matches the proxy's own", py.status === 0 && py.stdout.trim() === js, `py ${py.stdout.trim()} js ${js}`);
 }
 
 if (failed) process.exit(1);
