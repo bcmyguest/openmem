@@ -143,6 +143,15 @@ export const PAGES = [
     description: 'Local LiteLLM proxy that trims long agent sessions, compresses tool results, and injects recall.',
   },
   {
+    slug: 'context-research',
+    kind: 'doc',
+    source: 'docs/context-research.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Context research',
+    description: 'Related work (MemGPT, Letta, Mainplane, Context Rot) and benchmark evidence behind the context proxy.',
+  },
+  {
     slug: 'index-sources',
     kind: 'doc',
     source: 'docs/index-sources.md',
