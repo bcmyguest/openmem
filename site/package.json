@@ -10,6 +10,8 @@
     "dev": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro dev",
     "build": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro build && node scripts/check-privacy.mjs dist && node scripts/check-links.mjs dist",
     "render-diagrams": "node scripts/render-diagrams.mjs",
+    "render-overview": "node scripts/render-overview-diagrams.mjs",
+    "bench:render": "node scripts/bench/render-contextbench.mjs",
     "check:privacy": "node scripts/check-privacy.mjs dist",
     "check:sources": "node scripts/check-privacy.mjs --sources-report",
     "check:links": "node scripts/check-links.mjs dist",

@@ -29,6 +29,21 @@
 .pm-diagram-duo {
   margin: 1.25rem 0;
 }
+/* Overview diagrams (docs/architecture.md): side by side when the column is wide enough. */
+.pm-overview {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+@media (min-width: 40rem) {
+  .pm-overview {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+.pm-overview .pm-diagram-duo {
+  margin: 0;
+}
 .pm-diagram-duo img {
   display: block;
   width: 100%;

@@ -2,6 +2,23 @@
 
 OpenMem connects coding agents and a shared indexer to one active [memory provider](provider-status.md). Agents use the stable `memory_*` MCP and session hooks; the indexer writes sources to the same provider. This page shows the full runtime paths and optional integrations. Setup (`npx @bcmyguest/openmem`) configures them but is outside the runtime data path. Switching providers does not migrate memories.
 
+## Overview
+
+Two paths. **A, memory:** sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. **B, context management:** the context proxy (OpenCode 2: a native plugin) keeps each session under `trim_at_tokens` by moving older turns to a local session store that the agent searches; no model call summarizes them. OpenMem parts are tinted.
+
+<div class="pm-overview">
+<div class="pm-diagram-duo">
+<img class="pm-diagram-light" src="/openmem/diagrams/overview-memory.svg" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks" />
+<img class="pm-diagram-dark" src="/openmem/diagrams/overview-memory-dark.svg" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks (dark theme)" />
+</div>
+<div class="pm-diagram-duo">
+<img class="pm-diagram-light" src="/openmem/diagrams/overview-context.svg" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin" />
+<img class="pm-diagram-dark" src="/openmem/diagrams/overview-context-dark.svg" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin (dark theme)" />
+</div>
+</div>
+
+The sections below show every runtime path and optional integration.
+
 ## Runtime data flow
 
 Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx @bcmyguest/openmem`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).

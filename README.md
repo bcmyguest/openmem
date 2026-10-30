@@ -46,15 +46,33 @@ Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-starte
 
 ## Architecture
 
+**A. Memory**: your sources become memory any agent can query.
+
 ```mermaid
 flowchart LR
-  S[Git repos · notes · feeds] --> I[OpenMem indexer]
-  I --> P[(One active memory provider)]
-  A[Coding agents] <--> M["OpenMem MCP · memory_*"]
-  M <--> P
+  S["<b>Sources</b><br/>Git repos: docs, code outlines<br/>Obsidian vaults · notes · papers · bookmarks<br/>RSS · OpenAlex feeds"] -->|index| I["<b>OpenMem indexer</b><br/>polls repos, watches folders"]
+  I -->|retain| P[("<b>Memory provider</b><br/>one active, swappable<br/>Hindsight (default) · mem0 · Cognee · …")]
+  P <--> M["<b>OpenMem MCP</b><br/>memory_recall · memory_add<br/>memory_search · memory_reflect<br/>memory_pages_* + export/import, status…"]
+  M <-->|tools| A["<b>Coding agents</b><br/>Claude Code · Codex · Cursor · OpenCode"]
+  A -.->|"session hooks: recall at start · retain at stop"| M
+  classDef om fill:#e8eaf9,stroke:#4651a6,color:#1b1d2a
+  class I,M om
 ```
 
-The indexer and coding agents share one active memory provider. Session hooks use the same `memory_*` MCP. The optional [context proxy](https://bcmyguest.github.io/openmem/docs/context-proxy/) trims long agent sessions without an LLM summary. See the [full architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for setup, optional integrations, and provider-specific behavior.
+**B. Context management**: long sessions stay under the limit; nothing is summarized away.
+
+```mermaid
+flowchart LR
+  A["<b>Coding agent</b><br/>Claude Code · Codex · OpenCode 1"] -->|requests| X["<b>Context proxy</b><br/>LiteLLM pre-call hook<br/>trims at 120k tokens · no LLM call"]
+  X -->|trimmed request| API["<b>Model API</b><br/>Anthropic · ChatGPT (Codex)"]
+  X -->|every turn| S[("<b>Session store</b><br/>SQLite · every turn, verbatim")]
+  S -->|"MCP: smart_compact_search · smart_compact_sql"| A
+  O["<b>OpenCode 2</b><br/>native plugin, no proxy"] -.->|same store| S
+  classDef om fill:#e8eaf9,stroke:#4651a6,color:#1b1d2a
+  class X,S om
+```
+
+Native compaction replaces history with an LLM summary, so exact values can be lost; OpenMem keeps every turn verbatim and searchable. The optional [context proxy](https://bcmyguest.github.io/openmem/docs/context-proxy/) trims long agent sessions without an LLM summary. See the [full architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for setup, optional integrations, and provider-specific behavior.
 
 ## Providers and portability
 
