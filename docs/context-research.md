@@ -163,6 +163,21 @@ Against run B's baselines (mean score; n = completed seeds; run B trials had no 
 
 Run D keeps every prompt under 121k, where keep-everything grew to 979k, and keeps exact values that native compaction lost.
 
+### Run Dp (pointer names the search tools; 5 trials)
+
+Run 2026-10-30. d-sqlite only, log-triage L1600 seed 44, five repeats. Commit f1fd9f3 is the d-sqlite rerun's commit 5e77a2b (Haiku trims at 95k) plus a trim pointer that names `smart_compact_search` and `smart_compact_sql` as available. In that rerun, seed 44 made no recall calls after the trim and answered 16 questions UNKNOWN.
+
+| Trial | Search calls | SQL calls | UNKNOWN | Score | Lookup | Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| rerun at 5e77a2b | 0 | 0 | 16 | 0.17 | 0.33 | 0.00 |
+| Dp r1 | 6 | 10 | 0 | 1.00 | 1.00 | 1.00 |
+| Dp r2 | 8 | 10 | 0 | 1.00 | 1.00 | 1.00 |
+| Dp r3 | 8 | 16 | 0 | 0.71 | 1.00 | 0.42 |
+| Dp r4 | 12 | 13 | 0 | 1.00 | 1.00 | 1.00 |
+| Dp r5 | 14 | 15 | 0 | 1.00 | 1.00 | 1.00 |
+
+Every Dp trial searched after the trim and answered every question; mean 0.94. All 7 lost points are r3's count questions.
+
 ## Limitations
 
 - One model (Haiku 5.5) and three seeds per task; run B's baselines have one or two seeds per cell.
