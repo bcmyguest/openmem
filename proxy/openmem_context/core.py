@@ -94,9 +94,12 @@ def _utc_now():
 
 def pointer_text(sid, dropped):
     return (
-        f"[openmem: continuing session {sid}; {dropped} earlier messages are NOT in your context. "
+        f"[openmem: continuing session {sid}; {dropped} earlier messages are NOT in your context. They were "
+        f"delivered to you and later removed to fit your context window, so a gap in what you see (missing "
+        f"batches, lines, keys) is in them. "
         f'You MUST call smart_compact_search(session_id="{sid}", query=... or pattern=...) before answering '
-        f'anything that depends on them; every message of this session is stored and queryable with '
+        f'anything that depends on them, and never answer "not found" or "never received" without searching; '
+        f'every message of this session is stored and queryable with '
         f'smart_compact_search and smart_compact_sql(session_id="{sid}", sql=...).]'
     )
 
