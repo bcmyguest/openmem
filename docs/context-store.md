@@ -70,9 +70,9 @@ A trim keeps the pinned first turn's and the reply's rows `in_context = 1`, and 
 
 `sessions/<sid>.db` is a SQLite database, one per session, in WAL mode. The proxy (Python `sqlite3`, `proxy/openmem_context/sessiondb.py`) and the OpenCode 2 plugin (`node:sqlite`, `cli/coding-agent/session-db.mjs`) write it; the MCP tools open it read-only. The file is created mode 600; SQLite gives `-wal` and `-shm` the same mode.
 
-### Schema (`PRAGMA user_version = 2`)
+### Schema (`PRAGMA user_version = 3`)
 
-A writer that finds `user_version = 0` creates these objects in one `BEGIN IMMEDIATE` transaction, in this order and with these exact statements (both writers share the strings, `SCHEMA` then `MIGRATIONS`; the parity test compares `sqlite_master`), then sets `user_version = 2`. A writer that finds version 1 runs only the version 2 statements (the `events` table) in the same kind of transaction; rows already stored are untouched. A writer that finds a newer version leaves the file alone and logs `UnsupportedSchema`; a reader skips it. Readers (`smart_compact_*`, `context_status`) accept versions 1 and 2; a version 1 file has no `events` table. A schema change appends to `MIGRATIONS`, bumps `user_version` and changes this section first.
+A writer that finds `user_version = 0` creates these objects in one `BEGIN IMMEDIATE` transaction, in this order and with these exact statements (both writers share the strings, `SCHEMA` then `MIGRATIONS`; the parity test compares `sqlite_master`), then sets `user_version = 3`. A writer that finds an older version runs only the statements after it (version 2 creates the `events` table, version 3 adds its usage columns) in the same kind of transaction; rows already stored are untouched, and older events get `NULL` in the new columns. A writer that finds a newer version leaves the file alone and logs `UnsupportedSchema`; a reader skips it. Readers (`smart_compact_*`, `context_status`) accept versions 1 to 3; a version 1 file has no `events` table, a version 2 file has no usage columns. A schema change appends to `MIGRATIONS`, bumps `user_version` and changes this section first.
 
 ```sql
 CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL,
@@ -92,6 +92,10 @@ CREATE TABLE vectors (message_seq INTEGER NOT NULL REFERENCES messages (seq), mo
 -- version 2
 CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL,
   location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER);
+-- version 3, one statement per column
+ALTER TABLE events ADD COLUMN model TEXT;              -- then, in order: thread_root TEXT, trimmed INTEGER,
+-- input_tokens INTEGER, cache_read_tokens INTEGER, cache_creation_tokens INTEGER, output_tokens INTEGER,
+-- breakpoints INTEGER, breakpoint_at TEXT
 ```
 
 | Column | Values |
@@ -111,7 +115,7 @@ CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NUL
 | `lines` | One row per `\n`-separated line of `messages.text`, `line_no` from 1, `role` copied from the message |
 | `messages_fts`, `lines_fts` | FTS5 (default `unicode61` tokenizer) over `messages.text` and `lines.text`; rowid = `messages.seq` / `lines.id` |
 | `vectors` | Embedding of the head of `messages.text` (first `embedding_max_chars` characters, default 4000) per model: `dim` float32 values, little-endian, in `blob`. `dim = 0` with an empty `blob` marks a row skipped after repeated failures |
-| `events` | One row per trim or fail-open, [below](#events) |
+| `events` | One row per trim, fail-open or model call, [below](#events) |
 
 ### Rows
 
@@ -125,16 +129,31 @@ Rows that a later request no longer carries (a rewritten history) keep their las
 
 ### Events
 
-The writer appends one `events` row per trim and per fail-open it can attribute to the session. `openmem context status` and the `context_status` MCP tool summarize them across sessions; `smart_compact_sql` reads one session's rows.
+The writer appends one `events` row per trim and per fail-open it can attribute to the session, and one `usage` row per model call whose request it handled. `openmem context status` and the `context_status` MCP tool summarize them across sessions; `smart_compact_sql` reads one session's rows.
 
 | Column | Values |
 | --- | --- |
 | `at` | ISO 8601 UTC without fractions |
-| `kind` | `trim` (a new cut, including a `/smart-compact` one) · `fail_open` (the rewrite raised; the request went upstream unmodified) |
+| `kind` | `trim` (a new cut, including a `/smart-compact` one) · `fail_open` (the rewrite raised; the request went upstream unmodified) · `usage` (a model call finished) |
 | `version` | The writer: `proxy:<12 hex>`, the first 12 hex of SHA-256 over `proxy/openmem_context/*.py` (each file's name, NUL, bytes, NUL, sorted by name; `core.code_hash`, `proxyCodeVersion`), or `opencode:<package version>` for the OpenCode 2 plugin. Status compares the newest `proxy:` value with the checkout's hash to spot a proxy running old code |
 | `location`, `error` | Fail-open only: `<file>:<line>` (JS adds `:<column>`) and the exception type. Never message content |
 | `tokens_before`, `tokens_after` | Trim only: the writer's calibrated estimate ([token estimate](context-proxy.md#token-estimate)) of the request before and after the cut, not provider-billed counts |
 | `dropped` | Trim only: messages the cut removed from context |
+| `model` | Usage only: the request's model (proxy: the `model` string sent to LiteLLM; OpenCode: `<providerID>/<modelID>`) |
+| `thread_root` | Usage only: fingerprint of the request's first row, as in `messages.thread` |
+| `trimmed` | Usage only: `0` the request went up whole, `1` it carried an earlier cut, `2` it made a new cut (the request a `trim` row describes) |
+| `input_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `output_tokens` | Usage only: provider-reported counts. `input_tokens` excludes cache reads and writes, so the prompt is their sum. A count the provider did not report is `NULL`, never `0` |
+| `breakpoints`, `breakpoint_at` | Usage, proxy Anthropic route (`/v1/messages`) only: the incoming request's `cache_control` markers, counted before the rewrite, and their positions in prefix order, comma-separated: `tools`, `system`, or `m-<k>` (the k-th message from the end, `m-1` the last; markers inside a `tool_result` count for its message). Other routes and OpenCode leave both `NULL`. No content is stored |
+
+Usage counts come from the provider's report, not the trim estimate:
+
+| Source | `input_tokens` | `cache_read_tokens` | `cache_creation_tokens` | `output_tokens` |
+| --- | --- | --- | --- | --- |
+| LiteLLM `Usage` (proxy, `async_log_success_event`) | `prompt_tokens` minus read and creation | `cache_read_input_tokens`, else `prompt_tokens_details.cached_tokens` | `cache_creation_input_tokens`, else `prompt_tokens_details.cache_creation_tokens` / `cache_write_tokens` | `completion_tokens` |
+| Responses API usage (Codex) | `input_tokens` minus `input_tokens_details.cached_tokens` | `input_tokens_details.cached_tokens` | `NULL` | `output_tokens` |
+| OpenCode 2 `session.step.ended` `tokens` | `input` | `cache.read` | `cache.write` | `output` |
+
+LiteLLM's Anthropic usage includes cache tokens in `prompt_tokens`; Chat Completions backends that report no cache detail leave both cache columns `NULL`. OpenCode reports a count its provider omitted as `0`, so an OpenCode `0` can mean "not reported". A proxy call whose response carries no usage falls back to `standard_logging_object` prompt and completion tokens, else stores all four as `NULL`.
 
 Two fail-opens cannot be recorded and stay on stderr only: those raised before the session id is known, and those from the session database itself (the events write fails silently, so each incident logs one line). OpenCode's native compaction replacement records no event.
 

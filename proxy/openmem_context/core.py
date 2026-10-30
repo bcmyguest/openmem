@@ -24,9 +24,12 @@ from .store import RegistrationNotFound, Store, session_lock
 from .tokens import DEFAULT_CHARS_PER_TOKEN, estimate_prompt_tokens, fingerprint, record_usage, request_chars
 
 MAX_THREADS = 32
-# Requests awaiting their usage report, by litellm_call_id: (sid, thread root, request chars).
+# Requests awaiting their usage report, by litellm_call_id: (sid, thread root, request chars, usage event fields).
 MAX_PENDING = 256
 RECALL_QUERY_MAX_CHARS = 2000
+# events.trimmed on a usage row: the request went up whole, carried an earlier cut, or made a new cut.
+TRIM_NONE, TRIM_KEPT, TRIM_NEW = 0, 1, 2
+USAGE_FIELDS = ("input_tokens", "cache_read_tokens", "cache_creation_tokens", "output_tokens")
 # Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under
 # trim_to_fraction of the trim threshold.
 MIN_TAIL_STEPS = 3
@@ -347,6 +350,10 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
     root = fingerprint(roots[0])
     first = first_user_index(adapter, items)
     context = [data.get(k) for k in adapter.context_keys]
+    # Usage event fields known before the call; counted on the incoming request, before any rewrite.
+    request = {"model": data.get("model") if isinstance(data.get("model"), str) else None, "thread_root": root}
+    if hasattr(adapter, "cache_breakpoints"):
+        request["breakpoints"], request["breakpoint_at"] = adapter.cache_breakpoints(data)
 
     trim = None
     with session_lock(sid):
@@ -408,9 +415,10 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
         _store_messages(store, sid, adapter, original, items, cut, gap, first, settings)
         if trim:
             _record_event(store, sid, "trim", **trim)
+    request["trimmed"] = TRIM_NEW if trim else TRIM_KEPT if cut is not None else TRIM_NONE
 
     # Measured like the estimate, before the standing instruction, so calibration compares like with like.
-    _await_usage(data.get("litellm_call_id") or call_id, sid, root, request_chars(*context, view))
+    _await_usage(data.get("litellm_call_id") or call_id, sid, root, request_chars(*context, view), request)
     if not (len(view) == len(original) and all(a is b for a, b in zip(view, original))):
         data[adapter.items_key] = view
     if settings.standing_instruction:
@@ -419,12 +427,12 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
     return data
 
 
-def _await_usage(call_id, sid, root, chars):
+def _await_usage(call_id, sid, root, chars, request=None):
     if not isinstance(call_id, str) or not call_id:
         return
     with _pending_guard:
         _pending.pop(call_id, None)
-        _pending[call_id] = (sid, root, chars)
+        _pending[call_id] = (sid, root, chars, request or {})
         while len(_pending) > MAX_PENDING:
             _pending.popitem(last=False)
 
@@ -457,6 +465,56 @@ def prompt_tokens_from_usage(usage):
     return total or None
 
 
+def usage_counts(usage):
+    """{input_tokens, cache_read_tokens, cache_creation_tokens, output_tokens} from a usage object; a count the
+    provider did not report is None. input_tokens excludes cache reads and writes.
+
+    LiteLLM Usage: prompt_tokens (cache included), cache_read_input_tokens / cache_creation_input_tokens (Anthropic),
+    else prompt_tokens_details.cached_tokens / cache_creation_tokens (alias cache_write_tokens), and completion_tokens. Anthropic's own usage:
+    input_tokens without cache, cache_read_input_tokens, cache_creation_input_tokens, output_tokens. Responses API:
+    input_tokens with cache, input_tokens_details.cached_tokens, output_tokens.
+    """
+    if usage is None:
+        return None
+    details = _field(usage, "prompt_tokens_details")
+    read = _count(_field(usage, "cache_read_input_tokens"))
+    creation = _count(_field(usage, "cache_creation_input_tokens"))
+    prompt = _count(_field(usage, "prompt_tokens"))
+    if prompt is not None:
+        if read is None and details is not None:
+            read = _count(_field(details, "cached_tokens"))
+        if creation is None and details is not None:
+            creation = _count(_field(details, "cache_creation_tokens"))
+            if creation is None:
+                creation = _count(_field(details, "cache_write_tokens"))
+        uncached = prompt - (read or 0) - (creation or 0)
+        out = {"input_tokens": uncached if uncached >= 0 else None, "output_tokens": _count(_field(usage, "completion_tokens"))}
+    else:
+        base = _count(_field(usage, "input_tokens"))
+        if read is None and creation is None and base is not None:
+            details = _field(usage, "input_tokens_details")
+            read = _count(_field(details, "cached_tokens")) if details is not None else None
+            if read is not None:
+                base = base - read if base >= read else None
+        out = {"input_tokens": base, "output_tokens": _count(_field(usage, "output_tokens"))}
+    out.update(cache_read_tokens=read, cache_creation_tokens=creation)
+    return out if any(v is not None for v in out.values()) else None
+
+
+def response_usage_counts(response, kwargs):
+    """usage_counts of a finished call's response (or its .response, for a Responses stream's completed event),
+    else standard_logging_object's prompt and completion tokens; all None when none is reported."""
+    for obj in (response, _field(response, "response")):
+        if obj is not None:
+            counts = usage_counts(_field(obj, "usage"))
+            if counts:
+                return counts
+    slo = kwargs.get("standard_logging_object") if isinstance(kwargs, dict) else None
+    counts = usage_counts({"prompt_tokens": _field(slo, "prompt_tokens"), "completion_tokens": _field(slo, "completion_tokens")}) \
+        if slo is not None else None
+    return counts or dict.fromkeys(USAGE_FIELDS)
+
+
 def response_prompt_tokens(response, kwargs):
     """Prompt tokens LiteLLM reports for a finished call: the response's usage (or its .response's, for a Responses
     stream's completed event), else standard_logging_object.prompt_tokens; None when none is reported."""
@@ -471,7 +529,7 @@ def response_prompt_tokens(response, kwargs):
 
 
 def process_usage(kwargs, response, settings=None):
-    """Calibrate the session of a finished call from its reported prompt tokens. Never raises."""
+    """Record a finished call's usage event and calibrate its session from the reported prompt tokens. Never raises."""
     try:
         call_id = kwargs.get("litellm_call_id") if isinstance(kwargs, dict) else None
         if not isinstance(call_id, str):
@@ -481,11 +539,14 @@ def process_usage(kwargs, response, settings=None):
         if entry is None:
             return
         settings = settings or Settings.from_env()
-        tokens = response_prompt_tokens(response, kwargs)
-        if not settings.enabled or tokens is None:
+        if not settings.enabled:
             return
-        sid, root, chars = entry
+        sid, root, chars, request = entry
         store = Store(settings.context_dir)
+        _record_event(store, sid, "usage", **request, **response_usage_counts(response, kwargs))
+        tokens = response_prompt_tokens(response, kwargs)
+        if tokens is None:
+            return
         with session_lock(sid):
             state = store.load_trim(sid)
             if record_usage(state, root, chars, tokens):
