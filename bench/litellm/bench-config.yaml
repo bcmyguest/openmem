@@ -1,0 +1,18 @@
+# Benchmark-only LiteLLM config (container cbench-proxy, never the openmem compose project).
+# Same routes and hook as the repo's proxy/config.yaml, plus a usage logger.
+# The repo's proxy/ is mounted read-only at /app/proxy and put on PYTHONPATH; LiteLLM loads
+# usage_logger.py from this file's directory and falls back to importlib for openmem_context_hook
+# (litellm/proxy/types_utils/utils.py get_instance_fn).
+model_list:
+  - model_name: "anthropic/*"
+    litellm_params:
+      model: "anthropic/*"
+  - model_name: "*"
+    litellm_params:
+      model: "anthropic/*"
+
+litellm_settings:
+  callbacks: [openmem_context_hook.handler, usage_logger.handler]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
