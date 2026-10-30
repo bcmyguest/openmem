@@ -120,6 +120,24 @@ Source: [ContextBench](https://github.com/RulinShao/ContextBench) synthetic task
 | log-triage L12800 | $0.74 / — / $6.12 | 96% / — / 99% | 18.6M (17.7M) / — / 109.4M (108.6M) | 120k / — / 765k |
 <!-- contextbench:end -->
 
+### Latest version: search-tools note and cache-stable trims
+
+The charts and tables above are run D. Three changes since, measured on one task (log-triage L1600 seed 44):
+
+1. **Haiku trims at 95k** instead of about 120k, so every request stays under the 100k line where list prices rise 5× per token.
+2. **The trim note names the search tools.** Without it the model never searched its trimmed history on this task and answered 16 of 24 questions UNKNOWN. With it, every trial searched and answered every question.
+3. **Trims keep the prompt cache intact.** A trim now drops the model's thinking from before the cut and keeps the thinking after it. The start of the prompt stays identical from one request to the next, so the cache keeps hitting.
+
+| Version | Trials | Score | Cost per trial | Cache hit rate | Tokens written to cache | Largest prompt | Wall time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 95k trim | 1 | 0.17 | $0.15 | 93% | 404k | 94k | 7.9 min |
+| + search-tools note | 5 | 0.94 | $0.22 | 92% | 598k | 95k | 9.8 min |
+| + cache-stable trims | 5 | 1.00 | $0.11 | 98% | 163k | 95k | 7.3 min |
+
+The cache fix halves mean cost, and all 5 trials scored 1.00. Most of the gap is one search-tools-only trial that trimmed 3 times, wrote 2.2M tokens to the cache and cost $0.59; without it that version averages $0.13.
+
+For scale, the same size on seed 42 (one trial each, a different task instance): keep everything scored 0.71 at $0.57 with a 178k largest prompt; native compaction scored 0.50 at $0.31. The latest version costs about a fifth of keep everything and a third of native compaction. Most of that saving is the price tier, not token count: total tokens differ by less than 1.5× (6.9M against 10.2M). Treat the ratios as rough until the baselines run on seed 44. [Context research](context-research.md) has every trial.
+
 ### Compact-Bench (real coding sessions)
 
 [Compact-Bench](https://github.com/cai-jianfeng/compact-bench)'s Task Preservation track resumes real SWE-bench repair sessions after compaction and checks whether the task is preserved, damaged, rescued or left unsolved, per method: full history, Claude Code summary, Codex summary and OpenMem.
