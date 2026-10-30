@@ -96,7 +96,13 @@ def stream_crosscheck(agent_dir: Path) -> dict:
 def trim_events(state_dir: Path, sid: str | None) -> int | None:
     if not sid:
         return None
-    rows = _jsonl(state_dir / "context" / "sessions" / f"{sid}.log.jsonl")
+    sessions = state_dir / "context" / "sessions"
+    db = sessions / f"{sid}.db"
+    if db.is_file():  # SQLite store (run D on): one events row per trim
+        import sqlite3
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as con:
+            return con.execute("SELECT count(*) FROM events WHERE kind = 'trim'").fetchone()[0]
+    rows = _jsonl(sessions / f"{sid}.log.jsonl")
     return len({r.get("ts") for r in rows})
 
 
