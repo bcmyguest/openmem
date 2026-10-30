@@ -1,14 +1,14 @@
 # Context management
 
-Context management (smart compaction) keeps long coding-agent sessions under a token limit without an LLM summary. Every message goes into a local SQLite session store; older turns leave the context and a pointer takes their place; the agent searches the store when it needs a detail back.
+Context management (smart compaction) keeps long coding-agent sessions under a token limit without an LLM summary. Every message goes into a local SQLite session store; older turns leave the context and the turn they precede carries a pointer to them; the agent searches the store when it needs a detail back.
 
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/smart-compaction-dark.gif" />
-<img src="https://bcmyguest.github.io/openmem/media/smart-compaction.gif" alt="Animation: the model context fills with turns up to trim_at_tokens; the four oldest turns slide into the saved transcript, a pointer card takes their place, the two newest turns stay, and one turn-3 excerpt returns through smart_compact_search" width="720" />
+<img src="https://bcmyguest.github.io/openmem/media/smart-compaction.gif" alt="Animation: the model context fills past trim_at_tokens; the system prompt, tools and task turn stay, older turns and the oldest tool step of the in-flight turn slide into the saved transcript, the reply before the cut stays, the cut turn gets the continuing-session pointer prepended, the last three tool steps stay, the context drops to the target, and one turn-2 excerpt returns through smart_compact_search" width="720" />
 </picture>
 <br />
-<sub>Older turns move to the session store, a pointer replaces them, and <code>smart_compact_search</code> pulls a detail back.</sub>
+<sub>Older turns move to the session store, the cut turn carries a pointer, and <code>smart_compact_search</code> pulls a detail back.</sub>
 </p>
 
 ```mermaid
