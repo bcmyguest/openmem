@@ -156,7 +156,12 @@ function install(home, flags = {}) {
 // Config: per-agent resolution, the writer, and syncPmConfig keeping the subtable.
 {
   const home = tmpHome();
-  check("no config: every agent off", Object.values(contextAgentsFromPmConfig({}).agents).every((v) => v === false));
+  const none = contextAgentsFromPmConfig({}).agents;
+  check("no config: opencode2 on, proxy-routed agents off", none.opencode2 === true && ["claude-code", "opencode1", "codex"].every((k) => none[k] === false), JSON.stringify(none));
+  const bare = contextAgentsFromPmConfig({ context_proxy: { port: 4100 } }).agents;
+  check("[context_proxy] without enabled or opencode2: opencode2 on", bare.opencode2 === true && bare["claude-code"] === false, JSON.stringify(bare));
+  check("explicit enabled = false turns opencode2 off", contextAgentsFromPmConfig({ context_proxy: { enabled: false } }).agents.opencode2 === false);
+  check("explicit opencode2 = false turns it off", contextAgentsFromPmConfig({ context_proxy: { agents: { opencode2: false } } }).agents.opencode2 === false);
   const r = updatePmConfigContextAgents(home, { "claude-code": true, opencode2: false });
   check("writer sets enabled from the agents", r.enabled === true && readCfg(home).context_proxy?.enabled === true);
   check("writer stores [context_proxy.agents]", readCfg(home).context_proxy?.agents?.["claude-code"] === true && readCfg(home).context_proxy?.agents?.opencode2 === false);

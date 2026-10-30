@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Context management (smart compaction) per agent: `[context_proxy.agents]` in config.toml (a missing key
- * follows `[context_proxy] enabled`), the agent wiring (install-coding-agent) and the compose
+ * follows `[context_proxy] enabled`; with neither set, opencode2 is on and the others off), the agent wiring (install-coding-agent) and the compose
  * `context-proxy` service. Shared by the setup wizard step, install-coding-agent and `openmem context`.
  */
 import { spawnSync } from "node:child_process";
@@ -48,7 +48,8 @@ Usage:
   ${BIN} status [--json]                  per-agent values, proxy health, agents pointed at it
 
 Agents: ${CONTEXT_AGENT_KEYS.join(", ")} (default: all). claude-code and opencode1 go through the
-context-proxy service; opencode2 trims in its own plugin; codex is not routed yet.
+context-proxy service; opencode2 trims in its own plugin (on when config sets neither its key nor
+enabled); codex is not routed yet.
 Docs: docs/context-management.md`;
 
 /** True when any agent that needs the service resolves on. */
@@ -121,9 +122,10 @@ export function ensureContextProxyService({ home, stackRoot, project, on, dry = 
 export async function contextStatus({ home, stackRoot, fetch }) {
   const cfg = loadPmConfig(home, stackRoot || home).merged;
   const { port } = contextProxyFromPmConfig(cfg);
-  const { agents, saved } = contextAgentsFromPmConfig(cfg);
+  const { agents, saved, enabledSaved } = contextAgentsFromPmConfig(cfg);
   return {
     enabled: contextProxyFromPmConfig(cfg).enabled,
+    enabledSaved,
     agents: Object.fromEntries(CONTEXT_AGENT_KEYS.map((k) => [k, { on: agents[k], saved: saved.includes(k), route: CONTEXT_AGENT_ROUTE[k] }])),
     port,
     proxyUp: await probeContextProxy(port, fetch ? { fetch } : {}),
@@ -172,7 +174,7 @@ export async function runContextCommand(opts) {
     if (flags.json) log.info(JSON.stringify(s, null, 2));
     else {
       for (const [k, a] of Object.entries(s.agents)) {
-        log.info(`${k.padEnd(12)} ${a.on ? "on " : "off"}  ${a.saved ? "saved" : `follows enabled = ${s.enabled}`}  (${a.route})`);
+        log.info(`${k.padEnd(12)} ${a.on ? "on " : "off"}  ${a.saved ? "saved" : s.enabledSaved ? `follows enabled = ${s.enabled}` : "default"}  (${a.route})`);
       }
       log.info(`context proxy http://127.0.0.1:${s.port}: ${s.proxyUp ? "up" : "not answering"}`);
       log.info(`agents pointed at the proxy: ${s.pointedAgents.length ? s.pointedAgents.join(", ") : "none"}`);
