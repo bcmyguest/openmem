@@ -10,12 +10,12 @@
   overflow-x: auto;
 }
 
-/* Architecture diagrams are pre-rendered for a light canvas (dark text, pale clusters). */
+/* Mermaid diagrams without a dark export are pre-rendered for a light canvas (dark text, pale clusters). */
 .sl-markdown-content img[src*='diagrams/'] {
   display: block;
   width: 100%;
   height: auto;
-  margin: 1.25rem 0;
+  margin: 1.5rem 0;
   border-radius: 0.5rem;
 }
 
@@ -26,43 +26,86 @@
   box-sizing: border-box;
 }
 
-.pm-diagram-duo {
-  margin: 1.25rem 0;
+/*
+ * Figures. docs/*.md centers images with GitHub's <p align="center">; the docs build turns that into
+ * <figure class="pm-figure pm-figure--KIND"> (site/scripts/lib/docs.mjs pictureToDuo). Each kind keeps
+ * a width near the size its image is drawn at, centered, so no image blows up to the full column.
+ */
+.sl-markdown-content .pm-figure {
+  --pm-figure-w: 100%;
+  max-width: var(--pm-figure-w);
+  margin: 2rem auto;
+  padding: 0;
 }
-/* Overview diagrams (docs/architecture.md): side by side when the column is wide enough. */
-.pm-overview {
+.sl-markdown-content .pm-figure--chart {
+  --pm-figure-w: 30rem; /* charts are drawn 480 px wide */
+}
+.sl-markdown-content .pm-figure--animation {
+  --pm-figure-w: 45rem; /* smart-compaction GIF, 720 px viewBox */
+}
+.sl-markdown-content .pm-figure--pair {
   display: grid;
   gap: 1rem;
-  margin: 1.25rem 0;
+  --pm-figure-w: 46rem;
 }
 @media (min-width: 40rem) {
-  .pm-overview {
+  .sl-markdown-content .pm-figure--pair {
     grid-template-columns: 1fr 1fr;
     align-items: start;
   }
+  .sl-markdown-content .pm-figure--pair figcaption {
+    grid-column: 1 / -1;
+  }
 }
-.pm-overview .pm-diagram-duo {
+.sl-markdown-content .pm-figure > * {
   margin: 0;
 }
-/* Benchmark charts are drawn 480 px wide; keep them near that size instead of the full column. */
-.pm-diagram-duo img[src*='/media/contextbench-'] {
-  max-width: 26rem;
-}
-.pm-diagram-duo img {
+.sl-markdown-content .pm-figure img {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 0.5rem;
+  margin: 0;
+  border-radius: 0.75rem;
 }
-.pm-diagram-duo .pm-diagram-dark {
-  display: none;
+.sl-markdown-content .pm-figure-img {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 8px 24px -12px rgb(0 0 0 / 0.25);
 }
-:root[data-theme='dark'] .pm-diagram-duo .pm-diagram-light {
-  display: none;
+.sl-markdown-content .pm-figure figcaption {
+  margin-top: 0.75rem;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+  line-height: 1.5;
+  text-align: center;
 }
-:root[data-theme='dark'] .pm-diagram-duo .pm-diagram-dark {
+.sl-markdown-content .pm-figure figcaption code {
+  font-size: 0.9em;
+}
+
+/* Light/dark pair: show the one that matches the theme. Selectors carry .sl-markdown-content so they
+   outrank the diagram rule above, which would otherwise show both. */
+.sl-markdown-content .pm-diagram-duo {
+  margin: 1.5rem 0;
+}
+.sl-markdown-content .pm-figure .pm-diagram-duo {
+  margin: 0;
+}
+.sl-markdown-content .pm-diagram-duo img {
   display: block;
-  border: 1px solid var(--sl-color-gray-5);
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 0.75rem;
+}
+.sl-markdown-content .pm-diagram-duo .pm-diagram-dark {
+  display: none;
+}
+:root[data-theme='dark'] .sl-markdown-content .pm-diagram-duo .pm-diagram-light {
+  display: none;
+}
+:root[data-theme='dark'] .sl-markdown-content .pm-diagram-duo .pm-diagram-dark {
+  display: block;
+  outline: 1px solid var(--sl-color-gray-5);
+  outline-offset: -1px;
 }
 
 .sl-markdown-content table {

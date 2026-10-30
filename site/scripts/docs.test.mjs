@@ -79,3 +79,32 @@ test('mapProse skips fenced code of either marker', () => {
   const md = 'A\n~~~\nA\n~~~\n```\nA\n```\nA';
   assert.equal(mapProse(md, (s) => s.replaceAll('A', 'B')), 'B\n~~~\nA\n~~~\n```\nA\n```\nB');
 });
+
+test('pictureToDuo: a centered paragraph becomes a figure with a kind class and caption', () => {
+  const md = [
+    '<p align="center">',
+    '<picture>',
+    '<source media="(prefers-color-scheme: dark)" srcset="https://h.io/om/media/contextbench-x-dark.png" />',
+    '<img src="https://h.io/om/media/contextbench-x.png" alt="Chart" width="480" />',
+    '</picture>',
+    '<br />',
+    '<sub>Score by size.</sub>',
+    '</p>',
+  ].join('\n');
+  const out = pictureToDuo(md, { siteRoot: 'https://h.io/om/', basePath: '/om/' });
+  assert.match(out, /^<figure class="pm-figure pm-figure--chart">/);
+  assert.match(out, /<img class="pm-diagram-light" src="\/om\/media\/contextbench-x\.png" alt="Chart" \/>/);
+  assert.match(out, /<figcaption>Score by size\.<\/figcaption>\n<\/figure>$/);
+  assert.doesNotMatch(out, /<p align|<picture>|<sub>|<br/);
+});
+
+test('pictureToDuo: two pictures make a pair; a plain image keeps one img', () => {
+  const pic = (n) => `<picture>\n<source media="(prefers-color-scheme: dark)" srcset="https://h.io/om/media/${n}-dark.png" />\n<img src="https://h.io/om/media/${n}.png" alt="${n}" width="360" />\n</picture>`;
+  const pair = pictureToDuo(`<p align="center">\n${pic('a')}\n${pic('b')}\n</p>`, { siteRoot: 'https://h.io/om/', basePath: '/om/' });
+  assert.match(pair, /pm-figure--pair/);
+  assert.equal(pair.match(/pm-diagram-duo/g).length, 2);
+  const gif = pictureToDuo('<p align="center">\n<img src="https://h.io/om/demo.gif" alt="Demo" width="720" />\n</p>', { siteRoot: 'https://h.io/om/', basePath: '/om/' });
+  assert.equal(gif, '<figure class="pm-figure pm-figure--animation">\n<img class="pm-figure-img" src="/om/demo.gif" alt="Demo" />\n</figure>');
+  const text = '<p align="center">\nJust text.\n</p>';
+  assert.equal(pictureToDuo(text, { siteRoot: 'https://h.io/om/', basePath: '/' }), text);
+});

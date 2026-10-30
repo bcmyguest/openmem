@@ -46,7 +46,9 @@ npx @bcmyguest/openmem configure --yes       # defaults + start, no prompts
 
 Wizard dry-run (what first setup plans — no writes):
 
-![Setup dry-run: npx @bcmyguest/openmem setup --dry-run](https://bcmyguest.github.io/openmem/setup-demo.gif)
+<figure class="pm-figure pm-figure--animation">
+<img class="pm-figure-img" src="/openmem/setup-demo.gif" alt="Terminal recording of the setup wizard dry run: preflight checks, memory provider, model backend, secrets, sources and stack steps, each planned write printed as a [dry-run] line" />
+</figure>
 
 ## 2. Confirm it is up
 

@@ -11,24 +11,30 @@
 
 **A. Memory**: your sources become memory any agent can query.
 
+<p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-memory-wide-dark.png" />
 <img src="https://bcmyguest.github.io/openmem/media/overview-memory-wide.png" alt="A, memory: sources (Git repos, Obsidian vaults, notes, papers, bookmarks, feeds), OpenMem indexer, one active provider (Hindsight default, mem0, Cognee), OpenMem MCP tools, coding agents with session hooks" />
 </picture>
+</p>
 
 **B. Context management**: long sessions stay under the limit; nothing is summarized away.
 
+<p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-context-wide-dark.png" />
 <img src="https://bcmyguest.github.io/openmem/media/overview-context-wide.png" alt="B, context management: coding agent, context proxy trimming at 120k tokens with no LLM call, model API, SQLite session store read back with smart_compact_search and smart_compact_sql; OpenCode 2 uses a native plugin" />
 </picture>
+</p>
 
 **Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks) on [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks (Claude Haiku 5.5). Compact-Bench real-coding results are in progress.
 
+<p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="ContextBench (synthetic tasks): score by task size for OpenMem smart compaction, native compaction and keep everything" width="480" />
+<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="Line charts of ContextBench score by task size, kv-store and log-triage: OpenMem smart compaction stays at 0.90 to 1.00; native compaction and keep everything fall as tasks grow" width="480" />
 </picture>
+</p>
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
 
@@ -59,7 +65,9 @@ Later: `npx @bcmyguest/openmem up` / `down` / `switch <provider> --yes` / `docto
 
 Wizard dry-run (what first setup plans — no writes):
 
-![Setup dry-run: npx @bcmyguest/openmem setup --dry-run](https://bcmyguest.github.io/openmem/setup-demo.gif)
+<p align="center">
+<img src="https://bcmyguest.github.io/openmem/setup-demo.gif" alt="Terminal recording of the setup wizard dry run: preflight checks, memory provider, model backend, secrets, sources and stack steps, each planned write printed as a [dry-run] line" width="720" />
+</p>
 
 Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/)
 

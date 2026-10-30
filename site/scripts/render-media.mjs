@@ -27,7 +27,8 @@ const SVG_SOURCES = [
   ...readdirSync(join(PUB, 'diagrams')).filter((f) => f.startsWith('overview-') && f.endsWith('.svg')).map((f) => join(PUB, 'diagrams', f)),
 ];
 const GIF_SECONDS = 14; // SmartCompactionFigure's loop length
-const GIF_FPS = 8;
+const GIF_FPS = 10; // 8 fps showed fades as two or three hard steps; 100 ms is a whole GIF delay
+const GIF_SCALE = 1.5; // device pixels per CSS px; docs show the GIF at 720 px, so this stays sharp on HiDPI
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function chromeBin() {
@@ -156,13 +157,20 @@ async function exportGifs(cdp, work) {
       for (let i = 0; i < n; i++) {
         const t = (i * 1000) / GIF_FPS;
         await cdp.send('Runtime.evaluate', { expression: `document.getAnimations().forEach((a) => { a.pause(); a.currentTime = ${t}; })` });
-        writeFileSync(join(frames, `${String(i).padStart(4, '0')}.png`), await shot(cdp, clip, 1));
+        writeFileSync(join(frames, `${String(i).padStart(4, '0')}.png`), await shot(cdp, clip, GIF_SCALE));
       }
       const gif = join(OUT, `smart-compaction${theme === 'dark' ? '-dark' : ''}.gif`);
+      // One palette for the whole loop, built from a strip of every 6th frame: per-frame palettes made
+      // the same pixels shift colour from frame to frame, which read as flicker.
       const py = `import glob,sys
 from PIL import Image
 fs=[Image.open(p).convert('RGB') for p in sorted(glob.glob(sys.argv[1]+'/*.png'))]
-q=[f.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE) for f in fs]
+sample=fs[::6]
+w,h=fs[0].size
+strip=Image.new('RGB',(w,h*len(sample)))
+for i,f in enumerate(sample): strip.paste(f,(0,h*i))
+pal=strip.quantize(colors=160, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+q=[f.quantize(palette=pal, dither=Image.Dither.NONE) for f in fs]
 q[0].save(sys.argv[2], save_all=True, append_images=q[1:], duration=${Math.round(1000 / GIF_FPS)}, loop=0, optimize=True)`;
       execFileSync('uv', ['run', '--quiet', '--with', 'pillow', 'python', '-c', py, frames, gif], { stdio: 'inherit' });
       console.log(`media: ${gif.split('/').pop()} (${n} frames)`);

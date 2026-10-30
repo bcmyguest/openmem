@@ -260,13 +260,29 @@ export function rewriteLinks(md, { sourcePath, published, kindOf, repoUrl, branc
   );
 }
 
-const PICTURE = /<picture>\s*<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+)"\s*\/?>\s*<img src="([^"]+)" alt="([^"]*)"\s*\/?>\s*<\/picture>/g;
+const PICTURE = /<picture>\s*<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+)"\s*\/?>\s*<img src="([^"]+)" alt="([^"]*)"[^>]*?\/?>\s*<\/picture>/g;
+const PLAIN_IMG = /<img src="([^"]+)" alt="([^"]*)"[^>]*?\/?>/g;
+const CENTERED = /<p align="center">\n([\s\S]*?)\n<\/p>/g;
+const CAPTION = /<sub>([\s\S]*?)<\/sub>/;
+
+/** Figure class from what it shows: benchmark chart, wide overview, animation, side-by-side pair. */
+function figureKind(src, count) {
+  if (count > 1) return 'pair';
+  if (/\/media\/contextbench-/.test(src)) return 'chart';
+  if (/-wide\.png$/.test(src)) return 'wide';
+  if (/\.gif$/.test(src)) return 'animation';
+  return 'plain';
+}
 
 /**
- * Turn GitHub-style light/dark `<picture>` blocks into the site's theme-toggled duo (`pm-diagram-duo`),
- * and make image URLs under the published site (`siteRoot`, e.g. https://host/openmem/) relative to
- * `basePath`, so the docs build serves the copy it deploys. Repository markdown keeps the absolute URLs,
- * which GitHub renders. Other pictures are left alone.
+ * Turn GitHub-style figures into the site's figures, and make image URLs under the published site
+ * (`siteRoot`, e.g. https://host/openmem/) relative to `basePath`, so the docs build serves the copy it
+ * deploys. Repository markdown keeps the absolute URLs, which GitHub renders.
+ *
+ * - A light/dark `<picture>` becomes the theme-toggled duo (`pm-diagram-duo`); a plain `<img>` stays one image.
+ * - `<p align="center">` (GitHub's centering) holding pictures or images, and an optional `<sub>` caption,
+ *   becomes `<figure class="pm-figure pm-figure--<kind>">` with a `<figcaption>`.
+ * - A bare `<picture>` outside such a paragraph becomes an uncaptioned figure. Other pictures are left alone.
  * @param {string} md
  * @param {{ siteRoot: string, basePath: string }} opts
  */
@@ -274,11 +290,22 @@ export function pictureToDuo(md, { siteRoot, basePath }) {
   const root = siteRoot.replace(/\/?$/, '/');
   const base = basePath.replace(/\/?$/, '/');
   const local = (u) => (u.startsWith(root) ? `${base}${u.slice(root.length)}` : u);
-  return md.replace(
-    PICTURE,
-    (_m, dark, light, alt) =>
-      `<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${local(light)}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${local(dark)}" alt="${alt}" />\n</div>`,
-  );
+  const duo = (dark, light, alt) =>
+    `<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${local(light)}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${local(dark)}" alt="${alt}" />\n</div>`;
+  const figure = (items, caption) =>
+    [`<figure class="pm-figure pm-figure--${figureKind(items[0].src, items.length)}">`, ...items.map((i) => i.html), ...(caption ? [`<figcaption>${caption.trim()}</figcaption>`] : []), '</figure>'].join('\n');
+
+  const centered = md.replace(CENTERED, (whole, inner) => {
+    const items = [];
+    const rest = inner.replace(PICTURE, (_m, dark, light, alt) => {
+      items.push({ src: light, html: duo(dark, light, alt) });
+      return '';
+    });
+    for (const [, src, alt] of rest.matchAll(PLAIN_IMG)) items.push({ src, html: `<img class="pm-figure-img" src="${local(src)}" alt="${alt}" />` });
+    if (!items.length) return whole;
+    return figure(items, CAPTION.exec(rest)?.[1]);
+  });
+  return centered.replace(PICTURE, (_m, dark, light, alt) => figure([{ src: light, html: duo(dark, light, alt) }]));
 }
 
 /** First `# ` heading, with Markdown code ticks removed, or null. */

@@ -5,6 +5,28 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MERMAID_FENCE = /```mermaid\n([\s\S]*?)```/g;
+const DIAGRAM_TYPES = { flowchart: 'Flowchart', graph: 'Flowchart', sequenceDiagram: 'Sequence diagram', stateDiagram: 'State diagram', 'stateDiagram-v2': 'State diagram', classDiagram: 'Class diagram', erDiagram: 'Entity diagram' };
+const NODE_LABEL = /\b[A-Za-z0-9_]+(?:\[\(|\(\(|\[\[|\[|\(|\{)"?([^"\]\)\}]+?)"?(?:\)\]|\)\)|\]\]|\]|\)|\})/g;
+const PARTICIPANT = /^\s*(?:participant|actor)\s+\S+(?:\s+as\s+(.+))?$/gm;
+const MAX_ALT_LABELS = 8;
+
+/**
+ * Alt text for a mermaid diagram: its type and the first node or participant labels, each cut at its
+ * first line break, e.g. "Sequence diagram: Agent, Context store, Model API".
+ * @param {string} diagram
+ */
+export function mermaidAlt(diagram) {
+  const first = diagram.trim().split(/\s/)[0];
+  const type = DIAGRAM_TYPES[first] ?? 'Diagram';
+  const clean = (t) => t.split(/<br\s*\/?>/)[0].replace(/<\/?(?:b|i|u|em|strong|small|code|sub|sup|span)\b[^>]*>/gi, '').replace(/"/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
+  const raw = first === 'sequenceDiagram'
+    ? [...diagram.matchAll(PARTICIPANT)].map((m) => m[1] ?? m[0].trim().split(/\s+/)[1])
+    : [...diagram.matchAll(NODE_LABEL)].map((m) => m[1]);
+  const labels = [...new Set(raw.map(clean).filter(Boolean))];
+  if (!labels.length) return type;
+  const shown = labels.slice(0, MAX_ALT_LABELS).join(', ');
+  return `${type}: ${shown}${labels.length > MAX_ALT_LABELS ? ', …' : ''}`;
+}
 
 /** @param {string} md */
 export function mermaidBlockCount(md) {
@@ -19,7 +41,7 @@ export function mermaidBlockCount(md) {
 export function embedMermaidAsImages(md, opts) {
   const { outDir, urlPrefix, namePrefix } = opts;
   let index = 0;
-  return md.replace(MERMAID_FENCE, () => {
+  return md.replace(MERMAID_FENCE, (_m, diagram) => {
     index += 1;
     const file = `${namePrefix}-${index}.svg`;
     const outPath = join(outDir, file);
@@ -28,10 +50,10 @@ export function embedMermaidAsImages(md, opts) {
         `missing diagram SVG ${outPath}. After editing mermaid in the doc source, run: cd site && pnpm render-diagrams`,
       );
     }
-    const alt = index === 1 ? 'Architecture diagram' : `Architecture diagram ${index}`;
+    const alt = mermaidAlt(diagram);
     const darkFile = `${namePrefix}-${index}-dark.svg`;
     if (existsSync(join(outDir, darkFile))) {
-      return `\n<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${urlPrefix}${file}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${urlPrefix}${darkFile}" alt="${alt} (dark theme)" />\n</div>\n`;
+      return `\n<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${urlPrefix}${file}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${urlPrefix}${darkFile}" alt="${alt}" />\n</div>\n`;
     }
     return `\n![${alt}](${urlPrefix}${file})\n`;
   });

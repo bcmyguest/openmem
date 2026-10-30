@@ -284,13 +284,24 @@ const usd = (v) => (v == null ? '—' : `$${v.toFixed(2)}`);
 const SIZE_ROWS = [['kv', 'R1000'], ['kv', 'R4000'], ['kv', 'R16000'], ['log', 'L1600'], ['log', 'L6400'], ['log', 'L12800']];
 const TASK = { kv: 'kv-store', log: 'log-triage' };
 
+const CHART_W = 480; // CSS px the charts are drawn at (W); the PNGs are exported at 2x
+
 function chartHtml(name, alt) {
-  return pictureHtml(`${MEDIA_URL}${name}`, alt);
+  return pictureHtml(`${MEDIA_URL}${name}`, alt, { width: CHART_W });
 }
 
-/** GitHub-style light/dark image; the docs build (site/scripts/lib/docs.mjs pictureToDuo) turns it into the site's duo. */
-export function pictureHtml(base, alt) {
-  return `<picture>\n<source media="(prefers-color-scheme: dark)" srcset="${base}-dark.png" />\n<img src="${base}.png" alt="${alt}" />\n</picture>`;
+function compactionTakeaway(d) {
+  const t = d.timing;
+  return `Median native summary call ${t.s2.native_summary_request_latency_s.median.toFixed(1)} s; median OpenMem request that carried a trim ${t.smart.smart_trim_request_latency_s.median.toFixed(1)} s, other OpenMem requests ${t.smart.smart_other_request_latency_s.median.toFixed(1)} s.`;
+}
+
+/**
+ * GitHub-style light/dark image, centered with GitHub's `<p align="center">` and drawn at `width` CSS px.
+ * The docs build (site/scripts/lib/docs.mjs pictureToDuo) turns it into the site's figure.
+ */
+export function pictureHtml(base, alt, { width } = {}) {
+  const w = width ? ` width="${width}"` : '';
+  return `<p align="center">\n<picture>\n<source media="(prefers-color-scheme: dark)" srcset="${base}-dark.png" />\n<img src="${base}.png" alt="${esc(alt).replace(/"/g, '&quot;')}"${w} />\n</picture>\n</p>`;
 }
 
 function scoreCell(c, k) {
@@ -333,7 +344,7 @@ function benchmarkMarkdown(d) {
   ];
   const nat = t.s2.native_detected_vs_cc;
   return [
-    chartHtml('contextbench-quality', 'Answer quality by task size: OpenMem smart compaction, native compaction, keep everything'),
+    chartHtml('contextbench-quality', `Line charts of answer quality by task size (kv-store score, log-triage score, lookup and count questions) for OpenMem smart compaction, native compaction and keep everything. ${qualityTakeaway(d)}`),
     '',
     `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks, Claude Haiku 5.5. Score is ${d.score_metric}, the mean over the completed seeds of each cell. † a seed dropped the \`#tag\` from its kv answers and scored 0 under the strict reward; the values were right. ‡ the harness step limit stopped the trial before any question, so the 0 is not a recall score.`,
     '',
@@ -341,13 +352,13 @@ function benchmarkMarkdown(d) {
     '',
     '### Time',
     '',
-    chartHtml('contextbench-compaction', 'Seconds per compaction event: native summary call against the OpenMem trimming request'),
+    chartHtml('contextbench-compaction', `Bar chart of seconds per compaction event, median bars with 10th to 90th percentile whiskers. ${compactionTakeaway(d)}`),
     '',
     `Native compaction is a model call. Claude Code's summary call took ${dist(t.s2.native_summary_request_latency_s)}; Claude Code's own compaction timer read ${dist(t.s2.native_cc_compaction_s)}. The summary calls are the requests after which the next prompt drops below half its size; that finds ${nat.detected} of the ${nat.cc_compact_boundaries} compactions Claude Code reported.`,
     '',
     `Smart compaction makes no model call: the proxy cuts the history in its pre-call hook and records no separate hook time. The request that carried a trim took ${dist(t.smart.smart_trim_request_latency_s)}, against ${dist(t.smart.smart_other_request_latency_s)} for the other requests of the same run. That request also rewrites the prompt cache for the shortened history, so the difference is an upper bound on the trim's own time, assuming LiteLLM's request timer covers the pre-call hook (not verified).`,
     '',
-    chartHtml('contextbench-time', 'Agent wall time per trial by task size'),
+    chartHtml('contextbench-time', `Line charts of agent wall time per trial by task size for kv-store and log-triage. ${timeTakeaway(d)}`),
     '',
     ...time,
     '',
@@ -359,9 +370,9 @@ function benchmarkMarkdown(d) {
     '',
     '### Cost and prompt cache',
     '',
-    chartHtml('contextbench-cost', 'List-price cost per trial by task size'),
+    chartHtml('contextbench-cost', `Line charts of list-price cost per trial by task size for kv-store and log-triage. ${costTakeaway(d)}`),
     '',
-    chartHtml('contextbench-cache', 'Prompt-cache hit rate by task size'),
+    chartHtml('contextbench-cache', `Line charts of prompt-cache hit rate by task size for kv-store and log-triage. ${cacheTakeaway(d)}`),
     '',
     `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks. Cost applies Claude Haiku 5.5 list prices to each request’s token counts. Cache hit rate is cache reads over all prompt tokens (input, cache reads and cache writes) of a cell’s requests. Peak prompt is the largest single request.`,
     '',
