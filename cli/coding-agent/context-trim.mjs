@@ -17,6 +17,8 @@ import { blobRef, chain, dropSession, openSession, scheduleEmbedding, storeSetti
 export { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, recallBlock } from "./recall-frame.mjs";
 
 export const DEFAULT_TRIM_AT_TOKENS = 120000;
+/** A trim keeps older in-turn exchanges while the request stays under this fraction of trimAtTokens; same as the proxy. */
+export const DEFAULT_TRIM_TO_FRACTION = 0.3;
 export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
 export const DEFAULT_COMPACTION_MAX_CHARS = 12000;
 export const DEFAULT_RECALL_TIMEOUT_S = 5.0;
@@ -67,11 +69,16 @@ export function trimSettings(env = process.env, home = env.HOME) {
     const value = float(name, fallback);
     return value > 0 ? value : fallback;
   };
+  const fraction = (name, fallback) => {
+    const value = float(name, fallback);
+    return value > 0 && value < 1 ? value : fallback;
+  };
   const flag = (name) => !["0", "false", "no", "off"].includes(String(env[name] ?? "1").trim().toLowerCase());
   return {
     enabled: flag("CONTEXT_PROXY_ENABLED"),
     standingInstruction: flag("CONTEXT_STANDING_INSTRUCTION"),
     trimAtTokens: int("CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
+    trimToFraction: fraction("CONTEXT_TRIM_TO_FRACTION", DEFAULT_TRIM_TO_FRACTION),
     compressOverTokens: int("CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
     charsPerToken: positive("CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
     compactionMaxChars: int("CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
@@ -371,8 +378,8 @@ function storeMessages(store, sid, settings, original, items, cut, gap, first, t
   }
 }
 
-// Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under half the
-// trim threshold.
+// Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under
+// trimToFraction of the trim threshold.
 const MIN_TAIL_STEPS = 3;
 
 /** Index of the agent reply just before the cut turn (kept with it, so the turn reads in context), or null. */
@@ -427,7 +434,7 @@ function lastTurnIndex(items) {
 /**
  * Start of the kept tail for a cut inside the turn at `cut`, > after; null when no gap is possible. The tail
  * keeps the newest MIN_TAIL_STEPS tool exchanges, then older ones while fits(gap) holds (the request stays
- * under half the trim threshold). An exchange is never split: the tail starts at a step start.
+ * under trimToFraction of the trim threshold). An exchange is never split: the tail starts at a step start.
  */
 export function chooseGap(items, cut, after, first, fits) {
   const starts = [];
@@ -701,10 +708,11 @@ async function trimSession(request, settings, deps, { original, sid, store, item
       let nextGap = null;
       if (next !== null) {
         const sizes = items.map((x) => requestChars(x));
+        const target = settings.trimAtTokens * (settings.trimToFraction ?? DEFAULT_TRIM_TO_FRACTION);
         const fits = (g) => {
           let chars = baseChars;
           for (const j of keptIndices(items, next, g, first)) chars += sizes[j];
-          return estimatePromptTokens(chars, state.usage, root, ratio) < settings.trimAtTokens / 2;
+          return estimatePromptTokens(chars, state.usage, root, ratio) < target;
         };
         const after = next === cut && gap !== null ? gap : next + 1;
         nextGap = chooseGap(items, next, after, first, fits);

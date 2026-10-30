@@ -27,8 +27,8 @@ MAX_THREADS = 32
 # Requests awaiting their usage report, by litellm_call_id: (sid, thread root, request chars).
 MAX_PENDING = 256
 RECALL_QUERY_MAX_CHARS = 2000
-# Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under half the
-# trim threshold.
+# Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under
+# trim_to_fraction of the trim threshold.
 MIN_TAIL_STEPS = 3
 # Added to the system prompt of every request while trimming is on, before any trim; constant, so the cached
 # prefix never changes. Same text as STANDING_INSTRUCTION in cli/coding-agent/context-trim.mjs.
@@ -183,7 +183,8 @@ def choose_gap(adapter, items, cut, after, first, fits):
     """Start of the kept tail for a cut inside the turn at `cut`, > after; None when no gap is possible.
 
     The tail keeps the newest MIN_TAIL_STEPS tool exchanges, then older ones while fits(gap) holds (the request
-    stays under half the trim threshold). An exchange is never split: the tail starts at an adapter step start.
+    stays under trim_to_fraction of the trim threshold). An exchange is never split: the tail starts at an adapter
+    step start.
     """
     starts = [j for j in range(cut + 2, len(items)) if adapter.is_step_start(items, j)]
     best = None
@@ -347,10 +348,11 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
             new_gap = None
             if new_cut is not None:
                 sizes = [request_chars(x) for x in items]
+                target = settings.trim_at_tokens * settings.trim_to_fraction
 
                 def fits(g):
                     chars = base_chars + sum(sizes[j] for j in kept_indices(adapter, items, new_cut, g, first))
-                    return estimate_prompt_tokens(chars, state.get("usage"), root, ratio) < settings.trim_at_tokens / 2
+                    return estimate_prompt_tokens(chars, state.get("usage"), root, ratio) < target
 
                 after = gap if new_cut == cut and gap is not None else new_cut + 1
                 new_gap = choose_gap(adapter, items, new_cut, after, first, fits)

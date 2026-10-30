@@ -699,6 +699,17 @@ class InTurnGapTests(Base):
         self.assertEqual(out[2]["content"][0]["text"], self.ptr(8))
         self.assertEqual(json.dumps(out[3:]), json.dumps(msgs[11:]))
 
+    def test_trim_depth_follows_trim_to_fraction(self):
+        # The same request at the same threshold: the default 0.3 keeps only the newest 3 exchanges, 0.5 keeps 6.
+        msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(8)
+        self.force()
+        deep = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=2000)["messages"]
+        self.assertEqual(json.dumps(deep[3:]), json.dumps(msgs[-6:]))
+        self.force("other")
+        shallow = self.run_req(anth_request(copy.deepcopy(msgs), sid="other"), trim_at_tokens=2000,
+                               trim_to_fraction=0.5)["messages"]
+        self.assertEqual(json.dumps(shallow[3:]), json.dumps(msgs[-12:]))
+
     def test_fewer_than_four_exchanges_means_no_gap(self):
         msgs = [{"role": "user", "content": "task"}] + anth_loop(3)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
@@ -782,6 +793,13 @@ class SafetyTests(Base):
                               Settings(enabled=False, trim_at_tokens=1, compress_over_tokens=1, context_dir=self.ctx))
         self.assertEqual(out["messages"], msgs)
         self.assertFalse(self.ctx.exists())
+
+    def test_trim_to_fraction_from_env(self):
+        self.assertEqual(Settings.from_env({}).trim_to_fraction, 0.3)
+        self.assertEqual(Settings().trim_to_fraction, 0.3)
+        self.assertEqual(Settings.from_env({"CONTEXT_TRIM_TO_FRACTION": " 0.45 "}).trim_to_fraction, 0.45)
+        for bad in ("0", "1", "-0.2", "1.5", "nan", "inf", "x", ""):
+            self.assertEqual(Settings.from_env({"CONTEXT_TRIM_TO_FRACTION": bad}).trim_to_fraction, 0.3, bad)
 
     def test_disabled_from_env(self):
         self.assertFalse(Settings.from_env({"CONTEXT_PROXY_ENABLED": "0"}).enabled)
