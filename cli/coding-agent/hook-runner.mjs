@@ -12,7 +12,7 @@ import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
 import { providerSupports } from "./capabilities.mjs";
 import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { SHIM_HARNESSES } from "./hook-harnesses.mjs";
-import { sessionRecall, sessionRetain } from "./session-facade.mjs";
+import { hookRecallBlock, sessionRecall, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
 import { resolveStackRoot } from "../stack.mjs";
 
@@ -230,11 +230,12 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
       fetchFn,
     );
     const banner = sessionBanner(ctx.provider, bank);
-    context = recalled?.trim() ? `${banner}\n\n${recalled.trim()}` : banner;
+    const block = hookRecallBlock(recalled);
+    context = block ? `${banner}\n\n${block}` : banner;
   } else if (phase === "prompt") {
     const q = String(parsed.prompt || "").trim();
     if (q && !smartCompact) {
-      context = await sessionRecall(ctx, { query: q, bank, limit: 8 }, fetchFn);
+      context = hookRecallBlock(await sessionRecall(ctx, { query: q, bank, limit: 8 }, fetchFn));
     }
   } else if (phase === "stop") {
     const transcript = readNewTranscript(harnessId, parsed.transcriptPath, home, parsed.sessionId);

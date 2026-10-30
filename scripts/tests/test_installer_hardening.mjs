@@ -253,6 +253,11 @@ other = { command = "x" }
     && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: true } }).CONTEXT_STANDING_INSTRUCTION === "1"
     && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: "no" } }).CONTEXT_STANDING_INSTRUCTION === undefined
     && contextProxyStackEnvFromPmConfig(off).CONTEXT_STANDING_INSTRUCTION === "0");
+  const recallOff = TOML.parse("[compaction]\nrecall = false\n");
+  check("[compaction] recall reaches the env", contextTrimEnvFromPmConfig(recallOff).CONTEXT_COMPACTION_RECALL === "0"
+    && contextTrimEnvFromPmConfig({ compaction: { recall: true } }).CONTEXT_COMPACTION_RECALL === "1"
+    && contextTrimEnvFromPmConfig({ compaction: { recall: "no" } }).CONTEXT_COMPACTION_RECALL === undefined
+    && contextProxyStackEnvFromPmConfig(recallOff).CONTEXT_COMPACTION_RECALL === "0");
   check("TOML integers are read",contextTrimFromPmConfig(TOML.parse("[context_proxy]\ntrim_at_tokens = 7\n")).trimAtTokens === 7);
 
   const home = tmpHome("s3");

@@ -3,9 +3,9 @@
  * Parity between the context proxy core (proxy/openmem_context, python3, Chat adapter) and its JS port
  * (cli/coding-agent/context-trim.mjs, OpenCode 2 parts). The same fixture requests
  * (scripts/tests/fixtures/context-parity.json) run through both; rendered views (pointer, pinned first
- * user turn, cut, compressed text), session database rows (messages and lines, every column) and schema,
- * and blob files must match, and both sides must produce the fixture's golden standing instruction and
- * pointer text. Disposable state only.
+ * user turn, cut, compressed text, framed recall), session database rows (messages and lines, every column)
+ * and schema, and blob files must match, and both sides must produce the fixture's golden standing
+ * instruction, pointer text and recall blocks. Disposable state only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -13,11 +13,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeSessionId } from "../../cli/coding-agent/context-store.mjs";
-import { STANDING_INSTRUCTION, addStandingInstruction, pointerText, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
+import { STANDING_INSTRUCTION, addStandingInstruction, pointerText, recallBlock, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "scripts/tests/fixtures/context-parity.json"), "utf8"));
 const BIG = 10 ** 9;
+const DEFAULT_MAX_CHARS = 12000;
 const TS = "2026-01-01T00:00:00Z";
 // Runs each case's requests through process_request; prints the rewritten Chat messages per request.
 const PY_DRIVER = `
@@ -25,24 +26,35 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from pathlib import Path
 from openmem_context import Settings, core, process_request
-from openmem_context.core import STANDING_INSTRUCTION, pointer_text
+from openmem_context.core import STANDING_INSTRUCTION, pointer_text, recall_block
 from openmem_context.store import sanitize_sid
 core._utc_now = lambda: ${JSON.stringify(TS)}
 job = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 ctx = Path(job["state"]) / "context"
 def no_http(*args):
     raise AssertionError("no registration, so no recall")
+def recall_http(text):
+    def http(method, url, body, timeout):
+        return 200, ({"results": [{"text": text}]} if url.endswith("/memories/recall") else {"total": 0})
+    return http
 ptr = job["pointer"]
-out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"]), "views": []}
+rec = job["recall"]
+out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"]),
+       "recall": [recall_block(rec["text"], c["max_chars"]) for c in rec["cases"]], "views": []}
 for case in job["cases"]:
     views = []
+    http = no_http
+    if case.get("bank"):
+        (ctx / "sessions").mkdir(parents=True, exist_ok=True)
+        (ctx / "sessions" / (sanitize_sid(case["sid"]) + ".json")).write_text(json.dumps({"bank": case["bank"]}))
+        http = recall_http(case["recall"])
     for req in case["requests"]:
         if req.get("force"):
             (ctx / "sessions").mkdir(parents=True, exist_ok=True)
             (ctx / "sessions" / (sanitize_sid(case["sid"]) + ".force")).write_text("")
         data = {"messages": req["messages"], "proxy_server_request": {"headers": {"x-openmem-session-id": case["sid"]}}}
         settings = Settings(trim_at_tokens=req["trim_at"], compress_over_tokens=case["compress"], context_dir=ctx)
-        views.append(process_request(data, "acompletion", settings, http=no_http)["messages"])
+        views.append(process_request(data, "acompletion", settings, http=http)["messages"])
     out["views"].append(views)
 sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
 `;
@@ -149,7 +161,8 @@ try {
   const job = {
     state: pyState,
     pointer: FIXTURE.pointer,
-    cases: cases.map((c) => ({ sid: c.sid, compress: c.compress, requests: c.requests.map((r) => ({ force: Boolean(r.force), trim_at: r.trim_at, messages: r.history.map(toChat) })) })),
+    recall: FIXTURE.recall,
+    cases: cases.map((c) => ({ sid: c.sid, compress: c.compress, bank: c.bank, recall: c.recall, requests: c.requests.map((r) => ({ force: Boolean(r.force), trim_at: r.trim_at, messages: r.history.map(toChat) })) })),
   };
   const py = spawnSync("python3", ["-c", PY_DRIVER, path.join(ROOT, "proxy")], {
     input: JSON.stringify(job), encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
@@ -159,6 +172,10 @@ try {
   const { sid: psid, dropped, text: pointerGolden } = FIXTURE.pointer;
   check("golden standing instruction on both sides", pyOut.standing === FIXTURE.standing_instruction && STANDING_INSTRUCTION === FIXTURE.standing_instruction);
   check("golden pointer text on both sides", pyOut.pointer === pointerGolden && pointerText(psid, dropped) === pointerGolden);
+  for (const [i, { max_chars: maxChars, block }] of FIXTURE.recall.cases.entries()) {
+    check(`golden recall block at ${maxChars} chars on both sides`, pyOut.recall?.[i] === block && recallBlock(FIXTURE.recall.text, maxChars) === block,
+      `\n  js: ${JSON.stringify(recallBlock(FIXTURE.recall.text, maxChars))}\n  py: ${JSON.stringify(pyOut.recall?.[i])}`);
+  }
   // The proxy's Chat view carries the instruction as a system message after the leading system messages; the
   // OpenCode 2 plugin puts it in event.system. Check and remove it so the message views compare as before.
   const jsSystem = [];
@@ -174,13 +191,19 @@ try {
 
   const sessions = path.join(jsState, "context", "sessions");
   for (const [ci, c] of cases.entries()) {
+    const deps = { now: () => new Date(TS) };
+    if (c.bank) {
+      fs.mkdirSync(sessions, { recursive: true });
+      fs.writeFileSync(path.join(sessions, `${sanitizeSessionId(c.sid)}.json`), JSON.stringify({ bank: c.bank }));
+      Object.assign(deps, { recall: async () => c.recall, pending: async () => false });
+    }
     for (const [ri, r] of c.requests.entries()) {
       if (r.force) {
         fs.mkdirSync(sessions, { recursive: true });
         fs.writeFileSync(path.join(sessions, `${sanitizeSessionId(c.sid)}.force`), "");
       }
       const settings = { ...trimSettings({ OPENMEM_STATE_DIR: jsState }, jsState), trimAtTokens: r.trim_at, compressOverTokens: c.compress };
-      const view = await trimContext({ sessionID: c.sid, messages: r.history.map(toOpenCode) }, settings, { now: () => new Date(TS) });
+      const view = await trimContext({ sessionID: c.sid, messages: r.history.map(toOpenCode) }, settings, deps);
       const js = scrub(view.map(normalizeOpenCode), jsState);
       const pyv = scrub((pyViews[ci]?.[ri] || []).map(normalizeChat), pyState);
       check(`${c.name} #${ri}: same view`, JSON.stringify(js) === JSON.stringify(pyv), `\n  js: ${JSON.stringify(js)}\n  py: ${JSON.stringify(pyv)}`);
@@ -198,6 +221,12 @@ try {
   const sidCase = cases.find((c) => c.name.startsWith("session id"));
   check("sanitized id used for files on both sides", fs.existsSync(path.join(pyState, "context", "sessions", "ses___x_.db"))
     && fs.existsSync(path.join(sessions, "ses___x_.db")) && sanitizeSessionId(sidCase.sid) === "ses___x_");
+  const recallCase = cases.find((c) => c.bank);
+  const recallViews = pyOut.views[cases.indexOf(recallCase)] || [];
+  const framed = recallBlock(recallCase.recall, DEFAULT_MAX_CHARS);
+  check("recall case: framed block in the note, reused byte for byte by the next request",
+    recallViews.length === 2 && JSON.stringify(recallViews[0]).includes(JSON.stringify(framed).slice(1, -1))
+    && JSON.stringify(recallViews[1].slice(0, recallViews[0].length)) === JSON.stringify(recallViews[0]));
   const basic = storeSnapshot(jsState, "ses_basic").log;
   check("fixture exercised a compressed result, trimmed rows and a pinned first turn",
     Object.keys(storeSnapshot(jsState, "ses_blob").blobs).length === 1

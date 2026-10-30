@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { PersonalMemoryPlugin } from "../../cli/coding-agent/opencode-plugin.mjs";
 import { sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
+import { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE } from "../../cli/coding-agent/recall-frame.mjs";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "pm-opencode-plugin-"));
 const oldHome = process.env.HOME;
@@ -39,6 +40,9 @@ try {
   await plugin["experimental.chat.system.transform"]({ sessionID: "session-1" }, { system });
   assert.deepEqual(recalls, ["first prompt"]);
   assert.match(system[0], /memory for: first prompt/);
+  // Recall is framed as untrusted data inside the system entry.
+  assert.ok(system[0].startsWith(`Personal memory for coding-agent::test-project:\n${RECALL_PREFACE}\n${RECALL_OPEN}\n`)
+    && system[0].endsWith(`\n${RECALL_CLOSE}`), system[0]);
 
   messages = [
     { info: { id: "m1", role: "user" }, parts: [{ type: "text", text: "first prompt" }] },

@@ -18,7 +18,7 @@ import {
   trimContext, trimSettings,
 } from "../context-trim.mjs";
 import { sessionBanner } from "../hook-runner.mjs";
-import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
+import { hookRecallBlock, sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
 import { resolveStackRoot } from "../../stack.mjs";
 import { contextAgentsFromPmConfig, contextTrimEnvFromPmConfig, contextTrimFromPmConfig, loadPmConfig } from "../../../wizard/lib/pm-config.mjs";
@@ -139,7 +139,8 @@ async function setup(ctx) {
       const context = seen.has(event.sessionID)
         ? await sessionRecall(memory, { query, bank, limit: 8 })
         : await sessionReflectOrSearch(memory, { query, bank, limit: 12 });
-      injections.set(event.sessionID, context);
+      // Framed once here, so every request renders the bound recall byte for byte.
+      injections.set(event.sessionID, hookRecallBlock(context));
     } catch { /* Memory availability must not interrupt the prompt. */ }
   }
 
