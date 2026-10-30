@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 /** Version 1, executed in order on an empty database. Same strings as SCHEMA in sessiondb.py. */
 export const SCHEMA = [
   "CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL, "
@@ -36,8 +36,15 @@ export const MIGRATIONS = [
   // Trims and fail-opens: kind 'trim' | 'fail_open'; version names the writer ("proxy:<hash>", "opencode:<v>").
   [2, ["CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, "
     + "location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER)"]],
+  // Per-request usage: kind 'usage', with provider-reported token counts, prompt-cache reads and writes, whether
+  // the request carried a cut, and its cache_control breakpoints (Anthropic route).
+  [3, ["model TEXT", "thread_root TEXT", "trimmed INTEGER", "input_tokens INTEGER", "cache_read_tokens INTEGER",
+    "cache_creation_tokens INTEGER", "output_tokens INTEGER", "breakpoints INTEGER", "breakpoint_at TEXT"]
+    .map((c) => `ALTER TABLE events ADD COLUMN ${c}`)],
 ];
-export const EVENT_COLUMNS = ["at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped"];
+export const EVENT_COLUMNS = ["at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped", "model",
+  "thread_root", "trimmed", "input_tokens", "cache_read_tokens", "cache_creation_tokens", "output_tokens", "breakpoints",
+  "breakpoint_at"];
 export const DB_SUFFIX = ".db";
 export const BUSY_TIMEOUT_MS = 1000;
 export const DEFAULT_TTL_DAYS = 30;
@@ -248,18 +255,51 @@ export function dropSession(file) {
 /** Hours of events `openmem context status` and the context_status MCP tool summarize by default. */
 export const EVENT_WINDOW_HOURS = 24;
 const LAST_ERRORS = 5;
+// events.trimmed of a usage row whose request made a new cut (core.TRIM_NEW, context-trim.mjs TRIM_NEW).
+const USAGE_NEW_CUT = 2;
+const TOP_BREAKPOINT_LAYOUTS = 5;
+
+function emptyUsage() {
+  return { requests: 0, withCacheCounts: 0, inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, outputTokens: 0,
+    hitRatio: null, newCut: { requests: 0, withCacheCounts: 0, cacheCreationTokens: 0 },
+    other: { requests: 0, withCacheCounts: 0, cacheCreationTokens: 0 }, breakpoints: {}, breakpointLayouts: [] };
+}
+
+/** Add one usage row to u. Only rows reporting input, cache read and cache creation enter the token sums. */
+function addUsage(u, r, layouts) {
+  u.requests++;
+  const group = r.trimmed === USAGE_NEW_CUT ? u.newCut : u.other;
+  group.requests++;
+  if (r.breakpoints !== null && r.breakpoints !== undefined) {
+    u.breakpoints[r.breakpoints] = (u.breakpoints[r.breakpoints] || 0) + 1;
+    const at = r.breakpoint_at || "(none)";
+    layouts.set(at, (layouts.get(at) || 0) + 1);
+  }
+  if ([r.input_tokens, r.cache_read_tokens, r.cache_creation_tokens].some((v) => v === null || v === undefined)) return;
+  u.withCacheCounts++;
+  group.withCacheCounts++;
+  u.inputTokens += r.input_tokens;
+  u.cacheReadTokens += r.cache_read_tokens;
+  u.cacheCreationTokens += r.cache_creation_tokens;
+  u.outputTokens += r.output_tokens ?? 0;
+  group.cacheCreationTokens += r.cache_creation_tokens;
+}
 
 /**
  * Summary of the events rows written in the last `hours` across `sessions/*.db` (only files modified in that
  * window are opened): trims, estimated tokens saved, fail-opens, the newest errors, row counts per version and the
  * newest version per writer (`latest.proxy`, `latest.opencode`).
- * Token figures are the writers' calibrated estimates, not provider-billed counts.
+ * Trim token figures are the writers' calibrated estimates, not provider-billed counts. `usage` sums the usage rows'
+ * provider-reported counts: cache hit ratio read / (read + creation + uncached input), cache-creation tokens on
+ * requests that made a new cut (`newCut`) and on the rest (`other`), and the cache_control breakpoint counts
+ * (`breakpoints`: count -> requests) and most common layouts (Anthropic route only).
  */
 export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now = Date.now() } = {}) {
   const sinceMs = now - hours * 3_600_000;
   const since = new Date(sinceMs).toISOString().replace(/\.\d{3}Z$/, "Z");
   const out = { hours, since, sessions: 0, trims: 0, tokensBefore: 0, tokensAfter: 0, tokensSaved: 0, dropped: 0,
-    failOpens: 0, lastErrors: [], versions: {}, latest: {}, unreadable: 0 };
+    failOpens: 0, lastErrors: [], versions: {}, latest: {}, unreadable: 0, usage: emptyUsage() };
+  const layouts = new Map();
   let names = [];
   try { names = fs.readdirSync(sessionsDir).filter((n) => n.endsWith(DB_SUFFIX)); } catch { return out; }
   const errors = [];
@@ -288,11 +328,16 @@ export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now =
         } else if (r.kind === "fail_open") {
           out.failOpens++;
           errors.push({ at: r.at, session: sid, error: r.error, location: r.location, version: r.version });
-        }
+        } else if (r.kind === "usage") addUsage(out.usage, r, layouts);
       }
     } catch { out.unreadable++; } finally { db?.close(); }
   }
   out.tokensSaved = out.tokensBefore - out.tokensAfter;
+  const u = out.usage;
+  const prompt = u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens;
+  u.hitRatio = prompt > 0 ? u.cacheReadTokens / prompt : null;
+  u.breakpointLayouts = [...layouts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, TOP_BREAKPOINT_LAYOUTS)
+    .map(([at, requests]) => ({ at, requests }));
   out.lastErrors = errors.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, LAST_ERRORS);
   return out;
 }

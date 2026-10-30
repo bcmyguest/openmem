@@ -41,6 +41,10 @@ const MAX_THREADS = 32;
 const RECALL_QUERY_MAX_CHARS = 2000;
 const TRIM_STATE_VERSION = 1;
 const FORMAT = "opencode2";
+// events.trimmed on a usage row (core.TRIM_*): the request went up whole, carried an earlier cut, or made a new cut.
+export const TRIM_NONE = 0;
+export const TRIM_KEPT = 1;
+export const TRIM_NEW = 2;
 /** Part types whose payload is binary; each is charged a flat 6400 characters (about 1600 tokens). */
 const BINARY_BLOCK_TYPES = new Set(["image", "document", "input_image", "input_file", "image_url", "file", "media"]);
 const BINARY_BLOCK_CHARS = 6400;
@@ -150,6 +154,18 @@ export function promptTokensFromOpenCode(tokens) {
   const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   const total = n(tokens.input) + n(tokens.cache?.read) + n(tokens.cache?.write);
   return total > 0 ? total : null;
+}
+
+/**
+ * Usage event counts from an OpenCode 2 TokenUsage.Info (core.usage_counts): input without cache, cache.read,
+ * cache.write, output. A field that is not a non-negative number stays null. OpenCode itself reports a count its
+ * provider omitted as 0, so 0 here can mean "not reported".
+ */
+export function usageCountsFromOpenCode(tokens) {
+  const n = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : null);
+  const t = isObject(tokens) ? tokens : {};
+  return { input_tokens: n(t.input), cache_read_tokens: n(t.cache?.read), cache_creation_tokens: n(t.cache?.write),
+    output_tokens: n(t.output) };
 }
 
 function canonical(value) {
@@ -675,6 +691,7 @@ export async function trimContext(request, settings, deps = {}) {
 
 async function trimSession(request, settings, deps, { original, sid, store, items, root, first, decorate }) {
   let trim = null;
+  let trimmed = TRIM_NONE;
   const view = await withSessionLock(sid, async () => {
     const state = store.loadTrim(sid);
     const { threads } = state;
@@ -731,10 +748,11 @@ async function trimSession(request, settings, deps, { original, sid, store, item
     const ts = utcNow(deps.now?.());
     storeMessages(store, sid, settings, original, items, cut, gap, first, ts, deps);
     if (trim) recordEvent(store, sid, "trim", trim, ts);
+    trimmed = trim ? TRIM_NEW : cut !== null ? TRIM_KEPT : TRIM_NONE;
     return rendered;
   });
   // Measured like the estimate, so a later recordPromptUsage compares like with like.
-  deps.measured?.({ root, chars: requestChars(request.system, request.tools, view) });
+  deps.measured?.({ root, chars: requestChars(request.system, request.tools, view), model: modelName(request.model), trimmed });
   return view.length === original.length && view.every((m, i) => m === original[i]) ? original : view;
 }
 
@@ -753,6 +771,26 @@ export async function recordPromptUsage(settings, sessionID, measured, tokens) {
     store.saveTrim(sid, state);
     return true;
   });
+}
+
+/**
+ * Append the usage event of a step trimContext measured (core.process_usage): model, thread root, trim state and
+ * the step's token counts. OpenCode adds cache_control in its provider layer, so breakpoints stay null.
+ */
+export function recordStepUsage(settings, sessionID, measured, tokens, now) {
+  if (!settings.enabled || !measured) return false;
+  let sid;
+  try { sid = sanitizeSessionId(sessionID); } catch { return false; }
+  recordEvent(new Store(settings.contextDir), sid, "usage", { model: measured.model ?? null, thread_root: measured.root,
+    trimmed: measured.trimmed ?? null, ...usageCountsFromOpenCode(tokens) }, utcNow(now));
+  return true;
+}
+
+function modelName(model) {
+  if (typeof model === "string") return model;
+  if (!isObject(model)) return null;
+  const id = typeof model.id === "string" ? model.id : typeof model.modelID === "string" ? model.modelID : null;
+  return id && typeof model.providerID === "string" ? `${model.providerID}/${id}` : id;
 }
 
 /**

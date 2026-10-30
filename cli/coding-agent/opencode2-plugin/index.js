@@ -15,7 +15,7 @@ import { accessAllowed, readAccessConfig } from "../access-policy.mjs";
 import { SMART_COMPACT_BODY, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
 import {
   addStandingInstruction, compactionSummary, fingerprint, isTurnStart, logFailOpen, promptTokensFromOpenCode, recordPromptUsage,
-  trimContext, trimSettings,
+  recordStepUsage, trimContext, trimSettings,
 } from "../context-trim.mjs";
 import { sessionBanner } from "../hook-runner.mjs";
 import { hookRecallBlock, sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
@@ -33,7 +33,8 @@ const MAX_RECALLS_PER_SESSION = 64;
 // Measured context requests per session still waiting for their step's usage.
 const MAX_MEASURED_PER_SESSION = 8;
 // OpenCode 2.2.1 publishes session.execution.succeeded; session.status / session.idle are kept for other releases.
-// session.step.ended carries each model call's TokenUsage, which calibrates the trim estimate.
+// session.step.ended carries each model call's TokenUsage, which calibrates the trim estimate and is recorded as a
+// usage event.
 const EVENT_TYPES = [
   "session.created", "session.execution.succeeded", "session.status", "session.idle",
   "session.step.ended", "session.step.failed", "session.execution.interrupted", "session.execution.failed",
@@ -92,7 +93,7 @@ async function setup(ctx) {
   const seen = new Map();
   const retaining = new Set();
   const registered = new Set();
-  // sessionID -> FIFO of { root, chars } from trimContext, one per context request, paired with session.step.ended.
+  // sessionID -> FIFO of { root, chars, model, trimmed } from trimContext, one per context request, paired with session.step.ended.
   const measured = new Map();
 
   // Recall for the trim pointer uses the registration's bank, as the proxy does.
@@ -184,8 +185,10 @@ async function setup(ctx) {
 
   async function onStepEnded(data) {
     const sample = measured.get(data.sessionID)?.shift();
+    if (!sample) return;
+    recordStepUsage(settings, data.sessionID, sample, data.tokens);
     const tokens = promptTokensFromOpenCode(data.tokens);
-    if (sample && tokens) await recordPromptUsage(settings, data.sessionID, sample, tokens);
+    if (tokens) await recordPromptUsage(settings, data.sessionID, sample, tokens);
   }
 
   async function onContext(event) {

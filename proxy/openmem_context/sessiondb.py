@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .tokens import fingerprint
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 # Version 1, executed in order on an empty database. Same strings as SCHEMA in cli/coding-agent/session-db.mjs.
 SCHEMA = (
     "CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL, "
@@ -39,8 +39,15 @@ MIGRATIONS = (
     # Trims and fail-opens: kind 'trim' | 'fail_open'; version names the writer ("proxy:<hash>", "opencode:<v>").
     (2, ("CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, "
          "location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER)",)),
+    # Per-request usage: kind 'usage', with provider-reported token counts, prompt-cache reads and writes, whether
+    # the request carried a cut, and its cache_control breakpoints (Anthropic route).
+    (3, tuple(f"ALTER TABLE events ADD COLUMN {c}" for c in (
+        "model TEXT", "thread_root TEXT", "trimmed INTEGER", "input_tokens INTEGER", "cache_read_tokens INTEGER",
+        "cache_creation_tokens INTEGER", "output_tokens INTEGER", "breakpoints INTEGER", "breakpoint_at TEXT"))),
 )
-EVENT_COLUMNS = ("at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped")
+EVENT_COLUMNS = ("at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped", "model",
+                 "thread_root", "trimmed", "input_tokens", "cache_read_tokens", "cache_creation_tokens", "output_tokens",
+                 "breakpoints", "breakpoint_at")
 _INSERT_EVENT = f"INSERT INTO events ({', '.join(EVENT_COLUMNS)}) VALUES ({', '.join('?' * len(EVENT_COLUMNS))})"
 DB_SUFFIX = ".db"
 FILE_MODE = 0o600
