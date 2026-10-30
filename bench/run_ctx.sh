@@ -24,6 +24,11 @@
 # Run Df: d-sqlite only at $DF_SHA in $R_DF (the thinking-strip cache fix); `./run_ctx.sh prep Df`.
 #   ./run_ctx.sh ollama up|down    the bench Ollama (cbench-ollama, $D_EMB_MODEL pulled), port $D_EMB_PORT
 #   ./run_ctx.sh smoke Dsmoke ARM [TASK]
+# Run E (docs/evidence-plan.md): three arms on held-out seeds 45-47, all at $E_SHA in $R_E, image $D_IMAGE, the
+# proxy's per-model threshold (Haiku 95k); `./run_ctx.sh prep E` exports it.
+#   e-none     proxy pass-through, DISABLE_AUTO_COMPACT=1
+#   e-native   proxy pass-through, Claude Code's default auto-compaction (no window override)
+#   e-smart    as d-sqlite: trim + compression over $COMPRESS_AT, the three smart_compact tools
 set -euo pipefail
 B=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$B"
@@ -39,10 +44,11 @@ setrun() {
     Csmoke) ARMS="s3c-semantic s3d-recall";;
     D|Dsmoke) ARMS="d-sqlite d-hybrid";;
     Dp|Df) ARMS="d-sqlite";;
+    E) ARMS="e-none e-native e-smart";;
     *) echo "unknown run $RUN" >&2; exit 2;; esac
   [ "$RUN" = Csmoke ] && TRIM_AT=20000
   [ "$RUN" = Dsmoke ] && TRIM_AT=20000
-  case $RUN in Dp|Df) TRIM_AT=;; esac  # as run D: the proxy's per-model threshold
+  case $RUN in Dp|Df|E) TRIM_AT=;; esac  # as run D: the proxy's per-model threshold
   return 0
 }
 port() {
@@ -53,6 +59,7 @@ port() {
     Csmoke:s3c-semantic) echo 4243;; Csmoke:s3d-recall) echo 4244;; Csmoke:s3c-semantic-nudged) echo 4248;;
     D:d-sqlite) echo 4251;; D:d-hybrid) echo 4252;; Dsmoke:d-sqlite) echo 4253;; Dsmoke:d-hybrid) echo 4254;;
     Dp:d-sqlite) echo 4255;; Df:d-sqlite) echo 4256;;
+    E:e-none) echo 4257;; E:e-native) echo 4258;; E:e-smart) echo 4259;;
     *) echo "no port for $RUN $1" >&2; exit 2;;
   esac
 }
@@ -66,8 +73,8 @@ eval "$(declare -f proxy_up | sed '1s/^proxy_up /proxy_up_strict /')"
 eval "$(declare -f arm_flags | sed '1s/^arm_flags /arm_flags_strict /')"
 
 proxy_up() {
-  case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) proxy_up_c "$1" ;; d-*) proxy_up_d "$1" ;;
-    *) proxy_up_strict "$@" ;; esac
+  case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) proxy_up_c "$1" ;; d-*|e-smart) proxy_up_d "$1" ;;
+    e-none|e-native) proxy_up_e "$1" ;; *) proxy_up_strict "$@" ;; esac
 }
 proxy_up_c() {  # as s3a-smart (trim at $TRIM_AT, compression over $COMPRESS_AT); s3d: no standing instruction
   local arm=$1 p si=(); p=$(port "$arm")
@@ -87,8 +94,8 @@ proxy_up_c() {  # as s3a-smart (trim at $TRIM_AT, compression over $COMPRESS_AT)
 }
 
 arm_flags() {
-  case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) arm_flags_c "$1" ;; d-*) arm_flags_d "$1" ;;
-    *) arm_flags_strict "$@" ;; esac
+  case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) arm_flags_c "$1" ;; d-*|e-smart) arm_flags_d "$1" ;;
+    e-none|e-native) arm_flags_e "$1" ;; *) arm_flags_strict "$@" ;; esac
 }
 arm_flags_c() {  # strict base flags (no s3 case matches), then the arm's MCP, mounts and tool policy
   local arm=$1 deny=$DENY_BUILTIN ro=true
@@ -125,8 +132,11 @@ R_DP=$B/repo-Dp
 # Run Df: d-sqlite at $DF_SHA, Dp plus thinking kept from after the trim (stable cached prefix).
 DF_SHA=47d17fa
 R_DF=$B/repo-Df
-d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; Df:*) echo "$DF_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
-d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; Df:*) echo "$R_DF";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
+# Run E: every arm's proxy code at $E_SHA (main after the 125k default; Haiku still 95k).
+E_SHA=1297811
+R_E=$B/repo-E
+d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; Df:*) echo "$DF_SHA";; E:*) echo "$E_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
+d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; Df:*) echo "$R_DF";; E:*) echo "$R_E";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
 D_IMAGE=ghcr.io/berriai/litellm:v1.109.0-dev.1
 D_EMB_MODEL=nomic-embed-text
 D_EMB_PORT=18434
@@ -199,6 +209,31 @@ arm_flags_d() {  # strict base flags, then D's MCP (repo-D + Node 24), state rea
   FLAGS+=(--agent-kwarg disallowed_tools="$deny")
 }
 
+proxy_up_e() {  # E baselines: E's proxy code and image with context management off (usage rows only)
+  local arm=$1 p; p=$(port "$arm")
+  d_check "$arm"
+  docker rm -f "$(pname "$arm")" >/dev/null 2>&1 || true
+  mkdir -p -m 700 "$STATE/$arm/context"
+  mkdir -p "$RESULTS/$arm"
+  docker run -d --name "$(pname "$arm")" --label cbench=1 \
+    -p "$HOST_IP:$p:4000" --user "$(id -u):$(id -g)" --env-file "$ENV_FILE" \
+    -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/app/proxy \
+    -e OPENMEM_STATE_DIR=/state -e HINDSIGHT_URL=http://127.0.0.1:9 \
+    -e CONTEXT_PROXY_ENABLED=0 -e CONTEXT_COMPRESS_OVER_TOKENS=0 \
+    -e BENCH_ARM="$arm" -e BENCH_USAGE_LOG=/results/usage.jsonl \
+    -v "$(d_repo "$arm")/proxy:/app/proxy:ro" -v "$B/litellm:/app/bench:ro" \
+    -v "$STATE/$arm:/state" -v "$RESULTS/$arm:/results" \
+    "$D_IMAGE" --config /app/bench/bench-config.yaml --port 4000 --num_workers 1 >/dev/null
+}
+
+arm_flags_e() {  # strict base flags with no MCP; e-native drops DISABLE_AUTO_COMPACT so Claude Code's default applies
+  local arm=$1
+  arm_flags_strict "$arm"
+  [ "$arm" = e-native ] && for i in "${!FLAGS[@]}"; do
+    [ "${FLAGS[$i]}" = DISABLE_AUTO_COMPACT=1 ] && unset 'FLAGS[i]' 'FLAGS[i-1]'; done
+  FLAGS=("${FLAGS[@]}")
+}
+
 wait_live() {
   local arm i
   for arm in $ARMS; do
@@ -212,7 +247,7 @@ wait_live() {
 }
 
 case "${1:-}" in
-  prep) case ${2:-} in D|Dp|Df) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp|Df" >&2; exit 2 ;; esac ;;
+  prep) case ${2:-} in D|Dp|Df|E) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp|Df|E" >&2; exit 2 ;; esac ;;
   ollama) d_ollama "${2:-}" ;;
   up) setrun "$2"; load_token; for a in $ARMS; do proxy_up "$a"; done; wait_live ;;
   down) setrun "$2"; for a in $ARMS; do
