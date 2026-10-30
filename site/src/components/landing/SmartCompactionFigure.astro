@@ -1,33 +1,80 @@
 ---
-// Smart compaction, animated: the context fills toward the trim limit, old turns move to the
-// saved transcript, a pointer takes their place, and one piece is pulled back on demand.
+// Smart compaction, animated: the context fills toward the trim limit; the proxy keeps the system prompt, tools and
+// task turn, moves older turns (and old tool steps of the in-flight turn) to the saved transcript, keeps the reply
+// before the cut, prepends the pointer to the cut turn, and one excerpt comes back on demand.
+// The rule lives in proxy/openmem_context/core.py (kept_indices, choose_cut, choose_gap, render).
 // One 14 s CSS loop; with prefers-reduced-motion the figure shows its final frame, still.
 import { withBase } from '../../lib/url';
 
-const OLD = [0, 1, 2, 3];
-const NEW = [4, 5];
 const CARD_W = 220;
-const CARD_H = 26;
-const GAP = 8;
+const CARD_H = 21;
+const STEP = 26;
 const CTX_X = 24;
 const LOG_X = 476;
-const TOP = 92;
-const rowY = (i) => TOP + i * (CARD_H + GAP);
-const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_use' : 'tool_result');
+const TOP = 90;
+const LIMIT = 0.82;
+const TARGET = 0.3;
+const rowY = (i) => TOP + i * STEP;
+const LOOP = 14;
+
+// Rows as the context fills. `to`: the row after the trim (kept), or the transcript slot (moved).
+// kind: pin = never touched, old = earlier turns, live = the in-flight turn.
+const ROWS = [
+  { text: 'system prompt · tools', kind: 'pin', tag: 'untouched', to: 0 },
+  { text: 'turn 1 · user (task)', kind: 'pin', tag: 'pinned', to: 1 },
+  { text: 'turn 1 · assistant', kind: 'old', out: true, to: 2, at: 36 },
+  { text: 'turn 2 · user', kind: 'old', out: true, to: 3, at: 38 },
+  { text: 'turn 2 · assistant', kind: 'old', tag: 'kept', to: 2 },
+  { text: 'turn 3 · user (in flight)', kind: 'live', tag: 'cut turn', to: 4 },
+  { text: 'tool_use + result 1', kind: 'live', out: true, to: 4, at: 40 },
+  { text: 'tool_use + result 2', kind: 'live', to: 5 },
+  { text: 'tool_use + result 3', kind: 'live', to: 6 },
+  { text: 'tool_use + result 4', kind: 'live', to: 7 },
+];
+const appearAt = (i) => 2 + (i - 2) * 3.4; // % of the loop; rows 0 and 1 are always there
+
+// Per-row keyframes: fade in while the context fills, then slide to the transcript or rise into the gap.
+// Every moving piece fades out over 95-100% so the loop restarts without a jump.
+const rowCss = ROWS.map((r, i) => {
+  if (i < 2) return '';
+  const a = appearAt(i).toFixed(1);
+  const b = (appearAt(i) + 3).toFixed(1);
+  const dx = r.out ? LOG_X - CTX_X : 0;
+  const dy = rowY(r.to) - rowY(i);
+  // Moved rows slide straight across, then settle into their transcript slot; kept rows rise after they left.
+  const s = r.out ? r.at : 50;
+  const mid = r.out ? `${r.at + 9}% { opacity: 1; transform: translate(${dx}px, 0); }\n  ` : '';
+  const e = r.out ? r.at + 13 : 58;
+  return `.sc-r${i} { animation: sc-r${i} ${LOOP}s ease-in-out infinite; }
+@keyframes sc-r${i} {
+  0%, ${a}% { opacity: 0; transform: translate(0, 0); }
+  ${b}%, ${s}% { opacity: 1; transform: translate(0, 0); }
+  ${mid}${e}%, 95% { opacity: 1; transform: translate(${dx}px, ${dy}px); }
+  100% { opacity: 0; transform: translate(${dx}px, ${dy}px); }
+}`;
+}).join('\n');
+
+const finalTransform = (r, i) =>
+  i < 2 ? '' : `--fx:${r.out ? LOG_X - CTX_X : 0}px; --fy:${rowY(r.to) - rowY(i)}px`;
+
+// Recall: the turn-2 user row in the transcript returns as a new tool result at the end of the in-flight turn.
+const FROM_Y = rowY(3);
+const TO_Y = rowY(8);
 ---
 <figure class="sc not-prose" aria-labelledby="sc-caption">
   <div class="sc-surface overflow-hidden rounded-xl border border-line">
     <svg
       class="sc-svg"
-      viewBox="0 0 720 330"
+      viewBox="0 0 720 360"
       role="img"
       aria-labelledby="sc-title sc-desc"
     >
       <title id="sc-title">Smart compaction</title>
       <desc id="sc-desc">
-        The agent's context fills with turns until it reaches the trim limit. The proxy moves the older turns into the
-        saved transcript, puts a pointer in their place, and the agent later pulls one excerpt back with
-        smart_compact_search.
+        The agent's context fills until it reaches the trim limit. The system prompt, tools and the first user turn
+        stay. Older turns and the oldest tool step of the in-flight turn move to the saved transcript; the reply before
+        the cut stays, the cut turn gets the continuing-session pointer prepended, and the last three tool steps stay.
+        The context drops to the target, and the agent later pulls one excerpt back with smart_compact_search.
       </desc>
 
       <!-- column headings -->
@@ -35,59 +82,65 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
       <text class="sc-h" x={LOG_X} y="28">Saved transcript</text>
       <text class="sc-sub" x={LOG_X} y="44">sessions/&lt;sid&gt;.db · memory</text>
 
-      <!-- context meter -->
+      <!-- context meter: the limit that triggers a trim, and the target it trims down to -->
       <rect class="sc-meter-bg" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
       <rect class="sc-meter" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
-      <line class="sc-limit" x1={CTX_X + CARD_W * 0.82} x2={CTX_X + CARD_W * 0.82} y1="46" y2="68" />
-      <text class="sc-sub" x={CTX_X + CARD_W * 0.82 + 6} y="80">trim_at_tokens</text>
+      <line class="sc-limit" x1={CTX_X + CARD_W * LIMIT} x2={CTX_X + CARD_W * LIMIT} y1="46" y2="68" />
+      <text class="sc-sub" x={CTX_X + CARD_W * LIMIT + 6} y="80">trim_at_tokens</text>
+      <line class="sc-target" x1={CTX_X + CARD_W * TARGET} x2={CTX_X + CARD_W * TARGET} y1="46" y2="68" />
+      <text class="sc-sub" x={CTX_X + CARD_W * TARGET + 6} y="80">target</text>
 
       <!-- transcript well -->
-      <rect class="sc-well" x={LOG_X - 8} y={TOP - 8} width={CARD_W + 16} height={4 * (CARD_H + GAP) + 8} rx="10" />
+      <rect class="sc-well" x={LOG_X - 8} y={rowY(2) - 8} width={CARD_W + 16} height={3 * STEP + 11} rx="10" />
 
-      <!-- old turns: appear in context, then slide to the transcript -->
-      {OLD.map((i) => (
-        <g class={`sc-old sc-o${i}`} style={`--dx:${LOG_X - CTX_X}px`}>
-          <rect class="sc-card" x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
-          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 17}>{`turn ${i + 1} · ${label(i)}`}</text>
-        </g>
-      ))}
-
-      <!-- pointer that replaces the old turns -->
+      <!-- pointer note, prepended to the cut turn (drawn behind the cut-turn card) -->
       <g class="sc-pointer">
-        <rect class="sc-pointer-card" x={CTX_X} y={rowY(0)} width={CARD_W} height={CARD_H * 2 + GAP} rx="6" />
-        <text class="sc-pointer-t" x={CTX_X + 10} y={rowY(0) + 18}>[openmem: continuing session]</text>
-        <text class="sc-card-t" x={CTX_X + 10} y={rowY(0) + 38}>4 turns trimmed · recall attached</text>
+        <rect class="sc-pointer-card" x={CTX_X - 3} y={rowY(3) - 2} width={CARD_W + 6} height={STEP + CARD_H + 4} rx="7" />
+        <text class="sc-pointer-t" x={CTX_X + 10} y={rowY(3) + 15}>[openmem: continuing session …]</text>
       </g>
 
-      <!-- recent turns stay verbatim; they move up under the pointer -->
-      {NEW.map((i) => (
-        <g class={`sc-new sc-n${i}`} style={`--dy:${rowY(i - 2) - rowY(i)}px`}>
-          <rect class="sc-card sc-card-live" x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
-          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 17}>{`turn ${i + 1} · ${label(i)}`}</text>
+      <!-- context rows -->
+      {ROWS.map((r, i) => (
+        <g class={`sc-row sc-r${i}`} style={finalTransform(r, i)}>
+          <rect class={`sc-card sc-card-${r.kind}`} x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
+          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 15}>{r.text}</text>
+          {r.tag && (
+            <text class={`sc-tag${i < 2 ? '' : ' sc-tag-late'}`} x={CTX_X + CARD_W - 8} y={rowY(i) + 14}>{r.tag}</text>
+          )}
         </g>
       ))}
 
-      <!-- retrieval: one excerpt comes back on demand -->
-      <path class="sc-fetch" d={`M ${LOG_X - 12} ${rowY(2) + 13} C 400 ${rowY(2) + 13}, 330 ${rowY(4) + 13}, ${CTX_X + CARD_W + 12} ${rowY(4) + 13}`} />
-      <g class="sc-chip" style={`--cx:${CTX_X - LOG_X}px; --cy:${rowY(4) - rowY(2)}px`}>
-        <rect class="sc-chip-r" x={LOG_X} y={rowY(2) + 3} width="150" height="20" rx="10" />
-        <text class="sc-chip-t" x={LOG_X + 10} y={rowY(2) + 17}>turn 3 excerpt</text>
+      <!-- the kept tail of the in-flight turn -->
+      <g class="sc-brace">
+        <path class="sc-brace-p" d={`M ${CTX_X + CARD_W + 8} ${rowY(5)} h 5 V ${rowY(7) + CARD_H} h -5`} />
+        <text class="sc-sub" x={CTX_X + CARD_W + 18} y={rowY(6) + 14}>last 3 steps</text>
       </g>
-      <text class="sc-call" x="282" y={rowY(3) + 4}>smart_compact_search("…")</text>
 
-      <!-- arrow from context to transcript (trim direction) -->
-      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(1) + 13} H ${LOG_X - 22}`} />
-      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(1) + 7} l 10 6 l -10 6 z`} />
+      <!-- trim direction: older turns and the oldest in-turn step move out -->
+      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(2) + 23} H ${LOG_X - 22}`} />
+      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(2) + 17} l 10 6 l -10 6 z`} />
+      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(6) + 10} H ${LOG_X - 22}`} />
+      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(6) + 4} l 10 6 l -10 6 z`} />
+
+      <!-- retrieval: one excerpt comes back on demand, as a new tool result -->
+      <path class="sc-fetch" d={`M ${LOG_X - 12} ${FROM_Y + 10} C 400 ${FROM_Y + 10}, 400 ${TO_Y + 10}, ${CTX_X + CARD_W - 60} ${TO_Y + 10}`} />
+      <g class="sc-chip" style={`--cx:${CTX_X - LOG_X}px; --cy:${TO_Y - FROM_Y}px`}>
+        <rect class="sc-chip-r" x={LOG_X} y={FROM_Y} width="150" height={CARD_H} rx="10" />
+        <text class="sc-chip-t" x={LOG_X + 10} y={FROM_Y + 14}>turn 2 excerpt</text>
+      </g>
+      <text class="sc-call" x={LOG_X} y={rowY(5) + 18}>smart_compact_search("…")</text>
     </svg>
   </div>
   <figcaption id="sc-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    Past <code>trim_at_tokens</code> (or on <code>/smart-compact</code>) the context proxy moves older turns to a local transcript and{' '}
-    memory, leaves a pointer with bounded recall, and keeps the in-flight turn verbatim. The agent pulls details back with{' '}
-    <code>smart_compact_search</code>. Inspired by <a href="https://github.com/mainplane-ai/mainplane">Mainplane</a>'s continue-and-retrieve sessions.{' '}
+    Past <code>trim_at_tokens</code> (or on <code>/smart-compact</code>) the context proxy trims to a target well below the limit.{' '}
+    The system prompt, tools and task turn stay; older turns move to a local transcript and memory. The reply before the cut stays,{' '}
+    and the cut turn carries a pointer with bounded recall. In a long in-flight turn, older tool steps move out too; the last three stay.{' '}
+    The agent pulls details back with <code>smart_compact_search</code>. Inspired by <a href="https://github.com/mainplane-ai/mainplane">Mainplane</a>'s continue-and-retrieve sessions.{' '}
     <a href={withBase('docs/context-proxy/')}>Context proxy</a>.{' '}
-
   </figcaption>
 </figure>
+
+<Fragment set:html={`<style>${rowCss}</style>`} />
 
 <style>
   .sc-surface {
@@ -131,6 +184,11 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
     stroke-width: 2;
     stroke-dasharray: 3 3;
   }
+  .sc-target {
+    stroke: var(--c-muted);
+    stroke-width: 1.5;
+    stroke-dasharray: 2 3;
+  }
   .sc-well {
     fill: var(--c-brand-soft);
     fill-opacity: 0.35;
@@ -141,6 +199,9 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
     fill: var(--c-panel-raised);
     stroke: var(--c-line);
   }
+  .sc-card-pin {
+    fill: var(--c-panel);
+  }
   .sc-card-live {
     stroke: var(--c-brand);
   }
@@ -149,16 +210,27 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
     font-weight: 600;
     fill: var(--c-ink);
   }
+  .sc-tag {
+    font-size: 9.5px;
+    font-weight: 600;
+    text-anchor: end;
+    fill: var(--c-muted);
+  }
   .sc-pointer-card {
     fill: var(--c-brand-soft);
     stroke: var(--c-brand);
     stroke-width: 1.5;
   }
   .sc-pointer-t {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     fill: var(--c-source);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sc-brace-p {
+    fill: none;
+    stroke: var(--c-brand);
+    stroke-width: 1.5;
   }
   .sc-chip-r {
     fill: var(--c-inferred-soft);
@@ -190,19 +262,12 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
     fill: var(--c-brand);
   }
 
-  /* timeline (14 s): 0–28% fill · 30–48% move old turns · 48–58% pointer, recent turns rise ·
-     62–80% fetch one excerpt · 80–96% hold · 96–100% fade out */
-  .sc-old {
-    animation: sc-old 14s ease-in-out infinite;
-  }
-  .sc-o1 { animation-name: sc-old-1; }
-  .sc-o2 { animation-name: sc-old-2; }
-  .sc-o3 { animation-name: sc-old-3; }
-  .sc-new {
-    animation: sc-new 14s ease-in-out infinite;
-  }
-  .sc-n5 { animation-name: sc-new-5; }
+  /* timeline (14 s): 2–29% fill · 36–53% old turns and the oldest in-turn step move out ·
+     50–58% kept rows rise, meter drops to the target · 57–65% pointer joins the cut turn, tags · 64–80% fetch ·
+     80–95% hold · 95–100% fade out. Per-row keyframes come from the frontmatter (rowCss). */
   .sc-pointer { animation: sc-pointer 14s ease-in-out infinite; }
+  .sc-tag-late,
+  .sc-brace { animation: sc-late 14s ease-in-out infinite; }
   .sc-move,
   .sc-move-tip { animation: sc-move 14s ease-in-out infinite; }
   .sc-fetch,
@@ -210,82 +275,51 @@ const label = (i) => (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant · tool_us
   .sc-chip { animation: sc-chip 14s ease-in-out infinite; }
 
   @keyframes sc-meter {
-    0% { transform: scaleX(0.04); }
-    28% { transform: scaleX(0.86); }
-    46% { transform: scaleX(0.86); }
-    56% { transform: scaleX(0.36); }
-    72% { transform: scaleX(0.36); }
-    80% { transform: scaleX(0.44); }
-    96% { transform: scaleX(0.44); }
-    100% { transform: scaleX(0.04); }
-  }
-  @keyframes sc-old {
-    0% { opacity: 0; transform: translateX(0); }
-    4%, 30% { opacity: 1; transform: translateX(0); }
-    42%, 96% { opacity: 1; transform: translateX(var(--dx)); }
-    100% { opacity: 0; transform: translateX(var(--dx)); }
-  }
-  @keyframes sc-old-1 {
-    0%, 6% { opacity: 0; transform: translateX(0); }
-    10%, 32% { opacity: 1; transform: translateX(0); }
-    44%, 96% { opacity: 1; transform: translateX(var(--dx)); }
-    100% { opacity: 0; transform: translateX(var(--dx)); }
-  }
-  @keyframes sc-old-2 {
-    0%, 11% { opacity: 0; transform: translateX(0); }
-    15%, 34% { opacity: 1; transform: translateX(0); }
-    46%, 96% { opacity: 1; transform: translateX(var(--dx)); }
-    100% { opacity: 0; transform: translateX(var(--dx)); }
-  }
-  @keyframes sc-old-3 {
-    0%, 16% { opacity: 0; transform: translateX(0); }
-    20%, 36% { opacity: 1; transform: translateX(0); }
-    48%, 96% { opacity: 1; transform: translateX(var(--dx)); }
-    100% { opacity: 0; transform: translateX(var(--dx)); }
-  }
-  @keyframes sc-new {
-    0%, 21% { opacity: 0; transform: translateY(0); }
-    25%, 50% { opacity: 1; transform: translateY(0); }
-    58%, 96% { opacity: 1; transform: translateY(var(--dy)); }
-    100% { opacity: 0; transform: translateY(var(--dy)); }
-  }
-  @keyframes sc-new-5 {
-    0%, 25% { opacity: 0; transform: translateY(0); }
-    28%, 50% { opacity: 1; transform: translateY(0); }
-    58%, 96% { opacity: 1; transform: translateY(var(--dy)); }
-    100% { opacity: 0; transform: translateY(var(--dy)); }
+    0% { transform: scaleX(0.12); }
+    4% { transform: scaleX(0.12); }
+    30% { transform: scaleX(0.86); }
+    48% { transform: scaleX(0.86); }
+    58% { transform: scaleX(0.28); }
+    68% { transform: scaleX(0.28); }
+    78% { transform: scaleX(0.36); }
+    95% { transform: scaleX(0.36); }
+    100% { transform: scaleX(0.12); }
   }
   @keyframes sc-pointer {
-    0%, 49% { opacity: 0; }
-    56%, 96% { opacity: 1; }
+    0%, 57% { opacity: 0; }
+    63%, 95% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes sc-late {
+    0%, 59% { opacity: 0; }
+    65%, 95% { opacity: 1; }
     100% { opacity: 0; }
   }
   /* Arrows fade over ~0.7 s (5% of the loop) so the exported GIF frames show a ramp, not a pop. */
   @keyframes sc-move {
-    0%, 26% { opacity: 0; }
-    31%, 45% { opacity: 1; }
-    51%, 100% { opacity: 0; }
+    0%, 30% { opacity: 0; }
+    35%, 47% { opacity: 1; }
+    53%, 100% { opacity: 0; }
   }
   @keyframes sc-fetch {
-    0%, 58% { opacity: 0; }
-    63%, 80% { opacity: 1; }
-    87%, 100% { opacity: 0; }
+    0%, 62% { opacity: 0; }
+    67%, 82% { opacity: 1; }
+    88%, 100% { opacity: 0; }
   }
   @keyframes sc-chip {
-    0%, 62% { opacity: 0; transform: translate(0, 0); }
-    66% { opacity: 1; transform: translate(0, 0); }
-    78%, 96% { opacity: 1; transform: translate(var(--cx), var(--cy)); }
+    0%, 64% { opacity: 0; transform: translate(0, 0); }
+    68% { opacity: 1; transform: translate(0, 0); }
+    80%, 95% { opacity: 1; transform: translate(var(--cx), var(--cy)); }
     100% { opacity: 0; transform: translate(var(--cx), var(--cy)); }
   }
 
   /* Reduced motion: the end state, still. */
   @media (prefers-reduced-motion: reduce) {
-    .sc-meter, .sc-old, .sc-new, .sc-pointer, .sc-move, .sc-move-tip, .sc-fetch, .sc-call, .sc-chip {
-      animation: none;
+    .sc-meter, .sc-row, .sc-pointer, .sc-tag-late, .sc-brace, .sc-move, .sc-move-tip, .sc-fetch, .sc-call, .sc-chip {
+      animation: none !important;
     }
-    .sc-meter { transform: scaleX(0.44); }
-    .sc-old { transform: translateX(var(--dx)); }
-    .sc-new { transform: translateY(var(--dy)); }
+    .sc-meter { transform: scaleX(0.36); }
+    .sc-row { opacity: 1; transform: translate(var(--fx, 0), var(--fy, 0)); }
     .sc-chip { transform: translate(var(--cx), var(--cy)); }
     .sc-move, .sc-move-tip { opacity: 0; }
   }
