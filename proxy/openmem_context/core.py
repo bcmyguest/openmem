@@ -97,8 +97,10 @@ def pointer_text(sid, dropped):
         f"[openmem: continuing session {sid}; {dropped} earlier messages are NOT in your context. They were "
         f"delivered to you and later removed to fit your context window, so a gap in what you see (missing "
         f"batches, lines, keys) is in them. "
+        f"The tools smart_compact_search and smart_compact_sql are available to you in this request. "
         f'You MUST call smart_compact_search(session_id="{sid}", query=... or pattern=...) before answering '
-        f'anything that depends on them, and never answer "not found" or "never received" without searching; '
+        f'anything that depends on them, and never answer "not found", "never received" or "no search tool" '
+        f"without calling it; "
         f'every message of this session is stored and queryable with '
         f'smart_compact_search and smart_compact_sql(session_id="{sid}", sql=...).]'
     )
