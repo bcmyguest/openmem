@@ -99,10 +99,10 @@ function frame(p, w, h, id, title, desc, body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-labelledby="${id}-t ${id}-d" font-family="${FONT}" style="max-width:100%;height:auto"><title id="${id}-t">${esc(title)}</title><desc id="${id}-d">${esc(desc)}</desc><rect width="${w}" height="${h}" rx="14" fill="${p.canvas}"/>${body}</svg>`;
 }
 
-const SRC_ROWS = ['Git repos', { t: 'docs, code outlines', dim: true }, 'Obsidian vaults', 'Notes · papers · bookmarks', 'RSS · OpenAlex feeds'];
+const SRC_ROWS = ['Git repos', { t: 'docs, code outlines', dim: true }, 'Obsidian vaults', 'Notes · papers', 'Bookmarks', 'RSS · OpenAlex feeds'];
 const IDX_ROWS = ['Polls repos', 'Watches folders', 'Re-indexes on change', { t: 'One sink per provider', dim: true }];
 const PROV_ROWS = [{ t: 'Hindsight (default)', strong: true }, 'mem0', 'Cognee', { t: '…', dim: true }];
-const MCP_ROWS = [{ t: 'memory_recall', mono: true }, { t: 'memory_add', mono: true }, { t: 'memory_search', mono: true }, { t: 'memory_reflect', mono: true }, { t: 'memory_pages_*', mono: true }, { t: '+ export/import, status…', dim: true }];
+const MCP_ROWS = [{ t: 'memory_recall', mono: true }, { t: 'memory_add', mono: true }, { t: 'memory_search', mono: true }, { t: 'memory_reflect', mono: true }, { t: 'memory_pages_*', mono: true }, { t: '+ export/import', dim: true }, { t: '+ status, forget…', dim: true }];
 const AGENT_ROWS = ['Claude Code', 'Codex', 'Cursor', 'OpenCode'];
 const MEMORY_DESC =
   'Sources (Git repos with Markdown docs and code outlines, Obsidian vaults, notes, papers, bookmarks, RSS and OpenAlex feeds) flow into the OpenMem indexer, which writes to one active, swappable memory provider: Hindsight by default, mem0 or Cognee. The OpenMem MCP exposes memory_recall, memory_add, memory_search, memory_reflect, memory_pages tools and more to coding agents (Claude Code, Codex, Cursor, OpenCode); session hooks recall at session start and retain at stop.';

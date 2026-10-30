@@ -12,8 +12,8 @@ const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(SITE, 'src', 'data', 'contextbench.json');
 const OUT = join(SITE, 'public', 'charts');
 const DOC = join(SITE, '..', 'docs', 'context-management.md');
-// site-relative, like the committed mermaid SVGs (sync.mjs); BASE_PATH builds must re-run this script
-const CHART_URL = `${site.basePath.replace(/\/?$/, '/')}charts/`;
+// absolute published URL so GitHub renders the images; render-media.mjs writes the PNGs to public/media/
+const MEDIA_URL = `${site.siteUrl}${site.basePath.replace(/\/?$/, '/')}media/`;
 
 // Colours: site tokens (src/theme.yml). OpenMem is the brand accent; the baselines are muted greys
 // told apart by dash pattern, marker shape and a direct label at the line end.
@@ -68,15 +68,15 @@ function heading(t, title, takeaway) {
 }
 
 /** One line panel: x = task sizes, one line per setting, direct labels at the right; null leaves a gap. */
-function linePanel({ y0, title, xs, series, max, ticks, fmt, t }) {
+function linePanel({ y0, title, xs, series, min = 0, max, ticks, fmt, t }) {
   const iw = W - PAD.l - PAD.r;
   const ih = PANEL_H - PAD.t - PAD.b;
   const top = y0 + PAD.t;
   const px = (i) => PAD.l + (iw * (i + 0.5)) / xs.length;
-  const py = (v) => top + ih - (Math.min(v, max) / max) * ih;
+  const py = (v) => top + ih - ((Math.min(Math.max(v, min), max) - min) / (max - min)) * ih;
   const out = [`<text x="16" y="${y0 + 18}" font-size="15" font-weight="700" fill="${t.ink}">${esc(title)}</text>`];
   for (const v of ticks) {
-    out.push(`<line x1="${PAD.l}" x2="${W - PAD.r + 8}" y1="${py(v)}" y2="${py(v)}" stroke="${v === 0 ? t.axis : t.grid}" stroke-width="1"/>`);
+    out.push(`<line x1="${PAD.l}" x2="${W - PAD.r + 8}" y1="${py(v)}" y2="${py(v)}" stroke="${v === min ? t.axis : t.grid}" stroke-width="1"/>`);
     out.push(`<text x="${PAD.l - 8}" y="${py(v) + 4}" font-size="13" text-anchor="end" fill="${t.muted}">${fmt(v)}</text>`);
   }
   xs.forEach((x, i) => out.push(`<text x="${px(i)}" y="${top + ih + 20}" font-size="13" text-anchor="middle" fill="${t.muted}">${esc(x)}</text>`));
@@ -115,8 +115,14 @@ function linePanel({ y0, title, xs, series, max, ticks, fmt, t }) {
   return out.join('');
 }
 
+export const BENCH_NAME = 'ContextBench';
+export const BENCH_URL = 'https://github.com/RulinShao/ContextBench';
+const SOURCE_LINE = `Source: ${BENCH_NAME}, synthetic tasks · Claude Haiku 5.5`;
+
 function svg(h, body, t, title, desc) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" width="${W}" height="${h}" role="img" aria-label="${esc(title)}" ${FONT}><title>${esc(title)}</title><desc>${esc(desc)}</desc><rect width="${W}" height="${h}" rx="12" fill="${t.bg}"/>${body}</svg>\n`;
+  const H = h + 26;
+  const src = `<text x="16" y="${H - 12}" font-size="11.5" fill="${t.muted}">${esc(SOURCE_LINE)}</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(title)}" ${FONT}><title>${esc(title)}</title><desc>${esc(`${desc} ${SOURCE_LINE}.`)}</desc><rect width="${W}" height="${H}" rx="12" fill="${t.bg}"/>${body}${src}</svg>\n`;
 }
 
 function niceMax(v) {
@@ -134,8 +140,9 @@ function lineChart(data, t, { title, takeaway, desc, panels }) {
     const series = Object.fromEntries(ORDER.map((k) => [k, xs.map((s) => p.get(data.cells[k][p.fam][s]))]));
     const all = Object.values(series).flat().filter((v) => v != null);
     const max = p.max ?? niceMax(Math.max(...all));
-    const ticks = p.ticks ?? [0, max / 2, max];
-    body += linePanel({ y0: hh + 10 + i * PANEL_H, title: p.title, xs, series, max, ticks, fmt: p.fmt, t });
+    const min = p.min ?? 0;
+    const ticks = p.ticks ?? [min, (min + max) / 2, max];
+    body += linePanel({ y0: hh + 10 + i * PANEL_H, title: p.title, xs, series, min, max, ticks, fmt: p.fmt, t });
   });
   return svg(hh + 18 + panels.length * PANEL_H, body, t, title, `${takeaway} ${desc}`);
 }
@@ -208,6 +215,12 @@ function costTakeaway(d) {
   return `At log-triage ${L} keep everything cost $${c('s1').toFixed(2)} per trial and OpenMem $${c('smart').toFixed(2)}. Where both ran, OpenMem cost within ${pct}% of native compaction.`;
 }
 
+const pctFmt = (v) => `${Math.round(v * 100)}%`;
+function cacheTakeaway(d) {
+  const v = d.vs_native.cache_hit;
+  return `Prompt-cache hit rate, cells where native ran: OpenMem ${pctFmt(v.smart)}, native ${pctFmt(v.s2)}. A trim rewrites the cache once; the cut is then stable.`;
+}
+
 const CHARTS = {
   'contextbench-quality': (d, t) =>
     lineChart(d, t, {
@@ -251,6 +264,16 @@ const CHARTS = {
         { fam: 'log', title: 'log-triage, USD', get: (c) => c.usd ?? null, fmt: (v) => `$${v.toFixed(2)}` },
       ],
     }),
+  'contextbench-cache': (d, t) =>
+    lineChart(d, t, {
+      title: 'Prompt-cache hit rate',
+      takeaway: cacheTakeaway(d),
+      desc: 'cache_read / (input + cache_read + cache_write) over all requests of a cell.',
+      panels: [
+        { fam: 'kv', title: 'kv-store', get: (c) => c.cache_hit ?? null, min: 0.8, max: 1, ticks: [0.8, 0.9, 1], fmt: pctFmt },
+        { fam: 'log', title: 'log-triage', get: (c) => c.cache_hit ?? null, min: 0.8, max: 1, ticks: [0.8, 0.9, 1], fmt: pctFmt },
+      ],
+    }),
   'contextbench-compaction': barChart,
 };
 
@@ -261,7 +284,12 @@ const SIZE_ROWS = [['kv', 'R1000'], ['kv', 'R4000'], ['kv', 'R16000'], ['log', '
 const TASK = { kv: 'kv-store', log: 'log-triage' };
 
 function chartHtml(name, alt) {
-  return `<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${CHART_URL}${name}.svg" alt="${alt}" />\n<img class="pm-diagram-dark" src="${CHART_URL}${name}-dark.svg" alt="${alt} (dark theme)" />\n</div>`;
+  return pictureHtml(`${MEDIA_URL}${name}`, alt);
+}
+
+/** GitHub-style light/dark image; the docs build (site/scripts/lib/docs.mjs pictureToDuo) turns it into the site's duo. */
+export function pictureHtml(base, alt) {
+  return `<picture>\n<source media="(prefers-color-scheme: dark)" srcset="${base}-dark.png" />\n<img src="${base}.png" alt="${alt}" />\n</picture>`;
 }
 
 function scoreCell(c, k) {
@@ -288,25 +316,25 @@ function benchmarkMarkdown(d) {
     ...SIZE_ROWS.map(([f, s]) => `| ${TASK[f]} ${s} | ${['smart', 's2', 's1'].map((k) => scoreCell(c[k][f][s], k)).join(' | ')} |`),
   ];
   const cost = [
-    '| Task, size | Peak prompt (smart / native / keep) | Tokens per trial, cache reads in parentheses (smart / native / keep) | List-price cost per trial (smart / native / keep) |',
-    '| --- | --- | --- | --- |',
+    '| Task, size | List-price cost per trial (smart / native / keep) | Prompt-cache hit rate (smart / native / keep) | Tokens per trial, cache reads in parentheses (smart / native / keep) | Peak prompt (smart / native / keep) |',
+    '| --- | --- | --- | --- | --- |',
     ...SIZE_ROWS.map(([f, s]) => {
       const cs = ['smart', 's2', 's1'].map((k) => c[k][f][s]);
-      return `| ${TASK[f]} ${s} | ${cs.map((x) => kTok(x.peak_prompt_max)).join(' / ')} | ${cs
+      return `| ${TASK[f]} ${s} | ${cs.map((x) => usd(x.usd)).join(' / ')} | ${cs.map((x) => (x.cache_hit == null ? '—' : pctFmt(x.cache_hit))).join(' / ')} | ${cs
         .map((x) => (x.n ? `${kTok(x.tokens.total_tokens)} (${kTok(x.tokens.cache_read)})` : '—'))
-        .join(' / ')} | ${cs.map((x) => usd(x.usd)).join(' / ')} |`;
+        .join(' / ')} | ${cs.map((x) => kTok(x.peak_prompt_max)).join(' / ')} |`;
     }),
   ];
   const time = [
-    '| Setting | Trials | Agent wall time per trial, mean | Requests | Request latency, mean |',
-    '| --- | --- | --- | --- | --- |',
-    ...['smart', 's2', 's1'].map((k) => `| ${L[k]} | ${t[k].trials} | ${(t[k].agent_wall_s.mean / 60).toFixed(1)} min | ${t[k].requests} | ${t[k].request_latency_s.mean.toFixed(2)} s |`),
+    '| Setting | Trials | Agent wall time per trial, mean | Requests | Request latency, mean | Prompt-cache hit rate |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...['smart', 's2', 's1'].map((k) => `| ${L[k]} | ${t[k].trials} | ${(t[k].agent_wall_s.mean / 60).toFixed(1)} min | ${t[k].requests} | ${t[k].request_latency_s.mean.toFixed(2)} s | ${pctFmt(t[k].cache_hit_all_requests)} |`),
   ];
   const nat = t.s2.native_detected_vs_cc;
   return [
     chartHtml('contextbench-quality', 'Answer quality by task size: OpenMem smart compaction, native compaction, keep everything'),
     '',
-    `Score is ${d.score_metric}, the mean over the completed seeds of each cell. † a seed dropped the \`#tag\` from its kv answers and scored 0 under the strict reward; the values were right. ‡ the harness step limit stopped the trial before any question, so the 0 is not a recall score.`,
+    `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks, Claude Haiku 5.5. Score is ${d.score_metric}, the mean over the completed seeds of each cell. † a seed dropped the \`#tag\` from its kv answers and scored 0 under the strict reward; the values were right. ‡ the harness step limit stopped the trial before any question, so the 0 is not a recall score.`,
     '',
     ...quality,
     '',
@@ -322,13 +350,17 @@ function benchmarkMarkdown(d) {
     '',
     ...time,
     '',
+    `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks, Claude Haiku 5.5.`,
+    '',
     'Wall time and request latency come from different runs: the baselines (run B) and smart compaction (run D) used different LiteLLM builds, ran at different times under different API load, and only run D had the OpenMem hook. Treat the comparison as rough.',
     '',
-    '### Cost and context size',
+    '### Cost and prompt cache',
     '',
     chartHtml('contextbench-cost', 'List-price cost per trial by task size'),
     '',
-    'Cost applies Claude Haiku 5.5 list prices to each request’s token counts. Peak prompt is the largest single request.',
+    chartHtml('contextbench-cache', 'Prompt-cache hit rate by task size'),
+    '',
+    `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks. Cost applies Claude Haiku 5.5 list prices to each request’s token counts. Cache hit rate is cache reads over all prompt tokens (input, cache reads and cache writes) of a cell’s requests. Peak prompt is the largest single request.`,
     '',
     ...cost,
   ].join('\n');
@@ -338,7 +370,7 @@ function benchmarkMarkdown(d) {
 function compactBenchMarkdown(d) {
   const cb = d.compact_bench;
   if (cb.status !== 'complete') {
-    return `Results pending. The run is in progress; partial numbers are not published. Methods: ${cb.methods.map((m) => m.label).join(', ')}.`;
+    return `Compact-Bench results pending. The run is in progress; partial numbers are not published. Methods: ${cb.methods.map((m) => m.label).join(', ')}.`;
   }
   const rows = cb.methods.map((m) =>
     m.key === 'full'

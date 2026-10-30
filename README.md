@@ -9,7 +9,17 @@
 
 **OpenMem.** Memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/) (Hindsight, mem0, Cognee), one setup wizard.
 
-**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/smart-compaction-dark.gif" />
+<img src="https://bcmyguest.github.io/openmem/media/smart-compaction.gif" alt="Smart compaction: older turns move to a local store, a pointer takes their place, and the agent pulls a detail back with smart_compact_search" width="720" />
+</picture>
+
+**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks) on [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks (Claude Haiku 5.5). Compact-Bench real-coding results are in progress.
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="ContextBench (synthetic tasks): score by task size for OpenMem smart compaction, native compaction and keep everything" width="480" />
+</picture>
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
 
@@ -48,6 +58,21 @@ Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-starte
 
 **A. Memory**: your sources become memory any agent can query.
 
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-memory-wide-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-memory-wide.png" alt="A, memory: sources (Git repos, Obsidian vaults, notes, papers, bookmarks, feeds), OpenMem indexer, one active provider (Hindsight default, mem0, Cognee), OpenMem MCP tools, coding agents with session hooks" />
+</picture>
+
+**B. Context management**: long sessions stay under the limit; nothing is summarized away.
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-context-wide-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-context-wide.png" alt="B, context management: coding agent, context proxy trimming at 120k tokens with no LLM call, model API, SQLite session store read back with smart_compact_search and smart_compact_sql; OpenCode 2 uses a native plugin" />
+</picture>
+
+<details>
+<summary>Same diagrams as Mermaid</summary>
+
 ```mermaid
 flowchart LR
   S["<b>Sources</b><br/>Git repos: docs, code outlines<br/>Obsidian vaults · notes · papers · bookmarks<br/>RSS · OpenAlex feeds"] -->|index| I["<b>OpenMem indexer</b><br/>polls repos, watches folders"]
@@ -59,8 +84,6 @@ flowchart LR
   class I,M om
 ```
 
-**B. Context management**: long sessions stay under the limit; nothing is summarized away.
-
 ```mermaid
 flowchart LR
   A["<b>Coding agent</b><br/>Claude Code · Codex · OpenCode 1"] -->|requests| X["<b>Context proxy</b><br/>LiteLLM pre-call hook<br/>trims at 120k tokens · no LLM call"]
@@ -71,6 +94,8 @@ flowchart LR
   classDef om fill:#e8eaf9,stroke:#4651a6,color:#1b1d2a
   class X,S om
 ```
+
+</details>
 
 Native compaction replaces history with an LLM summary, so exact values can be lost; OpenMem keeps every turn verbatim and searchable. The optional [context proxy](https://bcmyguest.github.io/openmem/docs/context-proxy/) trims long agent sessions without an LLM summary. See the [full architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for setup, optional integrations, and provider-specific behavior.
 

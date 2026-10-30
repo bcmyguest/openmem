@@ -16,35 +16,22 @@ const title = `${site.name}: ${site.tagline}`;
 const description =
   'Memory and context management for coding agents: smart compaction that keeps every turn searchable, and memory_* tools over Hindsight, mem0, or Cognee.';
 
-// Benchmark tiles, read from contextbench.json (site/scripts/bench/compute-contextbench.py).
-const fmt = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(2));
-const kTok = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v / 1000)}k`);
-type Fam = 'kv' | 'log';
-const stepLimit = (k: 's1' | 's2', fam: Fam) =>
-  (bench.cells[k][fam] as Record<string, { terminated_by?: string[] }>)[bench.headline[fam].size].terminated_by?.includes('max_steps');
-const baseline = (k: 's1' | 's2', fam: Fam, name: string) => {
-  const h = bench.headline[fam][k];
-  if (h.score == null) return `no ${name} trial`;
-  return `${name} ${fmt(h.score)}${stepLimit(k, fam) ? ' (step limit)' : ''}`;
-};
-const scoreTiles = (
-  [
-    ['kv', 'kv-store'],
-    ['log', 'log-triage'],
-  ] as const
-).map(([fam, task]) => ({
-  label: `${task} ${bench.headline[fam].size}`,
-  value: fmt(bench.headline[fam].smart.score),
-  unit: 'score',
-  note: `${baseline('s2', fam, 'native')} · ${baseline('s1', fam, 'keep everything')}`,
-}));
-const peakTile = {
-  label: 'Peak prompt',
-  value: kTok(bench.headline.smart_peak_prompt_max_all),
-  unit: 'tokens',
-  note: `keep everything up to ${kTok(Math.max(bench.headline.kv.s1.peak_prompt_max ?? 0, bench.headline.log.s1.peak_prompt_max ?? 0))}`,
-};
-const tiles = [...scoreTiles, peakTile];
+// Benchmark tiles, read from contextbench.json (site/scripts/bench/compute-contextbench.py):
+// OpenMem against native compaction, mean over the task sizes where native compaction completed a trial.
+const BENCH_URL = 'https://github.com/RulinShao/ContextBench';
+const vs = bench.vs_native;
+const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+const tiles = [
+  { label: 'Answer quality', value: vs.score.smart?.toFixed(2), unit: 'score', note: `native compaction ${vs.score.s2?.toFixed(2)}` },
+  { label: 'Cost per trial', value: `$${vs.usd.smart?.toFixed(2)}`, unit: 'list price', note: `native compaction $${vs.usd.s2?.toFixed(2)}` },
+  {
+    label: 'Compaction event',
+    value: `${vs.compaction_event_s_median.smart_trim_request_upper_bound.toFixed(1)} s`,
+    unit: 'median',
+    note: `native summary call ${vs.compaction_event_s_median.s2_summary_call.toFixed(1)} s; ours is the whole request, an upper bound`,
+  },
+  { label: 'Prompt-cache hits', value: pct(vs.cache_hit.smart), unit: 'of prompt tokens', note: `native compaction ${pct(vs.cache_hit.s2)}` },
+];
 const seedCounts = Object.values(bench.cells).flatMap((fams) => Object.values(fams).flatMap((sizes) => Object.values(sizes).map((c) => c.n))).filter((n) => n > 0);
 const seedRange = `${Math.min(...seedCounts)} to ${Math.max(...seedCounts)} seeds per cell`;
 
@@ -115,33 +102,44 @@ npx ${site.npm.package} switch mem0 --yes`;
 
     <section class="py-16" aria-labelledby="compact-h">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <div class="grid items-start gap-10 lg:grid-cols-12">
+        <div class="grid items-center gap-8 lg:grid-cols-12 lg:gap-10">
           <div class="lg:col-span-5">
             <p class="text-sm font-semibold uppercase tracking-wider text-source">Context management</p>
             <h2 id="compact-h" class="mt-2 text-3xl font-bold tracking-tight">Smart compaction</h2>
             <p class="mt-3 text-muted">Long sessions keep going without a slow LLM summary. Older turns move to a local store; a pointer and bounded recall take their place; the agent searches the store when it needs a detail back.</p>
-            <ul class="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3" aria-label="Benchmark results at the largest task sizes">
-              {tiles.map((t) => (
-                <li class="rounded-xl border border-line bg-panel p-4">
-                  <p class="text-xs font-semibold uppercase tracking-wider text-muted">{t.label}</p>
-                  <p class="mt-1 flex items-baseline gap-1.5"><span class="text-3xl font-bold tracking-tight text-source">{t.value}</span><span class="text-sm text-muted">{t.unit}</span></p>
-                  <p class="mt-1 text-xs leading-relaxed text-muted">{t.note}</p>
-                </li>
-              ))}
-            </ul>
-            <figure class="mt-6">
-              <div class="overflow-hidden rounded-xl border border-line">
-              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-quality-compact.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall" width="480" loading="lazy" />
-              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-quality-compact-dark.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall (dark theme)" width="480" loading="lazy" />
-              </div>
-              <figcaption class="mt-2 text-xs text-muted">Mean score per task size, all three settings.</figcaption>
-            </figure>
-            <p class="mt-4 text-xs leading-relaxed text-muted">OpenMem smart compaction at the largest ContextBench sizes; Claude Haiku 5.5, synthetic tasks, {seedRange}. <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
             <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-proxy/')}>Context proxy</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/compatibility/')}>Which agents support it</a></p>
           </div>
-          <div class="lg:col-span-7">
+          <div class="min-w-0 lg:col-span-7">
             <SmartCompactionFigure />
           </div>
+        </div>
+
+        <ul class="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Benchmark: OpenMem against native compaction">
+          {tiles.map((t) => (
+            <li class="min-w-0 rounded-xl border border-line bg-panel p-4">
+              <p class="text-xs font-semibold uppercase tracking-wider text-muted">{t.label}</p>
+              <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5"><span class="text-2xl font-bold tracking-tight text-source sm:text-3xl">{t.value}</span><span class="text-xs text-muted">{t.unit}</span></p>
+              <p class="mt-1 text-xs leading-relaxed text-muted">{t.note}</p>
+            </li>
+          ))}
+        </ul>
+        <p class="mt-3 text-xs leading-relaxed text-muted">OpenMem against Claude Code's native compaction on <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> (synthetic tasks), mean over the {vs.cells.length} task sizes where native compaction completed a trial; Claude Haiku 5.5, {seedRange}. <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
+
+        <div class="mt-8 grid gap-6 md:grid-cols-2">
+          <figure class="min-w-0">
+            <div class="overflow-hidden rounded-xl border border-line">
+              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-quality-compact.svg')} alt="ContextBench score by task size: OpenMem holds as tasks grow while native compaction and keep everything fall" width="480" loading="lazy" />
+              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-quality-compact-dark.svg')} alt="ContextBench score by task size: OpenMem holds as tasks grow while native compaction and keep everything fall (dark theme)" width="480" loading="lazy" />
+            </div>
+            <figcaption class="mt-2 text-xs text-muted">Score by task size, all three settings. <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a>, synthetic.</figcaption>
+          </figure>
+          <figure class="min-w-0">
+            <div class="overflow-hidden rounded-xl border border-line">
+              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-compaction.svg')} alt="ContextBench: time per compaction event, native summary call against the OpenMem request that carried a trim" width="480" loading="lazy" />
+              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-compaction-dark.svg')} alt="ContextBench: time per compaction event, native summary call against the OpenMem request that carried a trim (dark theme)" width="480" loading="lazy" />
+            </div>
+            <figcaption class="mt-2 text-xs text-muted">Time per compaction event. <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a>, synthetic.</figcaption>
+          </figure>
         </div>
       </div>
     </section>

@@ -3,7 +3,7 @@
 // relative link, or an invalid manifest. It redacts nothing.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PAGES, firstHeading, rewriteLinks, stripH1, withFrontmatter } from './docs.mjs';
+import { PAGES, firstHeading, pictureToDuo, rewriteLinks, stripH1, withFrontmatter } from './docs.mjs';
 import { embedMermaidAsImages, mermaidBlockCount } from './mermaid-svg.mjs';
 import { site } from '../../src/site.config.mjs';
 import { readProviders } from './manifests.mjs';
@@ -110,6 +110,10 @@ export function runSync({ repoRoot, siteRoot, repoUrl, branch, log = () => {} })
         namePrefix: page.slug.replace(/[^a-z0-9-]+/g, '-'),
       });
       log(`diagrams: ${page.slug} (${mermaidBlocks} mermaid → committed svg)`);
+    }
+    {
+      const basePath = String(process.env.BASE_PATH ?? site.basePath);
+      raw = pictureToDuo(raw, { siteRoot: `${site.siteUrl}${site.basePath}`, basePath });
     }
     const title = page.slug === 'npx-install' ? (firstHeading(raw) ?? page.title) : page.title;
     const body = rewriteLinks(stripH1(raw), { sourcePath: page.source, published, kindOf, repoUrl, branch });

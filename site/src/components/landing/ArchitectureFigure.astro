@@ -28,20 +28,23 @@ const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagr
   .ov-wide {
     display: none;
   }
+  /* Grid tracks are minmax(0, 1fr): an SVG's intrinsic width (1080 or 360) must never widen a track. */
   .ov-narrow {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
     justify-items: center;
   }
   @media (min-width: 48rem) {
     .ov-narrow {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       align-items: start;
     }
   }
   @media (min-width: 64rem) {
     .ov-wide {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 1rem;
     }
     .ov-narrow {
@@ -49,6 +52,7 @@ const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagr
     }
   }
   .ov-card {
+    min-width: 0;
     width: 100%;
     max-width: 26rem;
     border: 1px solid var(--c-line);
@@ -62,6 +66,7 @@ const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagr
   .ov-card :global(svg) {
     display: block;
     width: 100%;
+    max-width: 100%;
     height: auto;
   }
   code {

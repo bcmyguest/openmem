@@ -12,6 +12,7 @@
     "render-diagrams": "node scripts/render-diagrams.mjs",
     "render-overview": "node scripts/render-overview-diagrams.mjs",
     "bench:render": "node scripts/bench/render-contextbench.mjs",
+    "media": "node scripts/render-overview-diagrams.mjs && node scripts/bench/render-contextbench.mjs && pnpm build && node scripts/render-media.mjs",
     "check:privacy": "node scripts/check-privacy.mjs dist",
     "check:sources": "node scripts/check-privacy.mjs --sources-report",
     "check:links": "node scripts/check-links.mjs dist",
