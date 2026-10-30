@@ -25,7 +25,7 @@ Set these in the stack `.env` or in the shell that runs compose.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `CONTEXT_PROXY_ENABLED` | `1` | `0` forwards every request unmodified |
-| `CONTEXT_TRIM_AT_TOKENS` | `120000` | Prompt tokens (estimated as below) that trigger a trim |
+| `CONTEXT_TRIM_AT_TOKENS` | unset: `95000` for Haiku, `120000` otherwise | Prompt tokens (estimated as below) that trigger a trim. Unset or not an integer, the threshold follows the request's model (`MODEL_TRIM_AT_TOKENS` in `proxy/openmem_context/settings.py`): a model id containing `haiku` trims at 95000, under the higher price that Haiku charges for prompts over 100k tokens. A set value applies to every model |
 | `CONTEXT_TRIM_TO_FRACTION` | `0.3` | A trim keeps older in-turn tool exchanges only while the request stays under this fraction of `CONTEXT_TRIM_AT_TOKENS`; must be between 0 and 1, else the default applies (config.toml `[context_proxy] trim_to_fraction`) |
 | `CONTEXT_CHARS_PER_TOKEN` | `2.5` | Characters per token for the estimate until the session reports usage (config.toml `[context_proxy] chars_per_token`) |
 | `CONTEXT_COMPRESS_OVER_TOKENS` | `4000` | Tool results above this are compressed; `0` disables compression |

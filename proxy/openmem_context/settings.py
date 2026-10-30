@@ -9,6 +9,9 @@ from .store import ASCII_WHITESPACE
 from .tokens import DEFAULT_CHARS_PER_TOKEN
 
 DEFAULT_TRIM_AT_TOKENS = 120000
+# Trim thresholds by model family (a substring of the lowercased model id), used while CONTEXT_TRIM_AT_TOKENS is
+# unset. Haiku's prompts over 100k tokens bill at a higher tier, so its sessions trim below it.
+MODEL_TRIM_AT_TOKENS = (("haiku", 95000),)
 # A trim keeps older in-turn exchanges while the request stays under this fraction of trim_at_tokens.
 DEFAULT_TRIM_TO_FRACTION = 0.3
 DEFAULT_COMPRESS_OVER_TOKENS = 4000
@@ -71,6 +74,8 @@ class Settings:
     # STANDING_INSTRUCTION in every request's system prompt (CONTEXT_STANDING_INSTRUCTION=0 turns it off).
     standing_instruction: bool = True
     trim_at_tokens: int = DEFAULT_TRIM_AT_TOKENS
+    # MODEL_TRIM_AT_TOKENS picks the threshold, trim_at_tokens being the fallback (CONTEXT_TRIM_AT_TOKENS unset).
+    trim_at_by_model: bool = False
     # A trim lands under this fraction of trim_at_tokens, 0 < x < 1 (CONTEXT_TRIM_TO_FRACTION).
     trim_to_fraction: float = DEFAULT_TRIM_TO_FRACTION
     compress_over_tokens: int = DEFAULT_COMPRESS_OVER_TOKENS
@@ -102,6 +107,7 @@ class Settings:
             enabled=_flag(env, "CONTEXT_PROXY_ENABLED"),
             standing_instruction=_flag(env, "CONTEXT_STANDING_INSTRUCTION"),
             trim_at_tokens=_int(env, "CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
+            trim_at_by_model=_int(env, "CONTEXT_TRIM_AT_TOKENS", None) is None,
             trim_to_fraction=_fraction(env, "CONTEXT_TRIM_TO_FRACTION", DEFAULT_TRIM_TO_FRACTION),
             compress_over_tokens=_int(env, "CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
             chars_per_token=_positive_float(env, "CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
@@ -117,3 +123,12 @@ class Settings:
             embedding_timeout_s=_positive_float(env, "CONTEXT_EMBEDDING_TIMEOUT_S", DEFAULT_EMBEDDING_TIMEOUT_S),
             embedding_max_chars=_positive_int(env, "CONTEXT_EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS),
         )
+
+    def trim_at_for(self, model):
+        """The trim threshold for a request to model (its id, or None)."""
+        if self.trim_at_by_model and isinstance(model, str):
+            name = model.lower()
+            for family, tokens in MODEL_TRIM_AT_TOKENS:
+                if family in name:
+                    return tokens
+        return self.trim_at_tokens

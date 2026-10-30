@@ -927,6 +927,31 @@ class SafetyTests(Base):
         for bad in ("0", "1", "-0.2", "1.5", "nan", "inf", "x", ""):
             self.assertEqual(Settings.from_env({"CONTEXT_TRIM_TO_FRACTION": bad}).trim_to_fraction, 0.3, bad)
 
+    def test_trim_at_by_model(self):
+        s = Settings.from_env({})
+        self.assertEqual(s.trim_at_for("anthropic/claude-haiku-5-5"), 95000)
+        self.assertEqual(s.trim_at_for("Claude-HAIKU"), 95000)
+        for model in ("claude-sonnet-5", "anthropic/claude-opus-5-5", None, 7):
+            self.assertEqual(s.trim_at_for(model), 120000, model)
+        for raw in ("120000", " 50 "):
+            s = Settings.from_env({"CONTEXT_TRIM_AT_TOKENS": raw})
+            self.assertEqual(s.trim_at_for("claude-haiku-5-5"), int(raw), raw)
+        self.assertEqual(Settings.from_env({"CONTEXT_TRIM_AT_TOKENS": "x"}).trim_at_for("claude-haiku-5-5"), 95000)
+        self.assertEqual(Settings(trim_at_tokens=50).trim_at_for("claude-haiku-5-5"), 50)
+
+    def test_haiku_trims_at_its_threshold(self):
+        def trims(model, filler):
+            ctx = Path(tempfile.mkdtemp(dir=self.tmp.name))
+            settings = Settings(trim_at_by_model=True, chars_per_token=1.0, context_dir=ctx)
+            msgs = anth_history(3, filler=filler)
+            data = anth_request(copy.deepcopy(msgs))
+            data["model"] = model
+            return len(process_request(data, "anthropic_messages", settings)["messages"]) < len(msgs)
+        # Three user turns of filler characters: about 100k estimated tokens, then about 126k.
+        self.assertTrue(trims("anthropic/claude-haiku-5-5", 33000))
+        self.assertFalse(trims("anthropic/claude-sonnet-5", 33000))
+        self.assertTrue(trims("anthropic/claude-sonnet-5", 42000))
+
     def test_disabled_from_env(self):
         self.assertFalse(Settings.from_env({"CONTEXT_PROXY_ENABLED": "0"}).enabled)
         s = Settings.from_env({"OPENMEM_STATE_DIR": "/state"})

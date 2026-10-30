@@ -17,6 +17,11 @@ import { blobRef, chain, dropSession, openSession, scheduleEmbedding, storeSetti
 export { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, recallBlock } from "./recall-frame.mjs";
 
 export const DEFAULT_TRIM_AT_TOKENS = 120000;
+/**
+ * Trim thresholds by model family (a substring of the lowercased model id), used while CONTEXT_TRIM_AT_TOKENS is
+ * unset; same table as MODEL_TRIM_AT_TOKENS in proxy/openmem_context/settings.py.
+ */
+export const MODEL_TRIM_AT_TOKENS = [["haiku", 95000]];
 /** A trim keeps older in-turn exchanges while the request stays under this fraction of trimAtTokens; same as the proxy. */
 export const DEFAULT_TRIM_TO_FRACTION = 0.3;
 export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
@@ -82,6 +87,7 @@ export function trimSettings(env = process.env, home = env.HOME) {
     enabled: flag("CONTEXT_PROXY_ENABLED"),
     standingInstruction: flag("CONTEXT_STANDING_INSTRUCTION"),
     trimAtTokens: int("CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
+    trimAtByModel: int("CONTEXT_TRIM_AT_TOKENS", null) === null,
     trimToFraction: fraction("CONTEXT_TRIM_TO_FRACTION", DEFAULT_TRIM_TO_FRACTION),
     compressOverTokens: int("CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
     charsPerToken: positive("CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
@@ -91,6 +97,16 @@ export function trimSettings(env = process.env, home = env.HOME) {
     contextDir: contextRoot(home, env),
     ...storeSettings(env),
   };
+}
+
+/** The trim threshold for a request to model (an OpenCode model object, an id, or null); Settings.trim_at_for. */
+export function trimAtFor(settings, model) {
+  const name = modelName(model);
+  if (settings.trimAtByModel && name) {
+    const id = name.toLowerCase();
+    for (const [family, tokens] of MODEL_TRIM_AT_TOKENS) if (id.includes(family)) return tokens;
+  }
+  return settings.trimAtTokens;
 }
 
 export function textTokens(text) {
@@ -752,13 +768,14 @@ async function trimSession(request, settings, deps, { original, sid, store, item
     const ratio = settings.charsPerToken > 0 ? settings.charsPerToken : DEFAULT_CHARS_PER_TOKEN;
     const baseChars = requestChars(request.system, request.tools);
     const tokens = estimatePromptTokens(baseChars + requestChars(rendered), state.usage, root, ratio);
-    if (force || tokens >= settings.trimAtTokens) {
+    const trimAt = trimAtFor(settings, request.model);
+    if (force || tokens >= trimAt) {
       let next = chooseCut(items, cut === null ? -1 : cut, first);
       if (next === null) next = cut !== null ? cut : lastTurnIndex(items);
       let nextGap = null;
       if (next !== null) {
         const sizes = items.map((x) => requestChars(x));
-        const target = settings.trimAtTokens * (settings.trimToFraction ?? DEFAULT_TRIM_TO_FRACTION);
+        const target = trimAt * (settings.trimToFraction ?? DEFAULT_TRIM_TO_FRACTION);
         const fits = (g) => {
           let chars = baseChars;
           for (const j of keptIndices(items, next, g, first)) chars += sizes[j];
