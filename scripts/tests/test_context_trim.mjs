@@ -129,7 +129,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     view.length === 3 && view[0] === messages[0] && view[1] === sys && view[2].role === "user");
   check("pointer leads the kept turn", view[2].content[0].text === `${ptr(sid, 3)}\n\n` && view[2].content[1].text === "second question");
   check("pointer text follows the contract",
-    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. They were delivered to you and later removed to fit your context window, so a gap in what you see (missing batches, lines, keys) is in them. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them, and never answer "not found" or "never received" without searching; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
+    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. They were delivered to you and later removed to fit your context window, so a gap in what you see (missing batches, lines, keys) is in them. The tools smart_compact_search and smart_compact_sql are available to you in this request. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them, and never answer "not found", "never received" or "no search tool" without calling it; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
   check("input messages are not mutated", messages[5].content.length === 1);
 
   const rows = logLines(sid);
@@ -490,9 +490,9 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("signed reasoning: OpenAI encrypted reasoning kept as sent", view[4] === history[7]);
   check("signed reasoning: input history untouched", JSON.stringify(history) === before);
   const quiet = await trimContext({ sessionID: "ses_signed", messages: [...history, assistant("done")] }, settingsFor({ trimAtTokens: 10 ** 9 }));
-  check("signed reasoning: sticky re-render strips the former latest message too",
-    staleSigned(quiet).length === 0 && JSON.stringify(quiet.slice(0, 6)) === JSON.stringify(view.slice(0, 6))
-    && JSON.stringify(quiet[6].content) === JSON.stringify([history[9].content[1]]) && quiet.length === 9);
+  // The latest message at trim time keeps its reasoning until the next trim, so the prefix stays byte-identical.
+  check("signed reasoning: sticky re-render keeps the trimmed view as its prefix",
+    JSON.stringify(quiet.slice(0, view.length)) === JSON.stringify(view) && quiet[6] === history[9] && quiet.length === 9);
   const untrimmed = await trimContext({ sessionID: "ses_signed_none", messages: history }, settingsFor({ trimAtTokens: 10 ** 9 }));
   check("signed reasoning: an untrimmed request keeps every part", untrimmed.length === history.length && untrimmed.every((m, k) => m === history[k]));
 }
