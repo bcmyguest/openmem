@@ -1,6 +1,8 @@
 # Concepts
 
-OpenMem is a **memory interface for coding agents**: a stable API and operator surface over pluggable memory providers.
+OpenMem is memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable memory providers (Hindsight, mem0, Cognee), one setup wizard.
+
+Benchmarks: [smart compaction against Claude Code's native compaction and keep-everything](context-management.md#benchmarks).
 
 ## What’s coding-agent memory?
 
