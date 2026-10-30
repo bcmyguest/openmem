@@ -16,7 +16,7 @@ Long agent sessions outgrow the context window. Agents handle this in one of thr
 flowchart LR
   S[Agent session] --> T{Over trim threshold?}
   T -- no --> F[Forward unchanged]
-  T -- yes --> K[Keep system, tools, first user turn, in-flight turn]
+  T -- yes --> K[Keep system, tools, first user turn, last user turn, its newest tool exchanges]
   S --> L[("SQLite session store: every message, verbatim, flagged in_context")]
   K --> P["Pointer: earlier messages are NOT in context; call smart_compact_search or smart_compact_sql"]
   P --> F
