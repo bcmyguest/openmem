@@ -110,7 +110,7 @@ const MEMORY_DESC =
 /** Diagram A: memory. layout 'wide' (desktop) or 'narrow' (phone). */
 export function memoryDiagram(p, layout = 'wide', id = 'ovm') {
   if (layout === 'wide') {
-    const W = 1080, H = 372, Y = 54, CH = 200, CW = 176, G = 44, X0 = 24;
+    const W = 1080, H = 372, Y = 54, CH = 200, CW = 176, G = 38, X0 = 24; // 2·X0 + 5·CW + 4·G = W
     const xs = [0, 1, 2, 3, 4].map((i) => X0 + i * (CW + G));
     const body = [
       `<text x="${X0}" y="32" font-size="15" font-weight="700" fill="${p.ink}">A · Memory</text>`,
@@ -199,7 +199,7 @@ export function contextDiagram(p, layout = 'wide', id = 'ovc') {
   parts.push(card(p, { x: X, y, w: CW, h: 67, title: 'Coding agent', rows: ['Claude Code · Codex · OpenCode 1'] }));
   y += 67;
   parts.push(arrow(p, [[W / 2 - 50, y + 4], [W / 2 - 50, y + 30]], { label: 'requests', lx: W / 2 - 38, ly: y + 21, anchor: 'start' }));
-  parts.push(arrow(p, [[W / 2 + 70, y + 30], [W / 2 + 70, y + 4]], { label: 'reads store (MCP)', lx: W / 2 + 82, ly: y + 21, anchor: 'start' }));
+  parts.push(arrow(p, [[W / 2 + 70, y + 30], [W / 2 + 70, y + 4]], { label: 'MCP reads', lx: W / 2 + 82, ly: y + 21, anchor: 'start' }));
   y += 34;
   parts.push(card(p, { x: X, y, w: CW, h: 88, title: 'Context proxy', sub: 'LiteLLM pre-call hook', rows: [{ t: 'trims at 120k tokens · no LLM call', strong: true }], accent: true }));
   y += 88;
