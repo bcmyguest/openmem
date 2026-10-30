@@ -285,7 +285,7 @@ export function contextAgentsFromPmConfig(cfg) {
 }
 
 /**
- * Trim settings with defaults: `[context_proxy] trim_at_tokens` (120000), `compress_over_tokens`
+ * Trim settings with defaults: `[context_proxy] trim_at_tokens` (120000; unset, the proxy and plugin trim Haiku at 95000), `compress_over_tokens`
  * (4000), `standing_instruction` (true), `[compaction] max_chars` (12000), `native` (true). Env overrides are applied by
  * `contextTrimEnvFromPmConfig` + `trimSettings()`, not here.
  * @param {Record<string, unknown>} cfg

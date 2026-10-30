@@ -163,6 +163,39 @@ Against run B's baselines (mean score; n = completed seeds; run B trials had no 
 
 Run D keeps every prompt under 121k, where keep-everything grew to 979k, and keeps exact values that native compaction lost.
 
+### Telling the model it can search after a trim (run "Dp", 5 trials)
+
+Run 2026-10-30 on one task: log-triage L1600 seed 44, smart compaction (d-sqlite) only, five repeats.
+
+The earlier version (commit 5e77a2b) trims at 95k for Haiku. On this task the model never searched its trimmed history afterwards and answered 16 of the 24 questions UNKNOWN. This version (commit f1fd9f3) changes one thing: the note left in place of the trimmed messages now names the `smart_compact_search` and `smart_compact_sql` tools and says they are available.
+
+| Trial | Search calls | SQL calls | UNKNOWN | Score | Lookup | Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| Before the change (5e77a2b) | 0 | 0 | 16 | 0.17 | 0.33 | 0.00 |
+| With the change, trial 1 | 6 | 10 | 0 | 1.00 | 1.00 | 1.00 |
+| With the change, trial 2 | 8 | 10 | 0 | 1.00 | 1.00 | 1.00 |
+| With the change, trial 3 | 8 | 16 | 0 | 0.71 | 1.00 | 0.42 |
+| With the change, trial 4 | 12 | 13 | 0 | 1.00 | 1.00 | 1.00 |
+| With the change, trial 5 | 14 | 15 | 0 | 1.00 | 1.00 | 1.00 |
+
+With the note naming the tools, every trial searched after the trim and answered every question. Mean score 0.94; all 7 lost points are trial 3's count questions.
+
+### Keeping the prompt cache intact after a trim (run "Df", 5 trials)
+
+Same task and setup, run 2026-10-30. This version (commit 47d17fa) builds on the search-tools note above and changes how a trim treats the model's thinking blocks. It drops the thinking from before the trim and keeps the thinking from after it. The start of the prompt then stays byte-for-byte the same from one request to the next, so the provider's prompt cache keeps hitting instead of being rewritten.
+
+| Trial | Trims | Tokens written to cache | Cache hit rate | Cost | Score |
+| --- | --- | --- | --- | --- | --- |
+| Trial 1 | 1 | 229k | 0.967 | $0.122 | 1.00 |
+| Trial 2 | 1 | 154k | 0.979 | $0.110 | 1.00 |
+| Trial 3 | 1 | 140k | 0.979 | $0.101 | 1.00 |
+| Trial 4 | 1 | 147k | 0.979 | $0.105 | 1.00 |
+| Trial 5 | 1 | 145k | 0.979 | $0.103 | 1.00 |
+| Mean, with the cache fix | 1 | 163k | 0.976 | $0.108 | 1.00 |
+| Mean, search-tools note only | 1–3 | 598k | 0.919 | $0.218 | 0.94 |
+
+The cache fix halves the mean cost, from $0.218 to $0.108, and every trial scored 1.00. Most of the cost gap comes from one search-tools-only trial (trial 5). It trimmed 3 times, wrote 2.2M tokens to the cache at a 0.693 hit rate, and cost $0.589. Without that trial the search-tools-only mean is $0.126. No cache-fix trial behaved that way, but five trials cannot rule it out. Every trial in both runs kept its largest prompt under 95k tokens.
+
 ## Limitations
 
 - One model (Haiku 5.5) and three seeds per task; run B's baselines have one or two seeds per cell.

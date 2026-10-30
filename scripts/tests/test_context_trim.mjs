@@ -26,6 +26,7 @@ import {
   pointerText,
   recallBlock,
   trimContext,
+  trimAtFor,
   trimSettings,
 } from "../../cli/coding-agent/context-trim.mjs";
 
@@ -77,6 +78,19 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     ["0", "1", "-0.2", "1.5", "NaN", "Infinity", "x", ""].every((v) => trimSettings({ CONTEXT_TRIM_TO_FRACTION: v }, "/h").trimToFraction === 0.3));
 }
 
+// Haiku trims at 95k while CONTEXT_TRIM_AT_TOKENS is unset; a set value wins for every model.
+{
+  const d = trimSettings({}, "/h");
+  check("haiku threshold by model id, OpenCode model object or LiteLLM prefix",
+    trimAtFor(d, "anthropic/claude-haiku-5-5") === 95000 && trimAtFor(d, { providerID: "anthropic", id: "Claude-HAIKU" }) === 95000);
+  check("other or missing models keep the default",
+    ["claude-sonnet-5", { providerID: "anthropic", id: "claude-opus-5-5" }, null, 7].every((m) => trimAtFor(d, m) === 120000));
+  check("CONTEXT_TRIM_AT_TOKENS overrides the model table",
+    ["120000", " 50 "].every((v) => trimAtFor(trimSettings({ CONTEXT_TRIM_AT_TOKENS: v }, "/h"), "claude-haiku-5-5") === Number(v)));
+  check("an invalid CONTEXT_TRIM_AT_TOKENS keeps the model table", trimAtFor(trimSettings({ CONTEXT_TRIM_AT_TOKENS: "x" }, "/h"), "claude-haiku-5-5") === 95000);
+  check("an explicit trimAtTokens without trimAtByModel wins", trimAtFor({ trimAtTokens: 50 }, "claude-haiku-5-5") === 50);
+}
+
 // Compression is a pure function of content and threshold and matches the proxy byte for byte.
 {
   const lines = Array.from({ length: 300 }, (_, i) => `line ${i} ${"x".repeat(80)} é 😀`);
@@ -115,7 +129,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     view.length === 3 && view[0] === messages[0] && view[1] === sys && view[2].role === "user");
   check("pointer leads the kept turn", view[2].content[0].text === `${ptr(sid, 3)}\n\n` && view[2].content[1].text === "second question");
   check("pointer text follows the contract",
-    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
+    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. They were delivered to you and later removed to fit your context window, so a gap in what you see (missing batches, lines, keys) is in them. The tools smart_compact_search and smart_compact_sql are available to you in this request. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them, and never answer "not found", "never received" or "no search tool" without calling it; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
   check("input messages are not mutated", messages[5].content.length === 1);
 
   const rows = logLines(sid);
@@ -132,6 +146,19 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("tool result row", parsed[2].role === "tool" && parsed[2].kind === "tool_result" && parsed[2].name === "bash" && parsed[2].text === "a\nb");
   check("pinned system messages are not logged", !parsed.some((r) => r.text === "instructions update"));
   check("session files are private", mode(path.join(sessions, `${sid}.db`)) === 0o600 && mode(path.join(sessions, `${sid}.trim.json`)) === 0o600 && mode(sessions) === 0o700);
+}
+
+// The trim fires at the request model's threshold: about 100k estimated tokens trims haiku only.
+{
+  const turns = (filler) => [user("zero " + "q".repeat(filler)), assistant("a0"), user("one " + "q".repeat(filler)), assistant("a1"),
+    user("two " + "q".repeat(filler))];
+  const trims = async (sid, model, filler) => {
+    const messages = turns(filler);
+    return (await trimContext({ sessionID: sid, model, messages }, settingsFor({ charsPerToken: 1 }))).length < messages.length;
+  };
+  check("haiku trims at about 100k estimated tokens", await trims("ses_haiku", { providerID: "anthropic", id: "claude-haiku-5-5" }, 33000));
+  check("sonnet keeps about 100k estimated tokens", !(await trims("ses_sonnet", { providerID: "anthropic", id: "claude-sonnet-5" }, 33000)));
+  check("sonnet trims at about 126k estimated tokens", await trims("ses_sonnet_big", { providerID: "anthropic", id: "claude-sonnet-5" }, 42000));
 }
 
 // A cut never separates a tool call from its result.
@@ -463,9 +490,9 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("signed reasoning: OpenAI encrypted reasoning kept as sent", view[4] === history[7]);
   check("signed reasoning: input history untouched", JSON.stringify(history) === before);
   const quiet = await trimContext({ sessionID: "ses_signed", messages: [...history, assistant("done")] }, settingsFor({ trimAtTokens: 10 ** 9 }));
-  check("signed reasoning: sticky re-render strips the former latest message too",
-    staleSigned(quiet).length === 0 && JSON.stringify(quiet.slice(0, 6)) === JSON.stringify(view.slice(0, 6))
-    && JSON.stringify(quiet[6].content) === JSON.stringify([history[9].content[1]]) && quiet.length === 9);
+  // The latest message at trim time keeps its reasoning until the next trim, so the prefix stays byte-identical.
+  check("signed reasoning: sticky re-render keeps the trimmed view as its prefix",
+    JSON.stringify(quiet.slice(0, view.length)) === JSON.stringify(view) && quiet[6] === history[9] && quiet.length === 9);
   const untrimmed = await trimContext({ sessionID: "ses_signed_none", messages: history }, settingsFor({ trimAtTokens: 10 ** 9 }));
   check("signed reasoning: an untrimmed request keeps every part", untrimmed.length === history.length && untrimmed.every((m, k) => m === history[k]));
 }

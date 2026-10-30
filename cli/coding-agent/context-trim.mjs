@@ -17,6 +17,11 @@ import { blobRef, chain, dropSession, openSession, scheduleEmbedding, storeSetti
 export { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, recallBlock } from "./recall-frame.mjs";
 
 export const DEFAULT_TRIM_AT_TOKENS = 120000;
+/**
+ * Trim thresholds by model family (a substring of the lowercased model id), used while CONTEXT_TRIM_AT_TOKENS is
+ * unset; same table as MODEL_TRIM_AT_TOKENS in proxy/openmem_context/settings.py.
+ */
+export const MODEL_TRIM_AT_TOKENS = [["haiku", 95000]];
 /** A trim keeps older in-turn exchanges while the request stays under this fraction of trimAtTokens; same as the proxy. */
 export const DEFAULT_TRIM_TO_FRACTION = 0.3;
 export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
@@ -82,6 +87,7 @@ export function trimSettings(env = process.env, home = env.HOME) {
     enabled: flag("CONTEXT_PROXY_ENABLED"),
     standingInstruction: flag("CONTEXT_STANDING_INSTRUCTION"),
     trimAtTokens: int("CONTEXT_TRIM_AT_TOKENS", DEFAULT_TRIM_AT_TOKENS),
+    trimAtByModel: int("CONTEXT_TRIM_AT_TOKENS", null) === null,
     trimToFraction: fraction("CONTEXT_TRIM_TO_FRACTION", DEFAULT_TRIM_TO_FRACTION),
     compressOverTokens: int("CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
     charsPerToken: positive("CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
@@ -91,6 +97,16 @@ export function trimSettings(env = process.env, home = env.HOME) {
     contextDir: contextRoot(home, env),
     ...storeSettings(env),
   };
+}
+
+/** The trim threshold for a request to model (an OpenCode model object, an id, or null); Settings.trim_at_for. */
+export function trimAtFor(settings, model) {
+  const name = modelName(model);
+  if (settings.trimAtByModel && name) {
+    const id = name.toLowerCase();
+    for (const [family, tokens] of MODEL_TRIM_AT_TOKENS) if (id.includes(family)) return tokens;
+  }
+  return settings.trimAtTokens;
 }
 
 export function textTokens(text) {
@@ -468,16 +484,27 @@ export function chooseGap(items, cut, after, first, fits) {
 }
 
 /**
- * The kept messages (keptIndices) in order, the cut turn carrying the note. `decorate(message)` adds
- * per-message parts at render time only; trimming, fingerprints and log rows always see the undecorated messages.
+ * The kept messages (keptIndices) in order, the cut turn carrying the note, with signed reasoning stripped from
+ * kept assistant messages before `strip` (default: the latest assistant run; see stripReasoning). `decorate(message)`
+ * adds per-message parts at render time only; trimming, fingerprints and log rows always see the undecorated messages.
  */
-export function render(items, cut, note, first = null, gap = null, decorate = (m) => m) {
+export function render(items, cut, note, first = null, gap = null, decorate = (m) => m, strip = null) {
   if (cut === null) return items.map(decorate);
   const keep = keptIndices(items, cut, gap, first);
+  const run = latestRunStart(items);
   return stripReasoning(items.flatMap((x, j) => {
     if (!keep.has(j)) return [];
-    return [j === cut ? prependNote(decorate(x), note) : decorate(x)];
-  }));
+    return [{ message: j === cut ? prependNote(decorate(x), note) : decorate(x), j }];
+  }), strip === null ? run : Math.min(strip, run));
+}
+
+/** Index where the trailing run of assistant messages ending at the last one starts; items.length if none. */
+export function latestRunStart(items) {
+  let last = -1;
+  for (let j = items.length - 1; j >= 0; j--) if (items[j]?.role === "assistant") { last = j; break; }
+  if (last < 0) return items.length;
+  while (last > 0 && items[last - 1]?.role === "assistant") last--;
+  return last;
 }
 
 /**
@@ -493,18 +520,14 @@ export function isSignedReasoning(part) {
 }
 
 /**
- * Remove signed reasoning parts from every assistant message of a trimmed view except the latest assistant run,
- * which goes out unchanged; a message left with no parts is dropped. Same rule as strip_reasoning in
- * proxy/openmem_context/core.py.
+ * The kept `{ message, j }` entries as messages, with signed reasoning parts removed from assistant messages whose
+ * item index j is before `bound`; a message left with no parts is dropped. The trim records `bound` as the start of
+ * the latest assistant run at that moment, so reasoning produced after the trim stays and the stripped prefix is
+ * fixed until the next trim. Same rule as strip_reasoning in proxy/openmem_context/core.py.
  */
-export function stripReasoning(view) {
-  let last = -1;
-  for (let j = view.length - 1; j >= 0; j--) if (view[j]?.role === "assistant") { last = j; break; }
-  if (last < 0) return view;
-  let start = last;
-  while (start > 0 && view[start - 1]?.role === "assistant") start--;
-  return view.flatMap((x, j) => {
-    if (j >= start || x?.role !== "assistant" || !Array.isArray(x.content) || !x.content.some(isSignedReasoning)) return [x];
+export function stripReasoning(view, bound) {
+  return view.flatMap(({ message: x, j }) => {
+    if (j >= bound || x?.role !== "assistant" || !Array.isArray(x.content) || !x.content.some(isSignedReasoning)) return [x];
     const content = x.content.filter((p) => !isSignedReasoning(p));
     return content.length ? [{ ...x, content }] : [];
   });
@@ -518,9 +541,14 @@ function locate(items, idx, want, lo = 0) {
 }
 
 export function pointerText(sid, dropped) {
-  return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. `
+  return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. They were `
+    + "delivered to you and later removed to fit your context window, so a gap in what you see (missing "
+    + "batches, lines, keys) is in them. "
+    + "The tools smart_compact_search and smart_compact_sql are available to you in this request. "
     + `You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering `
-    + "anything that depends on them; every message of this session is stored and queryable with "
+    + 'anything that depends on them, and never answer "not found", "never received" or "no search tool" '
+    + "without calling it; "
+    + "every message of this session is stored and queryable with "
     + `smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]`;
 }
 
@@ -735,6 +763,7 @@ async function trimSession(request, settings, deps, { original, sid, store, item
     const thread = threads.get(root);
     let cut = null;
     let gap = null;
+    let strip = null;
     let note = null;
     if (thread) {
       cut = locate(items, thread.cut, thread.cut_fp);
@@ -742,20 +771,22 @@ async function trimSession(request, settings, deps, { original, sid, store, item
       else {
         note = thread.note;
         if (thread.gap_fp) gap = locate(items, thread.gap, thread.gap_fp, cut + 2);
+        if (thread.strip_fp) strip = locate(items, thread.strip, thread.strip_fp, cut);
       }
     }
-    let rendered = render(items, cut, note, first, gap, decorate);
+    let rendered = render(items, cut, note, first, gap, decorate, strip);
     const force = store.forceRequested(sid);
     const ratio = settings.charsPerToken > 0 ? settings.charsPerToken : DEFAULT_CHARS_PER_TOKEN;
     const baseChars = requestChars(request.system, request.tools);
     const tokens = estimatePromptTokens(baseChars + requestChars(rendered), state.usage, root, ratio);
-    if (force || tokens >= settings.trimAtTokens) {
+    const trimAt = trimAtFor(settings, request.model);
+    if (force || tokens >= trimAt) {
       let next = chooseCut(items, cut === null ? -1 : cut, first);
       if (next === null) next = cut !== null ? cut : lastTurnIndex(items);
       let nextGap = null;
       if (next !== null) {
         const sizes = items.map((x) => requestChars(x));
-        const target = settings.trimAtTokens * (settings.trimToFraction ?? DEFAULT_TRIM_TO_FRACTION);
+        const target = trimAt * (settings.trimToFraction ?? DEFAULT_TRIM_TO_FRACTION);
         const fits = (g) => {
           let chars = baseChars;
           for (const j of keptIndices(items, next, g, first)) chars += sizes[j];
@@ -772,11 +803,13 @@ async function trimSession(request, settings, deps, { original, sid, store, item
         threads.delete(root);
         const entry = { cut: next, cut_fp: fingerprint(items[next]), note, format: FORMAT, updated: ts };
         if (nextGap !== null) Object.assign(entry, { gap: nextGap, gap_fp: fingerprint(items[nextGap]) });
+        strip = latestRunStart(items);
+        if (strip < items.length) Object.assign(entry, { strip, strip_fp: fingerprint(items[strip]) });
         threads.set(root, entry);
         while (threads.size > MAX_THREADS) threads.delete(threads.keys().next().value);
         store.saveTrim(sid, state);
         if (force) store.clearForce(sid);
-        rendered = render(items, next, note, first, nextGap, decorate);
+        rendered = render(items, next, note, first, nextGap, decorate, strip);
         cut = next;
         gap = nextGap;
         const after = estimatePromptTokens(baseChars + requestChars(rendered), state.usage, root, ratio);
