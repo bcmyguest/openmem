@@ -4,12 +4,14 @@ Pure stdlib. The LiteLLM hook calls process_request(data, call_type) before each
 process_usage(kwargs, response) after each success; tests call them directly.
 """
 
+import hashlib
 import re
 import sys
 import threading
 import time
 import traceback
 from collections import OrderedDict
+from pathlib import Path
 
 from . import embed as embed_mod
 from . import recall as recall_mod
@@ -46,11 +48,38 @@ _pending = OrderedDict()
 _pending_guard = threading.Lock()
 
 
+def code_hash(directory):
+    """First 12 hex of SHA-256 over this package's *.py files (name, NUL, bytes, NUL, sorted by name): the running
+    code's identity. cli/context-management.mjs hashes the checkout the same way to spot a stale proxy."""
+    digest = hashlib.sha256()
+    for path in sorted(Path(directory).glob("*.py")):
+        digest.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()[:12]
+
+
+# The events table's version column for rows this proxy writes.
+VERSION = f"proxy:{code_hash(Path(__file__).parent)}"
+
+
+def _where(exc):
+    tb = traceback.extract_tb(exc.__traceback__)
+    return f"{tb[-1].filename.rsplit('/', 1)[-1]}:{tb[-1].lineno}" if tb else "?"
+
+
 def _log_error(exc):
     """One stderr line: exception type and location only, never message content."""
-    tb = traceback.extract_tb(exc.__traceback__)
-    where = f"{tb[-1].filename.rsplit('/', 1)[-1]}:{tb[-1].lineno}" if tb else "?"
-    print(f"openmem-context: fail-open {type(exc).__name__} at {where}", file=sys.stderr, flush=True)
+    print(f"openmem-context: fail-open {type(exc).__name__} at {_where(exc)}", file=sys.stderr, flush=True)
+
+
+def _record_event(store, sid, kind, **fields):
+    """Append an events row to sessions/<sid>.db (docs/context-store.md, "Events"). Never raises or logs: a database
+    that cannot take the row already failed, and logged, while storing the request's messages or before."""
+    path = store.db_path(sid)
+    try:
+        store.ensure_sessions()
+        sessiondb.open_session(path).add_event(kind, _utc_now(), VERSION, **fields)
+    except Exception:
+        sessiondb.drop_session(path)
 
 
 def _utc_now():
@@ -233,6 +262,15 @@ def _rewrite(data, call_type, settings, http, route, call_id):
         items = [adapter.compress_item(x, settings.compress_over_tokens, store.write_blob) for x in original]
 
     sid = resolve_session_id(data, adapter, original)
+    try:
+        return _rewrite_session(data, adapter, original, items, sid, store, settings, http, call_id)
+    except Exception as exc:
+        # The request goes on untrimmed (process_request logs and returns data); the session keeps the record.
+        _record_event(store, sid, "fail_open", location=_where(exc), error=type(exc).__name__)
+        raise
+
+
+def _rewrite_session(data, adapter, original, items, sid, store, settings, http, call_id):
     roots = [x for x in items if not adapter.is_pinned(x)]
     if not roots:
         if settings.standing_instruction:
@@ -242,6 +280,7 @@ def _rewrite(data, call_type, settings, http, route, call_id):
     first = first_user_index(adapter, items)
     context = [data.get(k) for k in adapter.context_keys]
 
+    trim = None
     with session_lock(sid):
         state = store.load_trim(sid)
         threads = state["threads"]
@@ -271,11 +310,15 @@ def _rewrite(data, call_type, settings, http, route, call_id):
                     store.clear_force(sid)
                 view = render(adapter, items, new_cut, note, first)
                 cut = new_cut
+                after = estimate_prompt_tokens(request_chars(*context, view), state.get("usage"), root, ratio)
+                trim = {"tokens_before": tokens, "tokens_after": after, "dropped": dropped}
             elif thread and not cut:
                 store.save_trim(sid, state)
         elif thread and not cut:
             store.save_trim(sid, state)
         _store_messages(store, sid, adapter, original, items, cut, first, settings)
+        if trim:
+            _record_event(store, sid, "trim", **trim)
 
     # Measured like the estimate, before the standing instruction, so calibration compares like with like.
     _await_usage(data.get("litellm_call_id") or call_id, sid, root, request_chars(*context, view))
