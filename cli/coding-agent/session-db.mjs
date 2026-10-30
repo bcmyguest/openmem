@@ -10,8 +10,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-export const SCHEMA_VERSION = 1;
-/** Executed in order on an empty database, then PRAGMA user_version. Same strings as SCHEMA in sessiondb.py. */
+export const SCHEMA_VERSION = 2;
+/** Version 1, executed in order on an empty database. Same strings as SCHEMA in sessiondb.py. */
 export const SCHEMA = [
   "CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL, "
     + "role TEXT NOT NULL, kind TEXT NOT NULL, name TEXT, text TEXT NOT NULL, blob_id TEXT, "
@@ -28,6 +28,16 @@ export const SCHEMA = [
   "CREATE TABLE vectors (message_seq INTEGER NOT NULL REFERENCES messages (seq), model TEXT NOT NULL, "
     + "dim INTEGER NOT NULL, blob BLOB NOT NULL, PRIMARY KEY (message_seq, model))",
 ];
+/**
+ * [version, DDL] run in order after SCHEMA on a new database, or from the stored version up on an older one; then
+ * PRAGMA user_version = SCHEMA_VERSION. Same strings as MIGRATIONS in sessiondb.py.
+ */
+export const MIGRATIONS = [
+  // Trims and fail-opens: kind 'trim' | 'fail_open'; version names the writer ("proxy:<hash>", "opencode:<v>").
+  [2, ["CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL, "
+    + "location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER)"]],
+];
+export const EVENT_COLUMNS = ["at", "kind", "version", "location", "error", "tokens_before", "tokens_after", "dropped"];
 export const DB_SUFFIX = ".db";
 export const BUSY_TIMEOUT_MS = 1000;
 export const DEFAULT_TTL_DAYS = 30;
@@ -99,11 +109,15 @@ export function connect(file) {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA synchronous = NORMAL");
     const version = () => db.prepare("PRAGMA user_version").get().user_version;
-    if (version() === 0) {
+    if (version() < SCHEMA_VERSION) {
       db.exec("BEGIN IMMEDIATE");
       try {
-        if (version() === 0) {
-          for (const ddl of SCHEMA) db.exec(ddl);
+        const from = version();
+        if (from < SCHEMA_VERSION) {
+          if (from === 0) for (const ddl of SCHEMA) db.exec(ddl);
+          for (const [target, ddls] of MIGRATIONS) {
+            if (target > Math.max(from, 1)) for (const ddl of ddls) db.exec(ddl);
+          }
           db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
         }
         db.exec("COMMIT");
@@ -196,6 +210,13 @@ export class SessionDB {
       this.dataVersion = null;
       throw error;
     }
+  }
+
+  /** Append one events row (SessionDB.add_event); fields are the other EVENT_COLUMNS. */
+  addEvent(kind, at, version, fields = {}) {
+    const values = { at, kind, version, ...fields };
+    this.db.prepare(`INSERT INTO events (${EVENT_COLUMNS.join(", ")}) VALUES (${EVENT_COLUMNS.map(() => "?").join(", ")})`)
+      .run(...EVENT_COLUMNS.map((c) => values[c] ?? null));
   }
 }
 
