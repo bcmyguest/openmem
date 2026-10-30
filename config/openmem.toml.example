@@ -95,6 +95,7 @@ embedding_max_chars = 4000
 [compaction]
 native = true
 max_chars = 12000
+# recall = true             # provider recall in the trim pointer, framed as untrusted data (env CONTEXT_COMPACTION_RECALL)
 
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]
