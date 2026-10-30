@@ -54,19 +54,12 @@ export const CONTEXT_STORE_MCP_TOOLS = [
     name: "smart_compact_search",
     title: "Search this session's stored context",
     description:
-      "Search the session database where OpenMem stores every message of a coding session (user and assistant text, "
-      + "tool calls, tool results), whether or not it is still in your context, and return matching rows with an excerpt. "
-      + "Use when an [openmem: continuing session …] pointer says earlier messages were trimmed and you need a detail from them; "
-      + "pass that session_id. Without session_id it searches recent sessions registered under this workspace's git root. "
-      + "Pass exactly one of query (words; SQLite FTS5 full-text match ranked by BM25, merged with embedding similarity "
-      + "when the session has vectors) or pattern (JavaScript regex, rg-style). role defaults to user and tool rows; "
-      + "pass role: \"all\" (or include \"assistant\") for assistant text. in_context filters to rows still in (true) or "
-      + "trimmed from (false) your context. context adds that many neighbouring rows of the same conversation before and "
-      + "after each hit. total_matches counts matching rows; line_matches is an exact count of matching lines (the lines "
-      + "table) across the whole session under the same filters, not only the returned rows; use it for 'how many' "
-      + "questions, or smart_compact_sql for anything grouped or combined. Rows citing a compressed result return "
-      + "blob_ids for smart_compact_get. Not durable project memory: use memory_recall for that. Local files only; "
-      + "works with every provider. Read-only.",
+      "Search every stored message of this session, including messages trimmed from your context, and return matching "
+      + "rows with an excerpt. Use it when an [openmem: continuing session …] pointer says earlier messages were trimmed; "
+      + "pass that session_id (without one it searches recent sessions in this git root). Pass exactly one of query "
+      + "(full-text words) or pattern (regex). Roles default to user and tool. total_matches counts rows; line_matches "
+      + "is an exact count of matching lines across the whole session; use it for 'how many' questions, or smart_compact_sql "
+      + "for grouped counts. Rows citing a compressed result return blob_ids for smart_compact_get.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -100,8 +93,7 @@ export const CONTEXT_STORE_MCP_TOOLS = [
     description:
       "Return the full text of a tool result the context proxy compressed, by the 16-hex id from "
       + '[openmem: tool result compressed … smart_compact_get(id="<id>")] or a smart_compact_search blob_ids entry. '
-      + `Output is capped at ${BLOB_MAX_CHARS} characters; pass offset (next_offset) to page through longer results. `
-      + "Not for searching: use smart_compact_search. Local files only; works with every provider. Read-only.",
+      + `Output is capped at ${BLOB_MAX_CHARS} characters; pass offset (next_offset) to page.`,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -127,7 +119,7 @@ export const CONTEXT_STORE_MCP_TOOLS = [
       + "(3) error lines per tool result: SELECT m.seq, m.name, count(*) AS errors FROM lines_fts JOIN lines l ON l.id = lines_fts.rowid "
       + "JOIN messages m ON m.seq = l.message_seq WHERE lines_fts MATCH 'error' AND m.kind = 'tool_result' GROUP BY m.seq ORDER BY errors DESC LIMIT 10. "
       + `Writes, ATTACH and PRAGMA are rejected; the query stops after ${SQL_TIMEOUT_MS / 1000} s; at most ${SQL_ROW_CAP} rows return `
-      + `(truncated: true when there were more; long text cells are cut at ${SQL_CELL_MAX_CHARS} characters). Local files only. Read-only.`,
+      + `(truncated: true when there were more; long text cells are cut at ${SQL_CELL_MAX_CHARS} characters).`,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",

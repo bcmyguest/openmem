@@ -25,9 +25,7 @@ export const KNOWLEDGE_MCP_TOOLS = [
     name: "memory_pages_list",
     title: "List knowledge pages",
     description:
-      "List the curated knowledge pages of a bank (ids, names, folders; no page bodies). " +
-      "Use to see which architecture, convention, decision, and initiative pages exist before reading one. " +
-      "Hindsight only; other providers return supported: false. Read-only.",
+      "List a bank's knowledge pages (ids, names, folders; no bodies). Hindsight only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: { type: "object", properties: { bank: BANK_PROP }, additionalProperties: false },
   },
@@ -35,9 +33,8 @@ export const KNOWLEDGE_MCP_TOOLS = [
     name: "memory_pages_search",
     title: "Search knowledge pages",
     description:
-      "Search a bank's knowledge pages (hybrid keyword + vector) and return page hits with a relevance snippet. " +
-      "First stop before fixing a bug, changing a test, or implementing something new: pages hold past decisions and conventions. " +
-      "Pages are a past record; check claims against the code. Hindsight only; other providers return supported: false. Read-only.",
+      "Search knowledge pages: past decisions and conventions. Check them before fixing a bug, changing a test or building something; " +
+      "verify claims against the code. Hindsight only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -54,8 +51,7 @@ export const KNOWLEDGE_MCP_TOOLS = [
     name: "memory_pages_read",
     title: "Read a knowledge page",
     description:
-      "Read one knowledge page's synthesized body by id (from memory_pages_list, memory_pages_search, or a [[page:<id>]] link). " +
-      "Hindsight only; other providers return supported: false. Read-only.",
+      "Read one knowledge page by id (from a page listing, search, or [[page:<id>]] link). Hindsight only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -71,9 +67,8 @@ export const KNOWLEDGE_MCP_TOOLS = [
     name: "memory_capture_initiative",
     title: "Capture an initiative",
     description:
-      "Record a new feature or initiative as a tracked knowledge page plus a marker memory, right after the user approves a plan " +
-      "and before writing code. Pass relates_to_page_id to record a material plan change on an existing initiative instead of a new page. " +
-      "Skip bug fixes and small tweaks. Hindsight only; other providers return supported: false.",
+      "Record an approved feature plan as a knowledge page before writing code; relates_to_page_id records a plan change. " +
+      "Skip bug fixes and small tweaks. Hindsight only.",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -91,9 +86,8 @@ export const KNOWLEDGE_MCP_TOOLS = [
     name: "memory_status",
     title: "Ingest status",
     description:
-      "Report whether a bank's async ingest has drained: active (pending/processing) and failed operation counts, " +
-      "and the status of specific operation ids returned by memory_add. ready is true when nothing requested is still active. " +
-      "Use before relying on recall for just-stored content. mem0 ingest is synchronous (always ready); Cognee returns supported: false. Read-only.",
+      "Report whether async ingest has drained (ready, active and failed counts, memory_add operation ids). " +
+      "Check before recalling just-stored content. Hindsight only; mem0 is always ready.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       type: "object",
