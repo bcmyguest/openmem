@@ -20,6 +20,7 @@
 #   d-hybrid   vectors on: $D_EMB_MODEL at $D_EMB_URL (container cbench-ollama), in the proxy and the MCP
 # Dsmoke = the same arms with TRIM_AT=20000, own proxies, results-Dsmoke/.
 #   ./run_ctx.sh prep D            export $D_SHA to $R_D (replacing it) and npm ci there
+# Run Dp: d-sqlite only at $DP_SHA in $R_DP (results-Dp/, state-Dp/); `./run_ctx.sh prep Dp` exports it.
 #   ./run_ctx.sh ollama up|down    the bench Ollama (cbench-ollama, $D_EMB_MODEL pulled), port $D_EMB_PORT
 #   ./run_ctx.sh smoke Dsmoke ARM [TASK]
 set -euo pipefail
@@ -36,9 +37,11 @@ setrun() {
     C) ARMS="s3c-semantic-nudged s3d-recall";;
     Csmoke) ARMS="s3c-semantic s3d-recall";;
     D|Dsmoke) ARMS="d-sqlite d-hybrid";;
+    Dp) ARMS="d-sqlite";;
     *) echo "unknown run $RUN" >&2; exit 2;; esac
   [ "$RUN" = Csmoke ] && TRIM_AT=20000
   [ "$RUN" = Dsmoke ] && TRIM_AT=20000
+  [ "$RUN" = Dp ] && TRIM_AT=  # as run D: the proxy's per-model threshold
   return 0
 }
 port() {
@@ -48,6 +51,7 @@ port() {
     C:s3c-semantic) echo 4241;; C:s3d-recall) echo 4242;; C:s3c-semantic-nudged) echo 4247;;
     Csmoke:s3c-semantic) echo 4243;; Csmoke:s3d-recall) echo 4244;; Csmoke:s3c-semantic-nudged) echo 4248;;
     D:d-sqlite) echo 4251;; D:d-hybrid) echo 4252;; Dsmoke:d-sqlite) echo 4253;; Dsmoke:d-hybrid) echo 4254;;
+    Dp:d-sqlite) echo 4255;;
     *) echo "no port for $RUN $1" >&2; exit 2;;
   esac
 }
@@ -114,8 +118,11 @@ R_D=$B/repo-D
 # d-hybrid runs a newer commit from its own export (adaptive embedding batches); d-sqlite keeps $D_SHA in $R_D.
 D_SHA_HYBRID=2ec584e
 R_DH=$B/repo-Dh
-d_sha() { case $1 in d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
-d_repo() { case $1 in d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
+# Run Dp: d-sqlite at $DP_SHA, run D's code plus the pointer that names the search tools as available.
+DP_SHA=f1fd9f3
+R_DP=$B/repo-Dp
+d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
+d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
 D_IMAGE=ghcr.io/berriai/litellm:v1.109.0-dev.1
 D_EMB_MODEL=nomic-embed-text
 D_EMB_PORT=18434
@@ -129,12 +136,13 @@ d_check() {  # refuse to run a D arm against an export of another commit
   [ "$want" = "$have" ] || { echo "$rd is ${have:-missing}, $1 wants $want" >&2; exit 1; }
   [ -d "$rd/node_modules/yaml" ] || { echo "$rd/node_modules incomplete" >&2; exit 1; }
 }
-d_prep() {  # export D_SHA into R_D with its own production node_modules (never the main checkout's)
-  rm -rf "$R_D"; mkdir -p "$R_D"
-  git -C "$REPO" archive "$D_SHA" | tar -x -C "$R_D"
-  (cd "$R_D" && PATH="$B/node24/bin:$PATH" npm ci --omit=dev --no-audit --no-fund)
-  git -C "$REPO" rev-parse "$D_SHA^{commit}" > "$R_D/.bench-sha"
-  echo "repo-D = $(cat "$R_D/.bench-sha")"
+d_prep() {  # export the run's commit into its repo with its own production node_modules (never the main checkout's)
+  local sha rd; sha=$(d_sha d-sqlite) rd=$(d_repo d-sqlite)
+  rm -rf "$rd"; mkdir -p "$rd"
+  git -C "$REPO" archive "$sha" | tar -x -C "$rd"
+  (cd "$rd" && PATH="$B/node24/bin:$PATH" npm ci --omit=dev --no-audit --no-fund)
+  git -C "$REPO" rev-parse "$sha^{commit}" > "$rd/.bench-sha"
+  echo "$(basename "$rd") = $(cat "$rd/.bench-sha")"
 }
 # Ollama 0.40.1 (ollama/ollama:latest of 2026-10-08) on the Intel iGPU through Vulkan: ~3.6 s per 8000-char row vs
 # ~14 s on CPU. 0.12.6 never returned for inputs over the model's 2048-token context.
@@ -200,7 +208,7 @@ wait_live() {
 }
 
 case "${1:-}" in
-  prep) [ "${2:-}" = D ] || { echo "usage: $0 prep D" >&2; exit 2; }; d_prep ;;
+  prep) case ${2:-} in D|Dp) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp" >&2; exit 2 ;; esac ;;
   ollama) d_ollama "${2:-}" ;;
   up) setrun "$2"; load_token; for a in $ARMS; do proxy_up "$a"; done; wait_live ;;
   down) setrun "$2"; for a in $ARMS; do
