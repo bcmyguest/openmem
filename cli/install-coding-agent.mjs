@@ -25,8 +25,10 @@ import { isMainModule } from "./is-main.mjs";
 import { resolveHindsightApiUrl } from "./mcp/context.mjs";
 import { resolveStackRoot } from "./stack.mjs";
 import { runInstallMemoryMcp } from "./install-memory-mcp.mjs";
+import { ensureContextProxyService, proxyServiceNeeded } from "./context-management.mjs";
 import {
   agentIntegrationFromPmConfig,
+  contextAgentsFromPmConfig,
   contextProxyFromPmConfig,
   contextProxyStackEnvFromPmConfig,
   loadPmConfig,
@@ -57,8 +59,10 @@ The choice is saved as [agents] integration in ~/.config/personal-memory/config.
 --hindsight-plugin was renamed to --provider-plugin.
 
 rtk on PATH: runs rtk init for each supported agent (skip with --no-rtk).
---context-proxy / --no-context-proxy: route Claude Code and OpenCode through the local
-context proxy (saved as [context_proxy] enabled).
+Context proxy: without a flag, [context_proxy.agents] claude-code / opencode1 (missing keys follow
+[context_proxy] enabled) choose which agents go through the local context proxy. With a stack root,
+the installer starts the context-proxy service when one of them is on and stops it when none is.
+--context-proxy / --no-context-proxy override every agent for this run and save [context_proxy] enabled.
 `;
 
 function parseArgs(argv) {
@@ -102,7 +106,11 @@ function resolveSettings({ home, stackRoot, flags, write, log }) {
   const providerFlag = flags.providerPlugin;
   const integration = providerFlag === undefined ? agentIntegrationFromPmConfig(cfg) : providerFlag ? "provider" : "openmem";
   const proxy = contextProxyFromPmConfig(cfg);
-  if (flags.contextProxy !== undefined) proxy.enabled = flags.contextProxy;
+  const contextAgents = contextAgentsFromPmConfig(cfg).agents;
+  if (flags.contextProxy !== undefined) {
+    proxy.enabled = flags.contextProxy;
+    for (const k of Object.keys(contextAgents)) contextAgents[k] = flags.contextProxy;
+  }
   if (providerFlag !== undefined) {
     const r = updatePmConfigTable(home, "agents", { integration }, { dry: !write });
     log.info(`${r === "dry-run" ? "dry-run: would save" : "saved"} [agents] integration = "${integration}"`);
@@ -111,7 +119,7 @@ function resolveSettings({ home, stackRoot, flags, write, log }) {
     const r = updatePmConfigTable(home, "context_proxy", { enabled: proxy.enabled }, { dry: !write });
     log.info(`${r === "dry-run" ? "dry-run: would save" : "saved"} [context_proxy] enabled = ${proxy.enabled}`);
   }
-  return { integration, proxy, cfg };
+  return { integration, proxy, contextAgents, cfg };
 }
 
 /** Copy config.toml's proxy settings into the stack .env compose reads, when that file exists. */
@@ -156,9 +164,14 @@ export async function runInstallCodingAgent(opts) {
   log.info(`Provider ${provider}: capabilities ${JSON.stringify(caps)}`);
 
   const dry = flags.dry || !flags.yes;
-  const { integration, proxy, cfg } = resolveSettings({ home, stackRoot: opts.stackRoot, flags, write: !dry, log });
-  const startCommand = contextProxyStartCommand({
-    stackRoot: opts.stackRoot, project: env.PM_PROJECT || String(cfg.stack?.project || "") || "openmem",
+  const { integration, proxy, contextAgents, cfg } = resolveSettings({ home, stackRoot: opts.stackRoot, flags, write: !dry, log });
+  const project = env.PM_PROJECT || String(cfg.stack?.project || "") || "openmem";
+  const startCommand = contextProxyStartCommand({ stackRoot: opts.stackRoot, project });
+  // OpenCode 2 never uses the proxy; its plugin reads [context_proxy.agents] opencode2 itself.
+  const agentEnabled = { "claude-code": contextAgents["claude-code"], opencode: contextAgents.opencode1 };
+  const serviceOn = proxyServiceNeeded(contextAgents);
+  const service = (dryRun) => ensureContextProxyService({
+    home, stackRoot: opts.stackRoot, project, on: serviceOn, dry: dryRun, env, spawn: opts.docker, log,
   });
   const useProviderPlugin = integration === "provider" && PROVIDER_PLUGINS.includes(provider);
   if (integration === "provider" && !useProviderPlugin) {
@@ -184,7 +197,8 @@ export async function runInstallCodingAgent(opts) {
     }
     installAgentAccess({ home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: true, h: log });
     if (flags.rtk) installRtk({ agents: flags.agents, env, dry: true, h: log, opencodeMajor });
-    installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, dry: true, h: log, opencodeMajor });
+    installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, agentEnabled, port: proxy.port, dry: true, h: log, opencodeMajor });
+    service(true);
     if (useProviderPlugin) log.info(`dry-run: would also run ${upstreamCmd().join(" ")}`);
     return { provider, integration, ran: false };
   }
@@ -212,8 +226,11 @@ export async function runInstallCodingAgent(opts) {
     home, runtimeRoot, stackRoot: opts.stackRoot, agents: flags.agents, dry: false, h: log,
   });
   const rtk = flags.rtk ? installRtk({ agents: flags.agents, env, h: log, spawn: opts.spawn, opencodeMajor }) : { rtk: null, ran: [] };
-  const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, port: proxy.port, h: log, opencodeMajor });
-  const proxyUsed = proxy.enabled && flags.agents.some((id) => (id === "claude-code" || id === "opencode") && !proxyOut.pluginTrimmed.includes(id));
+  // On: start the service before agents point at it. Off: stop it after they are unwired.
+  if (serviceOn) service(false);
+  const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, agentEnabled, port: proxy.port, h: log, opencodeMajor });
+  if (!serviceOn) service(false);
+  const proxyUsed = flags.agents.some((id) => (id === "claude-code" || id === "opencode") && agentEnabled[id] && !proxyOut.pluginTrimmed.includes(id));
   if (proxyUsed) {
     syncProxyStackEnv({ stackRoot: opts.stackRoot, cfg, log });
     await warnIfProxyDown({ port: proxy.port, startCommand, log, fetch: opts.fetch });
@@ -232,7 +249,7 @@ export async function runInstallCodingAgent(opts) {
       const hooks = useProviderPlugin ? "upstream Hindsight hooks" : "openmem session hooks";
       const extras = [
         rtk.ran.includes(agentId) ? "rtk" : "",
-        proxyOut.changed.includes(agentId) && proxy.enabled ? "context proxy" : "",
+        proxyOut.changed.includes(agentId) && agentEnabled[agentId] ? "context proxy" : "",
         !useProviderPlugin && proxyOut.pluginTrimmed.includes(agentId) ? "native context trimming (OpenCode 2; context proxy not used)" : "",
       ].filter(Boolean);
       log.info(`  ${agentId}: ${hooks} + unified MCP${extras.length ? ` + ${extras.join(" + ")}` : ""}`);
@@ -241,7 +258,7 @@ export async function runInstallCodingAgent(opts) {
       log.info(`  ${agentId}: ${row?.sessionPath || "unified MCP memory_*"}`);
     }
   }
-  if (proxy.enabled && flags.agents.includes("claude-code")) {
+  if (agentEnabled["claude-code"] && flags.agents.includes("claude-code")) {
     log.info(`Context proxy enabled: Claude Code now sends every request to http://127.0.0.1:${proxy.port}; start the proxy before using Claude Code: ${startCommand}`);
   }
   return { provider, integration, ran: true, status };

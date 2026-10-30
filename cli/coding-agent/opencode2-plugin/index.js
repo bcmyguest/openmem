@@ -21,7 +21,7 @@ import { sessionBanner } from "../hook-runner.mjs";
 import { sessionIngestActive, sessionRecall, sessionReflectOrSearch, sessionRetain } from "../session-facade.mjs";
 import { resolveMcpContext } from "../../mcp/context.mjs";
 import { resolveStackRoot } from "../../stack.mjs";
-import { contextTrimEnvFromPmConfig, contextTrimFromPmConfig, loadPmConfig } from "../../../wizard/lib/pm-config.mjs";
+import { contextAgentsFromPmConfig, contextTrimEnvFromPmConfig, contextTrimFromPmConfig, loadPmConfig } from "../../../wizard/lib/pm-config.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const MAX_SESSIONS = 128;
@@ -77,8 +77,10 @@ async function setup(ctx) {
   const allowed = accessAllowed(projectDir, accessConfig);
   const bank = allowed ? bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank }) : undefined;
   // config.toml `[context_proxy]` / `[compaction]` keys, with CONTEXT_* environment variables winning.
+  // Trimming follows `[context_proxy.agents] opencode2`, else `[context_proxy] enabled`; CONTEXT_PROXY_ENABLED overrides.
   const pmConfig = readPmConfig(home, stack.root);
-  const settings = trimSettings({ ...contextTrimEnvFromPmConfig(pmConfig), ...process.env }, home);
+  const trimOn = contextAgentsFromPmConfig(pmConfig).agents.opencode2;
+  const settings = trimSettings({ ...contextTrimEnvFromPmConfig(pmConfig), CONTEXT_PROXY_ENABLED: trimOn ? "1" : "0", ...process.env }, home);
   const nativeCompaction = contextTrimFromPmConfig(pmConfig).compactionNative;
   // Constant for the session, so it never changes the cached system prefix.
   const banner = allowed ? sessionBanner(memory.provider, bank) : "";

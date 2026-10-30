@@ -1,5 +1,5 @@
 /**
- * Step "8. Coding-agent plugin", Hindsight half: ensure ~/.hindsight/coding-agent.json
+ * Step "9. Coding-agent plugin", Hindsight half: ensure ~/.hindsight/coding-agent.json
  * exists (seeded from the tracked template when missing) and check that its optInPaths
  * cover the indexed roots. Machine-local keys such as notebooklmAccess must live in a
  * real file — never in the repo template — so we do not replace a materialised config
