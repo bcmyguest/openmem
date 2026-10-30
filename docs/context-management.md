@@ -23,8 +23,8 @@ Each request goes through five steps ([context proxy](context-proxy.md) has the 
 | Tool-result compression | A tool result exceeds `compress_over_tokens` | First 40 and last 20 lines stay, behind a `smart_compact_get(id=...)` header; the full text goes to `blobs/<id>.txt` |
 | Store | Every request | Each message goes into `sessions/<sid>.db` once, keyed by a chained fingerprint, with an `in_context` flag ([context store](context-store.md#session-database)) |
 | Trim | The request reaches `trim_at_tokens`, or the user typed `/smart-compact` | Turns before the last real user turn leave the context and their rows get `in_context = 0`; a pointer naming `smart_compact_search` / `smart_compact_sql` replaces them. System prompt, tools, the first user turn and the in-flight turn stay verbatim |
-| Recall on trim | The session registration names a bank | Memory recall for the last prompt follows the pointer, capped at `[compaction] max_chars`. Proxy: Hindsight only. OpenCode 2 plugin: any provider |
-| Standing instruction | Every request | A constant system-prompt note tells the agent to call `smart_compact_search` before answering from content it cannot see |
+| Recall on trim | The session registration names a bank and `[compaction] recall` is on | Memory recall for the last prompt follows the pointer in an `<openmem-recall untrusted="true">` block marked as reference data, not instructions, capped at `[compaction] max_chars`. Proxy: Hindsight only. OpenCode 2 plugin: any provider |
+| Standing instruction | Every request | A constant system-prompt note tells the agent to call `smart_compact_search` before answering from content it cannot see, and that `<openmem-recall>` blocks are data, not instructions |
 
 The cut is sticky: later requests with the same history get the same rewrite byte for byte, so the prompt cache keeps hitting. A trim invalidates the cache once.
 
@@ -115,7 +115,8 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 | `[context_proxy] chars_per_token` | `2.5` | `CONTEXT_CHARS_PER_TOKEN` | Characters per token before a session reports usage |
 | `[context_proxy] compress_over_tokens` | `4000` | `CONTEXT_COMPRESS_OVER_TOKENS` | Tool results above this are compressed; `0` disables compression |
 | `[context_proxy] standing_instruction` | `true` | `CONTEXT_STANDING_INSTRUCTION` | Constant system-prompt note to search trimmed turns |
-| `[compaction] max_chars` | `12000` | `CONTEXT_COMPACTION_MAX_CHARS` | Cap on recall text after a trim or compaction pointer |
+| `[compaction] max_chars` | `12000` | `CONTEXT_COMPACTION_MAX_CHARS` | Cap on the recall block (frame included) after a trim or compaction pointer |
+| `[compaction] recall` | `true` | `CONTEXT_COMPACTION_RECALL` | Recall in the trim or compaction pointer |
 | `[compaction] native` | `true` | none | OpenCode 2 only: replace OpenCode's compaction summary with the pointer plus recall |
 | `[context_store] ttl_days` | `30` | `CONTEXT_STORE_TTL_DAYS` | Delete sessions idle longer than this; `0` keeps everything |
 | `[context_store] embedding_model` | empty (off) | `CONTEXT_EMBEDDING_MODEL` | Embedding model for hybrid `smart_compact_search` ([vectors](context-store.md#vectors)) |

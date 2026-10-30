@@ -306,7 +306,8 @@ export function contextTrimFromPmConfig(cfg) {
  * `trimSettings()` read: `[context_proxy] trim_at_tokens` → CONTEXT_TRIM_AT_TOKENS,
  * `compress_over_tokens` → CONTEXT_COMPRESS_OVER_TOKENS, `[compaction] max_chars` →
  * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
- * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
+ * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[compaction] recall` (boolean) → CONTEXT_COMPACTION_RECALL
+ * ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
  * CONTEXT_CHARS_PER_TOKEN, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
  * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL. Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
@@ -321,6 +322,8 @@ export function contextTrimEnvFromPmConfig(cfg) {
   }
   const standing = tableOf(cfg, "context_proxy").standing_instruction;
   if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
+  const recall = tableOf(cfg, "compaction").recall;
+  if (typeof recall === "boolean") out.CONTEXT_COMPACTION_RECALL = recall ? "1" : "0";
   const ratio = tableOf(cfg, "context_proxy").chars_per_token;
   if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
   const store = tableOf(cfg, "context_store");

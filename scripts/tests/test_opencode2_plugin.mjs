@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import plugin from "../../cli/coding-agent/opencode2-plugin/index.js";
 import { callContextStoreTool } from "../../cli/mcp/context-store.mjs";
-import { STANDING_INSTRUCTION, pointerText } from "../../cli/coding-agent/context-trim.mjs";
+import { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, STANDING_INSTRUCTION, pointerText } from "../../cli/coding-agent/context-trim.mjs";
 import { sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
 
 let failed = 0;
@@ -193,7 +193,7 @@ try {
   const note = forced.messages[1]?.content?.[0]?.text || "";
   check("forced trim keeps the first user turn and the in-flight turn", forced.messages.length === 2 && forced.messages[0] === history[0]
     && forced.messages[1].content[1].text === "current question", JSON.stringify(forced.messages));
-  check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 1)) && note.includes("[openmem recall]\nrecalled: current question") && note.includes("memory ingest is still running"), note);
+  check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 1)) && note.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: current question\n${RECALL_CLOSE}`) && note.includes("memory ingest is still running"), note);
   check(".force consumed", !fs.existsSync(path.join(sessions, "ses_one.force")));
   // The trimmed turn is an assistant reply: role "all" includes it; in_context: false keeps only trimmed rows.
   const found = await callContextStoreTool("smart_compact_search", { query: "earlier answer", session_id: "ses_one", role: "all", in_context: false }, { env: process.env, cwd: project });
@@ -221,7 +221,7 @@ try {
   // Native compaction: summary replaces the model call.
   const compaction = contextEvent("ses_one", [...history, assistant("current answer"), user("compact now")]);
   await oc.hooks.compaction(compaction);
-  check("compaction hook sets the result", compaction.result?.summary?.startsWith(ptr("ses_one", 5)) && compaction.result.summary.includes("[openmem recall]\nrecalled: compact now"), JSON.stringify(compaction.result));
+  check("compaction hook sets the result", compaction.result?.summary?.startsWith(ptr("ses_one", 5)) && compaction.result.summary.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: compact now\n${RECALL_CLOSE}`), JSON.stringify(compaction.result));
 
   // Fail open: malformed input changes nothing and never throws.
   const bad = { sessionID: "ses_bad", system: [], messages: [null, 3], options: {}, tools: {} };
