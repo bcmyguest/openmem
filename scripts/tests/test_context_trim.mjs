@@ -14,6 +14,7 @@ import {
   DEFAULT_COMPACTION_MAX_CHARS,
   DEFAULT_COMPRESS_OVER_TOKENS,
   DEFAULT_TRIM_AT_TOKENS,
+  DEFAULT_TRIM_TO_FRACTION,
   RECALL_CLOSE,
   RECALL_OPEN,
   RECALL_PREFACE,
@@ -70,6 +71,10 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     && d.contextDir === "/h/.local/share/openmem/context");
   const e = trimSettings({ CONTEXT_PROXY_ENABLED: "off", CONTEXT_TRIM_AT_TOKENS: "50", CONTEXT_COMPRESS_OVER_TOKENS: "x", CONTEXT_COMPACTION_MAX_CHARS: "99", OPENMEM_STATE_DIR: "/s" }, "/h");
   check("env overrides; bad values fall back", !e.enabled && e.trimAtTokens === 50 && e.compressOverTokens === 4000 && e.compactionMaxChars === 99 && e.contextDir === "/s/context");
+  check("trimToFraction defaults to 0.3 like the proxy", d.trimToFraction === 0.3 && DEFAULT_TRIM_TO_FRACTION === 0.3);
+  check("CONTEXT_TRIM_TO_FRACTION overrides", trimSettings({ CONTEXT_TRIM_TO_FRACTION: " 0.45 " }, "/h").trimToFraction === 0.45);
+  check("CONTEXT_TRIM_TO_FRACTION outside (0, 1) falls back",
+    ["0", "1", "-0.2", "1.5", "NaN", "Infinity", "x", ""].every((v) => trimSettings({ CONTEXT_TRIM_TO_FRACTION: v }, "/h").trimToFraction === 0.3));
 }
 
 // Compression is a pure function of content and threshold and matches the proxy byte for byte.
@@ -418,6 +423,17 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const short = [task, ...loop(1, 4)];
   check("gap: three exchanges or fewer leave a single prompt untrimmed",
     (await trimContext({ sessionID: "ses_gap_short", messages: short }, settingsFor({ trimAtTokens: 1 }))) === short);
+}
+
+// Trim depth: the same request at the same threshold keeps fewer exchanges at the default 0.3 than at 0.5.
+{
+  const loop = (from, to) => Array.from({ length: to - from }, (_, k) => [call(`d${from + k}`, "bash", { n: from + k }),
+    result(`d${from + k}`, "bash", `out ${from + k} ${"x".repeat(200)}`)]).flat();
+  const history = [user("only task"), ...loop(1, 12)];
+  const deep = await trimContext({ sessionID: "ses_depth_default", messages: history }, settingsFor({ trimAtTokens: 1500 }));
+  const shallow = await trimContext({ sessionID: "ses_depth_half", messages: history }, settingsFor({ trimAtTokens: 1500, trimToFraction: 0.5 }));
+  check("trim depth: default keeps the newest 3 exchanges", deep.length === 7 && deep.slice(1).every((m, k) => m === history[17 + k]));
+  check("trim depth: 0.5 keeps 5 exchanges", shallow.length === 11 && shallow.slice(1).every((m, k) => m === history[13 + k]));
 }
 
 fs.rmSync(state, { recursive: true, force: true });

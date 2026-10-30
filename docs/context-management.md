@@ -215,6 +215,7 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 | `[context_proxy.agents] claude-code`, `opencode1`, `codex`, `opencode2` | follow `enabled`; with it unset, `opencode2` on and the others off | `CONTEXT_PROXY_ENABLED` for `opencode2` (in OpenCode's environment) | Per-agent on/off; see [Turn it on or off](#turn-it-on-or-off) |
 | `[context_proxy] port` | `4100` | none (copied to the stack `.env` as `CONTEXT_PROXY_PORT`) | Host port, bound to 127.0.0.1 |
 | `[context_proxy] trim_at_tokens` | `120000` | `CONTEXT_TRIM_AT_TOKENS` | Estimated prompt tokens that trigger a trim; the estimate is calibrated from the provider's reported usage ([token estimate](context-proxy.md#token-estimate)) |
+| `[context_proxy] trim_to_fraction` | `0.3` | `CONTEXT_TRIM_TO_FRACTION` | How deep a trim cuts a long in-flight turn: older tool exchanges stay only while the request is under this fraction of `trim_at_tokens`. Between 0 and 1; another value falls back to 0.3 |
 | `[context_proxy] chars_per_token` | `2.5` | `CONTEXT_CHARS_PER_TOKEN` | Characters per token before a session reports usage |
 | `[context_proxy] compress_over_tokens` | `4000` | `CONTEXT_COMPRESS_OVER_TOKENS` | Tool results above this are compressed; `0` disables compression |
 | `[context_proxy] standing_instruction` | `true` | `CONTEXT_STANDING_INSTRUCTION` | Constant system-prompt note to search trimmed turns |

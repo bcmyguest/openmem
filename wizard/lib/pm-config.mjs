@@ -309,7 +309,7 @@ export function contextTrimFromPmConfig(cfg) {
  * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
  * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[compaction] recall` (boolean) → CONTEXT_COMPACTION_RECALL
  * ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
- * CONTEXT_CHARS_PER_TOKEN, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
+ * CONTEXT_CHARS_PER_TOKEN, `trim_to_fraction` (0 < x < 1) → CONTEXT_TRIM_TO_FRACTION, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
  * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL, `embedding_timeout_s` (positive number) →
  * CONTEXT_EMBEDDING_TIMEOUT_S, `embedding_max_chars` → CONTEXT_EMBEDDING_MAX_CHARS. Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
@@ -326,6 +326,10 @@ export function contextTrimEnvFromPmConfig(cfg) {
   if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
   const recall = tableOf(cfg, "compaction").recall;
   if (typeof recall === "boolean") out.CONTEXT_COMPACTION_RECALL = recall ? "1" : "0";
+  const fraction = tableOf(cfg, "context_proxy").trim_to_fraction;
+  if (typeof fraction === "number" && Number.isFinite(fraction) && fraction > 0 && fraction < 1) {
+    out.CONTEXT_TRIM_TO_FRACTION = String(fraction);
+  }
   const ratio = tableOf(cfg, "context_proxy").chars_per_token;
   if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
   const store = tableOf(cfg, "context_store");

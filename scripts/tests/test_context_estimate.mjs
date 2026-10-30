@@ -109,6 +109,10 @@ const RECORDS = [
     const bad = trimSettings(contextTrimEnvFromPmConfig({ context_store: { embedding_timeout_s: 0, embedding_max_chars: "x" } }), "/h");
     check("invalid embedding settings fall back", bad.embeddingTimeoutS === 30 && bad.embeddingMaxChars === 4000);
   }
+  check("[context_proxy] trim_to_fraction maps to the env var and the trim settings",
+    contextTrimEnvFromPmConfig({ context_proxy: { trim_to_fraction: 0.4 } }).CONTEXT_TRIM_TO_FRACTION === "0.4"
+    && trimSettings(contextTrimEnvFromPmConfig({ context_proxy: { trim_to_fraction: 0.4 } }), "/h").trimToFraction === 0.4);
+  check("invalid trim_to_fraction is left out", ["0.4", 0, 1, -0.1, 1.5, true].every((v) => !("CONTEXT_TRIM_TO_FRACTION" in contextTrimEnvFromPmConfig({ context_proxy: { trim_to_fraction: v } }))));
   check("invalid chars_per_token is left out",["2.3", 0, -1, true].every((v) => !("CONTEXT_CHARS_PER_TOKEN" in contextTrimEnvFromPmConfig({ context_proxy: { chars_per_token: v } }))));
   check("OpenCode TokenUsage: input + cache read + cache write", promptTokensFromOpenCode({ input: 12, output: 900, reasoning: 40, cache: { read: 90000, write: 3000 } }) === 93012
     && promptTokensFromOpenCode({ input: 0, output: 5, reasoning: 0, cache: { read: 0, write: 0 } }) === null && promptTokensFromOpenCode(null) === null);
