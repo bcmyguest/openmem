@@ -8,6 +8,9 @@ import { DEFAULT_PROVIDER_ID } from "./providers/registry.mjs";
 const INSTALLER_TABLES = ["agents", "context_proxy", "compaction"];
 const AGENT_INTEGRATIONS = ["openmem", "provider"];
 const DEFAULT_CONTEXT_PROXY_PORT = 4100;
+/** `[context_proxy.agents]` keys. opencode2 trims in its plugin; the others route through the proxy service. */
+export const CONTEXT_AGENT_KEYS = ["claude-code", "opencode1", "codex", "opencode2"];
+export const CONTEXT_PROXY_AGENT_KEYS = ["claude-code", "opencode1", "codex"];
 // Same defaults as proxy/openmem_context/settings.py and cli/coding-agent/context-trim.mjs.
 const DEFAULT_TRIM_AT_TOKENS = 120000;
 const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
@@ -200,6 +203,24 @@ export function updatePmConfigTable(home, table, values, opts = {}) {
 }
 
 /**
+ * Write per-agent context management values into `[context_proxy.agents]` (merged with saved keys) and set
+ * `[context_proxy] enabled` to whether any agent resolves on. Other `[context_proxy]` keys are kept.
+ * @param {string} home
+ * @param {Record<string, boolean>} values keys from CONTEXT_AGENT_KEYS
+ * @param {{ dry?: boolean }} [opts]
+ * @returns {{ result: "updated"|"dry-run", agents: Record<string, boolean>, enabled: boolean }}
+ */
+export function updatePmConfigContextAgents(home, values, opts = {}) {
+  const file = userConfigPath(home);
+  const doc = fs.existsSync(file) ? readTomlFile(file) : {};
+  const current = contextAgentsFromPmConfig(doc).agents;
+  const agents = { ...current, ...values };
+  const enabled = CONTEXT_AGENT_KEYS.some((k) => agents[k]);
+  const result = updatePmConfigTable(home, "context_proxy", { enabled, agents }, opts);
+  return { result, agents, enabled };
+}
+
+/**
  * `[agents] integration`: "openmem" (OpenMem hooks) or "provider" (the provider's own plugin).
  * @param {Record<string, unknown>} cfg
  */
@@ -232,6 +253,27 @@ export function contextProxyFromPmConfig(cfg) {
     enabled: table.enabled === true,
     port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_CONTEXT_PROXY_PORT,
   };
+}
+
+/**
+ * Per-agent context management: `[context_proxy.agents] <key> = true|false`, a missing key following
+ * `[context_proxy] enabled`. Keys: CONTEXT_AGENT_KEYS. `saved` lists the keys that config.toml sets.
+ * @param {Record<string, unknown>} cfg
+ * @returns {{ agents: Record<string, boolean>, saved: string[], enabledSaved: boolean }}
+ */
+export function contextAgentsFromPmConfig(cfg) {
+  const table = tableOf(cfg, "context_proxy");
+  const overrides = tableOf(table, "agents");
+  const fallback = table.enabled === true;
+  const agents = {};
+  const saved = [];
+  for (const key of CONTEXT_AGENT_KEYS) {
+    if (typeof overrides[key] === "boolean") {
+      agents[key] = overrides[key];
+      saved.push(key);
+    } else agents[key] = fallback;
+  }
+  return { agents, saved, enabledSaved: typeof table.enabled === "boolean" };
 }
 
 /**

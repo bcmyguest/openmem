@@ -33,24 +33,42 @@ The cut is sticky: later requests with the same history get the same rewrite byt
 | --- | --- |
 | Sessions grow past `trim_at_tokens` (default 120,000 estimated tokens) | Sessions stay under that limit |
 | You want trimmed turns searchable instead of summarized away | You cannot run the `context-proxy` container (Claude Code and OpenCode 1 send every request to it and fail while it is down) |
-| You use Claude Code or OpenCode | You use only Codex or Cursor CLI (neither is routed through the proxy) |
+| You use Claude Code or OpenCode (OpenCode 2 needs no container) | You use only Codex or Cursor CLI (neither is routed through the proxy) |
 
 The thresholds are untuned defaults.
 
 ## Turn it on or off
 
-| Where | On | Off |
+The switch is per agent. `[context_proxy.agents]` holds one key per agent; a missing key follows the master switch `[context_proxy] enabled`. With nothing in config, every agent is off.
+
+```toml
+[context_proxy]
+enabled = true            # master switch
+[context_proxy.agents]    # optional overrides; missing = follow `enabled`
+claude-code = true
+opencode1   = true
+codex       = false
+opencode2   = true        # native plugin, no service
+```
+
+| Key | Served by | Needs the `context-proxy` service |
 | --- | --- | --- |
-| Setup wizard | Step 8 "Context management (smart compaction)": answer yes | Answer no |
-| CLI | `npx @bcmyguest/openmem context on` | `npx @bcmyguest/openmem context off` |
-| Installer flag | `install-coding-agent --yes --context-proxy` | `install-coding-agent --yes --no-context-proxy` |
-| Config key | `[context_proxy] enabled = true`, then `install-coding-agent --yes` | `enabled = false`, then `install-coding-agent --yes` |
+| `claude-code` | `context-proxy` | yes |
+| `opencode1` | `context-proxy` | yes |
+| `opencode2` | OpenMem's OpenCode 2 plugin | no |
+| `codex` | not routed yet (see [Agent support](#agent-support)) | no |
 
-All four write `[context_proxy] enabled` in `~/.config/personal-memory/config.toml`. The default is off.
+| Where | How |
+| --- | --- |
+| Setup wizard | Step 8 "Context management (smart compaction)": tick the installed agents to trim |
+| CLI | `npx @bcmyguest/openmem context on [--agents a,b]` / `context off [--agents a,b]`; without `--agents`, all four |
+| Config | Edit the keys above, then `install-coding-agent --yes` |
+| Installer flag | `install-coding-agent --yes --context-proxy` / `--no-context-proxy`: every agent on or off for this run; saves `enabled` |
 
-- **Wizard.** The step's default is the saved value. On, it writes the proxy key file (`~/.config/personal-memory/context-proxy.env`, mode 600) and the store directories, then starts the service with the provider's compose profile plus `--profile context-proxy` (`up -d --no-build context-proxy`). Off, it stops a running `context-proxy` after the coding-agent step, unless Claude Code or OpenCode 1 still points at it. `--dry-run` prints the plan and writes nothing.
-- **CLI.** `context on` starts the service, then re-runs `install-coding-agent --yes --context-proxy`. `context off` re-runs `install-coding-agent --yes --no-context-proxy`, then stops the service. Both take `--dry-run` and `--agents a,b`. `context status [--json]` prints the config value, whether the proxy answers on its port, and which agents point at it.
-- **Installer.** Without a flag, `install-coding-agent` follows `[context_proxy] enabled`. A flag overrides the config and is saved. The installer does not start or stop the container.
+- **Wizard.** The step offers Claude Code, OpenCode 1 and OpenCode 2 when installed; Codex is named but not offered. Each default is the saved key, else a saved `enabled`, else on for OpenCode 2 and off for the proxy-routed agents. The step saves all four keys and sets `enabled` to whether any is on. When a proxy-routed agent is on, it writes the proxy key file (`~/.config/personal-memory/context-proxy.env`, mode 600) and the store directories, then starts the service with the provider's compose profile plus `--profile context-proxy` (`up -d --no-build context-proxy`). When none is, it stops a running `context-proxy` after the coding-agent step, unless Claude Code or OpenCode 1 still points at it. `--dry-run` prints the plan and writes nothing.
+- **CLI.** `context on|off` sets the named agents, keeps the others at their current value, sets `enabled` to whether any agent is on, and re-runs `install-coding-agent --yes`. `--dry-run` prints the save and runs the installer with `--dry-run`, which plans from the saved config. `context status [--json]` lists each agent (on/off, saved or following `enabled`, how it is served), whether the proxy answers on its port, and which agents point at it.
+- **Installer.** Without a flag, `install-coding-agent` points Claude Code and OpenCode 1 at the proxy according to their keys. When the stack root has a `compose.yaml`, it also starts the service (before pointing agents at it) if `claude-code` or `opencode1` is on, and stops a running service (after unpointing them) if neither is, unless an agent still points at it.
+- **OpenCode 2.** The plugin reads `opencode2` (else `enabled`) when OpenCode starts it. `CONTEXT_PROXY_ENABLED` in OpenCode's environment overrides the config: `0` turns the trim off, `1` on.
 
 `/smart-compact` in a session forces a trim on the next request.
 
@@ -61,14 +79,14 @@ From the [compatibility matrix](compatibility.md):
 | Agent | Trim and compression | How | Evidence |
 | --- | --- | --- | --- |
 | Claude Code | ✅ | `context-proxy` through `ANTHROPIC_BASE_URL` in `~/.claude/settings.json` | Verified live with `claude -p` through LiteLLM v1.106.6; installer wiring test-covered only |
-| Codex CLI | ❌ | Hooks only | LiteLLM forwards ChatGPT-login traffic only from v1.109.0-dev.1; no stable release |
+| Codex CLI | ❌ | Hooks only | LiteLLM forwards ChatGPT-login traffic only from v1.109.0-dev.1; neither a stable release nor v1.108.0-rc.1 includes it |
 | Cursor CLI | ❌ | Not wired | Custom model base URL support unverified |
 | OpenCode 1.x | ◐ | `context-proxy` through `provider.anthropic.options` | Whether OpenCode applies the `headers` option to its built-in Anthropic provider is unverified |
 | OpenCode 2.x | ✅ native | OpenMem's OpenCode 2 plugin trims in its `context` hook; never uses the proxy | Checked once live with OpenCode 2.2.1 against fake model and Hindsight servers |
 
 OpenCode 2 differs in two ways:
 
-- The plugin trims whatever `[context_proxy] enabled` says. `CONTEXT_PROXY_ENABLED=0` in OpenCode's environment turns its trim off.
+- The plugin trims in-process, so its `opencode2` key needs no service.
 - With `[compaction] native = true` (the default), the plugin also replaces OpenCode's own compaction summary with the pointer plus recall. No other agent has this.
 
 ## Tools agents use
@@ -88,7 +106,8 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 
 | Key | Default | Env override | Effect |
 | --- | --- | --- | --- |
-| `[context_proxy] enabled` | `false` | none (`CONTEXT_PROXY_ENABLED=0` turns trimming off inside the proxy and the OpenCode 2 plugin) | Point Claude Code and OpenCode 1 at the proxy |
+| `[context_proxy] enabled` | `false` | none | Master switch: the value of every agent key that is not set |
+| `[context_proxy.agents] claude-code`, `opencode1`, `codex`, `opencode2` | follow `enabled` | `CONTEXT_PROXY_ENABLED` for `opencode2` (in OpenCode's environment) | Per-agent on/off; see [Turn it on or off](#turn-it-on-or-off) |
 | `[context_proxy] port` | `4100` | none (copied to the stack `.env` as `CONTEXT_PROXY_PORT`) | Host port, bound to 127.0.0.1 |
 | `[context_proxy] trim_at_tokens` | `120000` | `CONTEXT_TRIM_AT_TOKENS` | Estimated request tokens (characters / 4) that trigger a trim |
 | `[context_proxy] compress_over_tokens` | `4000` | `CONTEXT_COMPRESS_OVER_TOKENS` | Tool results above this are compressed; `0` disables compression |
