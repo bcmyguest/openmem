@@ -228,6 +228,7 @@ def main(argv: list[str]) -> int:
         "score": {"smart": cm("smart", "score"), "s2": cm("s2", "score")},
         "usd": {"smart": cm("smart", "usd"), "s2": cm("s2", "usd")},
         "agent_wall_s": {"smart": cm("smart", "agent_wall_s"), "s2": cm("s2", "agent_wall_s")},
+        "requests": {"smart": cm("smart", "requests"), "s2": cm("s2", "requests")},
         "compaction_event_s_median": {
             "smart_trim_request_upper_bound": data["timing"]["smart"]["smart_trim_request_latency_s"]["median"],
             "s2_summary_call": data["timing"]["s2"]["native_summary_request_latency_s"]["median"]},

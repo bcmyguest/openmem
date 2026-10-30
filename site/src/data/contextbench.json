@@ -744,6 +744,10 @@
    "smart": 593.2211404800415,
    "s2": 471.7597628116608
   },
+  "requests": {
+   "smart": 129.6,
+   "s2": 116.6
+  },
   "compaction_event_s_median": {
    "smart_trim_request_upper_bound": 4.016868,
    "s2_summary_call": 10.7302325
