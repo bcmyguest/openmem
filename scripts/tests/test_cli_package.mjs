@@ -259,7 +259,7 @@ check(
   pkg.scripts?.["switch-provider"] === "node cli/switch-memory-provider.mjs",
 );
 check("cli entry is a real file with a node shebang", !fs.lstatSync(path.join(ROOT, "cli/openmem.mjs")).isSymbolicLink() && read(path.join(ROOT, "cli/openmem.mjs")).startsWith("#!/usr/bin/env node"));
-check("engines.node >=22.16.0 (node:sqlite with FTS5) and publishConfig.access public", pkg.engines?.node === ">=22.16.0" && pkg.publishConfig?.access === "public");
+check("engines.node >=24.0.0 and publishConfig.access public", pkg.engines?.node === ">=24.0.0" && pkg.publishConfig?.access === "public");
 check("type is module and deps include @clack/prompts + @iarna/toml", pkg.type === "module" && Boolean(pkg.dependencies?.["@clack/prompts"]) && Boolean(pkg.dependencies?.["@iarna/toml"]));
 check("repository/homepage/bugs point at bcmyguest/openmem", /bcmyguest\/openmem/.test(JSON.stringify([pkg.repository, pkg.homepage, pkg.bugs])));
 {

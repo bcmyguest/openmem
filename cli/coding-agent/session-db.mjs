@@ -4,7 +4,7 @@
  * byte for byte (scripts/tests/test_context_parity.mjs).
  *
  * node:sqlite is loaded on first use, so modules that import this one (hooks among them) never load it
- * unless they touch a database. Node >= 22.16 (the first release whose bundled SQLite has FTS5).
+ * unless they touch a database. Node >= 24 (engines.node; node:sqlite with FTS5 first shipped in 22.16).
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

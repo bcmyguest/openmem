@@ -263,23 +263,24 @@ export function contextProxyFromPmConfig(cfg) {
 
 /**
  * Per-agent context management: `[context_proxy.agents] <key> = true|false`, a missing key following
- * `[context_proxy] enabled`. Keys: CONTEXT_AGENT_KEYS. `saved` lists the keys that config.toml sets.
+ * `[context_proxy] enabled`; with neither set, opencode2 is on (it needs no service) and the proxy-routed
+ * agents are off. Keys: CONTEXT_AGENT_KEYS. `saved` lists the keys that config.toml sets.
  * @param {Record<string, unknown>} cfg
  * @returns {{ agents: Record<string, boolean>, saved: string[], enabledSaved: boolean }}
  */
 export function contextAgentsFromPmConfig(cfg) {
   const table = tableOf(cfg, "context_proxy");
   const overrides = tableOf(table, "agents");
-  const fallback = table.enabled === true;
+  const enabledSaved = typeof table.enabled === "boolean";
   const agents = {};
   const saved = [];
   for (const key of CONTEXT_AGENT_KEYS) {
     if (typeof overrides[key] === "boolean") {
       agents[key] = overrides[key];
       saved.push(key);
-    } else agents[key] = fallback;
+    } else agents[key] = enabledSaved ? table.enabled : key === "opencode2";
   }
-  return { agents, saved, enabledSaved: typeof table.enabled === "boolean" };
+  return { agents, saved, enabledSaved };
 }
 
 /**

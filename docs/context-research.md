@@ -17,10 +17,10 @@ flowchart LR
   S[Agent session] --> T{Over trim threshold?}
   T -- no --> F[Forward unchanged]
   T -- yes --> K[Keep system, tools, first user turn, in-flight turn]
-  T -- yes --> L[(Session store: every dropped block, verbatim)]
-  K --> P["Pointer: earlier messages are NOT in context; call smart_compact_search"]
+  S --> L[("SQLite session store: every message, verbatim, flagged in_context")]
+  K --> P["Pointer: earlier messages are NOT in context; call smart_compact_search or smart_compact_sql"]
   P --> F
-  L --> Q[smart_compact_search / smart_compact_get]
+  L --> Q[smart_compact_search / smart_compact_sql / smart_compact_get]
   Q --> F
 ```
 
@@ -51,8 +51,8 @@ flowchart LR
 | Standing system instruction plus a firmer pointer ("NOT in your context. You MUST call smart_compact_search…") | Mainplane's pattern. Trials with zero searches fell from 2 of 12 (strict) to 0 of 12 (run A). |
 | Pin the first user turn | Without it, a trim dropped the task statement itself. |
 | Sticky, fingerprinted cut | Later requests get the same bytes, so the prompt cache keeps hitting after a trim. Smart compaction cost $0.84 per trial in the strict run against $1.46 for keep-everything; that gap mixes cache hits with smaller prompts. |
-| Calibrate the token estimate from provider-reported usage | chars/4 underestimated these streams (about 2.3 characters per token), so a 120k threshold fired at 203–236k real tokens. Fix written, not yet merged. |
-| SQLite store: messages, lines, FTS5, hybrid ranking, read-only SQL tool | Decided, build in progress. Letta shows file-like tools work, but shell-only access limits retrieval to coding agents; MCP tools reach any agent. A `lines` table gives exact counts, which `line_matches` over trimmed rows could not. |
+| Calibrate the token estimate from provider-reported usage | chars/4 underestimated these streams (about 2.3 characters per token), so a 120k threshold fired at 203–236k real tokens. Built: each thread's reported usage calibrates the estimate, with `chars_per_token` (2.5) before the first report ([token estimate](context-proxy.md#token-estimate)). Not yet benchmarked. |
+| SQLite store: messages, lines, FTS5, hybrid ranking, read-only SQL tool | Built ([context store](context-store.md#session-database)); not yet benchmarked. Letta shows file-like tools work, but shell-only access limits retrieval to coding agents; MCP tools reach any agent. `sessions/<sid>.db` holds every message, in context or trimmed; `smart_compact_search` filters by `role` and `in_context`, and `smart_compact_sql` answers counts and aggregates. Its `lines` table gives exact counts, which the old log-based `line_matches` could not. |
 | Semantic search through the memory provider | Being measured in run C (s3c-semantic-nudged, s3d-recall). |
 
 ## Benchmark method
@@ -93,7 +93,7 @@ Same tasks and seeds as the strict run, s3a and s3b only.
 | log-triage count, mean | 0 | 0.07 |
 | log-triage reward, mean | 0.45 | **0.53** |
 
-`line_matches` counted only rows already trimmed into the log, so counts missed lines still in context (348 returned against a true 594), shifted between trims (111, then 184, against 171) and sometimes overcounted. The SQLite `lines` table is meant to fix this.
+Run A used the earlier JSONL handoff log. Its `line_matches` counted only rows already trimmed into the log, so counts missed lines still in context (348 returned against a true 594), shifted between trims (111, then 184, against 171) and sometimes overcounted. The SQLite store replaces that log: `line_matches` now counts the `lines` table across the whole session, and `smart_compact_sql` answers counts directly. Neither has been benchmarked yet.
 
 ### Run B: score against size (partial; seed 42 only)
 
@@ -112,9 +112,9 @@ Peak prompt tokens in parentheses. Keep-everything loses lookups and counts as t
 - One model (Haiku 5.5) and three seeds per task.
 - Synthetic tasks with exact keys, which favour lexical search. No paraphrase or semantic task yet.
 - Haiku drops the `#tag` in kv answers in every setting; compare `reward_lenient`.
-- The trim fired late (203–236k real tokens) because of the chars/4 estimate.
+- The trim fired late (203–236k real tokens) because of the chars/4 estimate, since replaced by the calibrated estimate.
 - kv R16000 under s1 hit the harness step limit at 979k tokens before any question, so it is not a recall score.
-- Count scores are limited by `line_matches`, not by whether the agent searches.
+- Count scores are limited by the JSONL log's `line_matches`, not by whether the agent searches.
 - Compression never fired, so s3a and s3b test the same thing.
 
 ## Next steps

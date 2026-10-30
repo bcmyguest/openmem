@@ -160,8 +160,9 @@ try {
     const home = path.join(state, "home");
     const project = path.join(home, "work", "demo");
     fs.mkdirSync(project, { recursive: true });
-    const saved = { HOME: process.env.HOME, OPENMEM_STATE_DIR: process.env.OPENMEM_STATE_DIR, PM_STACK_ROOT: process.env.PM_STACK_ROOT };
-    Object.assign(process.env, { HOME: home, OPENMEM_STATE_DIR: state, PM_STACK_ROOT: path.join(home, "stack") });
+    const saved = { HOME: process.env.HOME, OPENMEM_STATE_DIR: process.env.OPENMEM_STATE_DIR, PM_STACK_ROOT: process.env.PM_STACK_ROOT, CONTEXT_PROXY_ENABLED: process.env.CONTEXT_PROXY_ENABLED };
+    // Pins trimming on regardless of the developer's config.toml.
+    Object.assign(process.env, { HOME: home, OPENMEM_STATE_DIR: state, PM_STACK_ROOT: path.join(home, "stack"), CONTEXT_PROXY_ENABLED: "1" });
     const oldFetch = globalThis.fetch;
     globalThis.fetch = async () => { throw new Error("no memory requests expected"); };
     const hooks = {};

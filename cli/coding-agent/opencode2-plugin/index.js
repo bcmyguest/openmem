@@ -77,7 +77,8 @@ async function setup(ctx) {
   const allowed = accessAllowed(projectDir, accessConfig);
   const bank = allowed ? bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank }) : undefined;
   // config.toml `[context_proxy]` / `[compaction]` keys, with CONTEXT_* environment variables winning.
-  // Trimming follows `[context_proxy.agents] opencode2`, else `[context_proxy] enabled`; CONTEXT_PROXY_ENABLED overrides.
+  // Trimming follows `[context_proxy.agents] opencode2`, else `[context_proxy] enabled`, else on (no service needed);
+  // CONTEXT_PROXY_ENABLED overrides.
   const pmConfig = readPmConfig(home, stack.root);
   const trimOn = contextAgentsFromPmConfig(pmConfig).agents.opencode2;
   const settings = trimSettings({ ...contextTrimEnvFromPmConfig(pmConfig), CONTEXT_PROXY_ENABLED: trimOn ? "1" : "0", ...process.env }, home);

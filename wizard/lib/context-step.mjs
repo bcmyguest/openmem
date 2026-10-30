@@ -48,8 +48,7 @@ export function contextAgentKeys(harnesses, opencodeMajor) {
  * @returns {Record<string, boolean>}
  */
 export function contextAgentDefaults(cfg) {
-  const { agents, saved, enabledSaved } = contextAgentsFromPmConfig(cfg);
-  return Object.fromEntries(CONTEXT_AGENT_KEYS.map((k) => [k, saved.includes(k) || enabledSaved ? agents[k] : k === "opencode2"]));
+  return contextAgentsFromPmConfig(cfg).agents;
 }
 
 /** Whether the proxy service is needed: the step's choice, else the saved config. */
@@ -72,7 +71,7 @@ function withProxyProfile(ctx) {
  */
 export async function chooseContextManagement(ctx, number, installed) {
   step(`${number}. ${CONTEXT_STEP_TITLE}`);
-  info("Trims long agent sessions into a local saved log; agents search the saved turns with smart_compact_search.");
+  info("Stores every session message in a local SQLite store and trims long sessions; agents query the trimmed turns with smart_compact_search and smart_compact_sql.");
   info("Claude Code and OpenCode 1 go through the local context-proxy compose service; OpenCode 2 uses its native plugin.");
   const cfg = ctx.pmMerged || {};
   const { agents: current, saved } = contextAgentsFromPmConfig(cfg);

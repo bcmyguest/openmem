@@ -30,7 +30,7 @@ const oldFetch = globalThis.fetch;
 Object.assign(process.env, { HOME: home, HINDSIGHT_URL: "http://memory.test", MEMORY_PROVIDER: "hindsight", PM_STACK_ROOT: path.join(home, "stack") });
 delete process.env.OPENMEM_STATE_DIR;
 delete process.env.CONTEXT_TRIM_AT_TOKENS;
-// Trimming is off without [context_proxy.agents] opencode2 / enabled; these tests exercise it on.
+// Config sets enabled = false in places; CONTEXT_PROXY_ENABLED=1 keeps these tests trimming.
 process.env.CONTEXT_PROXY_ENABLED = "1";
 delete process.env.CONTEXT_STANDING_INSTRUCTION;
 
@@ -279,7 +279,10 @@ try {
   check("per-agent: opencode2 = false does not trim although enabled = true", !(await trimsWith("enabled = true\n[context_proxy.agents]\nopencode2 = false\n", "ses_g2")));
   check("per-agent: a missing opencode2 key follows enabled = true", await trimsWith("enabled = true\n", "ses_g3"));
   check("per-agent: a missing opencode2 key follows enabled = false", !(await trimsWith("enabled = false\n", "ses_g4")));
-  check("per-agent: no config.toml means no trim", !(await trimsWith(null, "ses_g5")));
+  check("per-agent: [context_proxy] without enabled or opencode2 trims (default on)", await trimsWith("", "ses_g8"));
+  process.env.CONTEXT_TRIM_AT_TOKENS = "1";
+  check("per-agent: no config.toml trims (default on)", await trimsWith(null, "ses_g5"));
+  delete process.env.CONTEXT_TRIM_AT_TOKENS;
   process.env.CONTEXT_PROXY_ENABLED = "0";
   check("per-agent: CONTEXT_PROXY_ENABLED=0 overrides opencode2 = true", !(await trimsWith("[context_proxy.agents]\nopencode2 = true\n", "ses_g6")));
   process.env.CONTEXT_PROXY_ENABLED = "1";
