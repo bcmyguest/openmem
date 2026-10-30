@@ -2,7 +2,7 @@
 /**
  * openmem: npx entry point for the memory-stack setup wizard.
  *
- *   openmem [setup|configure|up|down|doctor|providers|init|--help|--version]
+ *   openmem [setup|configure|up|down|doctor|providers|init|context|--help|--version]
  *
  * The wizard code runs from this package (read-only, may be an npx cache). Everything it
  * writes, and the compose files it drives, live in a stable stack root; see cli/stack.mjs.
@@ -33,6 +33,8 @@ Usage (prefer npx once published: npx ${BIN} <command>):
   ${BIN} schedule <install|remove> [--dry-run]  manage hourly feed sync with the OS scheduler
   ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
   ${BIN} install-coding-agent [flags]  Hindsight plugin or MCP session path (Claude/Codex/OpenCode/Cursor)
+  ${BIN} context <on|off|status> [--dry-run]
+                               context management (smart compaction): config, agent wiring, proxy service
   ${BIN} switch <provider> [flags]
                                change MEMORY_PROVIDER (stack + MCP; no data migration)
   ${BIN} providers [--json]    list memory providers and their status
@@ -184,6 +186,14 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   const r = spawnSync(process.execPath, [path.join(PKG_ROOT, "cli/schedule.mjs"), ...argv.slice(1)], {
     stdio: "inherit",
     env: process.env,
+  });
+  process.exit(r.status ?? 1);
+} else if (cmd === "context") {
+  // on/off run compose from the stack root, so materialize it first.
+  const { sr } = ensureStack({ quiet: true });
+  const r = spawnSync(process.execPath, [path.join(PKG_ROOT, "cli/context-management.mjs"), ...argv.slice(1)], {
+    stdio: "inherit",
+    env: { ...process.env, PM_STACK_ROOT: sr.root },
   });
   process.exit(r.status ?? 1);
 } else if (cmd === "wiring") {

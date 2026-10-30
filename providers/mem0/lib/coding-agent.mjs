@@ -1,5 +1,5 @@
 /**
- * Step "8. Coding-agent plugin", mem0 half: there is no npx pluginPackage for the
+ * Step "9. Coding-agent plugin", mem0 half: there is no npx pluginPackage for the
  * self-hosted REST server. Print concrete SDK / MCP / direct-REST paths, then
  * optionally merge the mem0 MCP into ~/.cursor/mcp.json (--yes or confirm).
  */
