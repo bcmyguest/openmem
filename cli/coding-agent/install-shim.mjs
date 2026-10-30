@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { SHIM_AGENT_IDS, SHIM_HARNESSES, SHIM_MARKER } from "./hook-harnesses.mjs";
-import { SMART_COMPACT_MARKER, SMART_COMPACT_COMMAND } from "./context-store.mjs";
+import { SMART_COMPACT_MARKER, SMART_COMPACT_COMMAND, SMART_COMPACT_SKILL, SMART_COMPACT_SKILL_POLICY } from "./context-store.mjs";
 import { SILENT, readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
 
@@ -61,6 +61,10 @@ function stripHookEntries(hooks, matches) {
 
 export function smartCompactCommandPath(home) {
   return path.join(home, ".claude", "commands", "smart-compact.md");
+}
+
+export function smartCompactSkillDir(home) {
+  return path.join(home, ".agents", "skills", "smart-compact");
 }
 
 const entryText = (entry) => (typeof entry === "string" ? entry : JSON.stringify(entry));
@@ -157,6 +161,7 @@ export function installSessionShim(opts) {
     if (opts.dry) {
       h.info(`[dry-run] merge ${agentId} hooks in ${cfgPath}`);
       if (agentId === "claude-code") h.info(`[dry-run] install /smart-compact command → ${smartCompactCommandPath(home)}`);
+      if (agentId === "codex") h.info(`[dry-run] install $smart-compact skill → ${smartCompactSkillDir(home)}`);
       installed.push(agentId);
       continue;
     }
@@ -175,12 +180,18 @@ export function installSessionShim(opts) {
       writeFileAtomic(command, SMART_COMPACT_COMMAND);
       h.ok(`claude-code: /smart-compact command → ${command}`);
     }
+    if (agentId === "codex") {
+      const dir = smartCompactSkillDir(home);
+      writeFileAtomic(path.join(dir, "SKILL.md"), SMART_COMPACT_SKILL);
+      writeFileAtomic(path.join(dir, "agents", "openai.yaml"), SMART_COMPACT_SKILL_POLICY);
+      h.ok(`codex: $smart-compact skill → ${dir}`);
+    }
     installed.push(agentId);
   }
   return { installed };
 }
 
-/** Remove OpenMem's session hooks, OpenCode plugin entry and /smart-compact command. */
+/** Remove OpenMem's session hooks, OpenCode plugin entry, /smart-compact command and Codex $smart-compact skill. */
 export function removeSessionShim({ home, agents, dry = false, h = SILENT }) {
   const out = removeHooks({
     home, agents, dry, h, label: "openmem",
@@ -191,6 +202,13 @@ export function removeSessionShim({ home, agents, dry = false, h = SILENT }) {
     && fs.readFileSync(command, "utf8").includes(SMART_COMPACT_MARKER)) {
     fs.rmSync(command);
     h.ok(`claude-code: removed ${command}`);
+  }
+  const skill = smartCompactSkillDir(home);
+  const skillFile = path.join(skill, "SKILL.md");
+  if (agents.includes("codex") && !dry && fs.existsSync(skillFile)
+    && fs.readFileSync(skillFile, "utf8").includes(SMART_COMPACT_MARKER)) {
+    fs.rmSync(skill, { recursive: true, force: true });
+    h.ok(`codex: removed ${skill}`);
   }
   return out;
 }

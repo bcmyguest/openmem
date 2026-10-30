@@ -171,7 +171,7 @@ opencode2   = true        # native plugin, no service
 - **Installer.** Without a flag, `install-coding-agent` points Claude Code and OpenCode 1 at the proxy according to their keys. When the stack root has a `compose.yaml`, it also starts the service (before pointing agents at it) if `claude-code` or `opencode1` is on, and stops a running service (after unpointing them) if neither is, unless an agent still points at it.
 - **OpenCode 2.** The plugin reads `opencode2`, else `enabled`, else trims (no service needed), when OpenCode starts it. An explicit `opencode2 = false`, or `enabled = false` without an `opencode2` key, turns it off. `CONTEXT_PROXY_ENABLED` in OpenCode's environment overrides the config: `0` turns the trim off, `1` on.
 
-`/smart-compact` in a session forces a trim on the next request.
+`/smart-compact` (Codex: `$smart-compact`) in a session forces a trim on the next request.
 
 ## Agent support
 

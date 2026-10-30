@@ -4,7 +4,7 @@ import path from "node:path";
 
 /** Marker in the installed smart-compact command body; survives command expansion. */
 export const SMART_COMPACT_MARKER = "openmem:smart-compact";
-/** Prompt that `/smart-compact` sends in every agent (Claude Code command file, OpenCode 2 command). */
+/** Prompt that `/smart-compact` sends in every agent (Claude Code command file, OpenCode 2 command, Codex skill). */
 export const SMART_COMPACT_BODY = `<!-- ${SMART_COMPACT_MARKER} -->
 OpenMem will trim this session's earlier context on the next request. Reply with one short line acknowledging this; do not summarize the conversation. After the trim, use \`smart_compact_search\` with this session's id to look up anything earlier.`;
 /** Claude Code command file (`~/.claude/commands/smart-compact.md`): frontmatter plus SMART_COMPACT_BODY. */
@@ -13,7 +13,19 @@ description: Trim this session's context on the next request (OpenMem)
 ---
 ${SMART_COMPACT_BODY}
 `;
-const SMART_COMPACT_PREFIX = /^\s*\/smart-compact(?:\s|$)/;
+/** Codex skill (`~/.agents/skills/smart-compact/SKILL.md`), invoked as `$smart-compact`: frontmatter plus SMART_COMPACT_BODY. */
+export const SMART_COMPACT_SKILL = `---
+name: smart-compact
+description: Trim this session's context on the next request (OpenMem). Invoke only when the user types $smart-compact.
+---
+${SMART_COMPACT_BODY}
+`;
+/** Codex skill metadata (`agents/openai.yaml`): explicit `$smart-compact` only, so the model never claims a trim nobody flagged. */
+export const SMART_COMPACT_SKILL_POLICY = `policy:
+  allow_implicit_invocation: false
+`;
+/** Typed `/smart-compact` (Claude Code, OpenCode, Cursor) or `$smart-compact` (Codex skill mention). */
+const SMART_COMPACT_PREFIX = /^\s*[/$]smart-compact(?:\s|$)/;
 const SMART_COMPACT_TAG = "<command-name>/smart-compact</command-name>";
 /** ASCII whitespace only, so the hooks and the proxy trim the same characters (session ids, OPENMEM_STATE_DIR). */
 const ASCII_TRIM_RE = /^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g;
@@ -74,7 +86,7 @@ export function writeForceFlag({ home, env, sessionId }) {
   return file;
 }
 
-/** True for `/smart-compact …`, Claude Code's command tag, or the expanded command body. */
+/** True for `/smart-compact …`, `$smart-compact …`, Claude Code's command tag, or the expanded command body. */
 export function isSmartCompactPrompt(prompt) {
   const text = String(prompt || "");
   return SMART_COMPACT_PREFIX.test(text) || text.includes(SMART_COMPACT_TAG) || text.includes(SMART_COMPACT_MARKER);

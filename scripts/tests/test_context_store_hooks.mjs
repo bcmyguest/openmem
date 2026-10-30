@@ -11,6 +11,8 @@ import {
   SMART_COMPACT_BODY,
   SMART_COMPACT_COMMAND,
   SMART_COMPACT_MARKER,
+  SMART_COMPACT_SKILL,
+  SMART_COMPACT_SKILL_POLICY,
 } from "../../cli/coding-agent/context-store.mjs";
 import { runHook, sessionBanner } from "../../cli/coding-agent/hook-runner.mjs";
 import { PersonalMemoryPlugin } from "../../cli/coding-agent/opencode-plugin.mjs";
@@ -66,6 +68,11 @@ check("OPENMEM_STATE_DIR override", contextRoot("/h", { OPENMEM_STATE_DIR: "/sta
 check("raw /smart-compact detected", isSmartCompactPrompt("/smart-compact") && isSmartCompactPrompt("  /smart-compact now"));
 check("Claude command tag detected", isSmartCompactPrompt("<command-message>x</command-message>\n<command-name>/smart-compact</command-name>"));
 check("expanded command body detected", isSmartCompactPrompt(`<!-- ${SMART_COMPACT_MARKER} -->\nThe OpenMem context proxy will trim`));
+check("Codex $smart-compact skill mention detected", isSmartCompactPrompt("$smart-compact") && isSmartCompactPrompt(" $smart-compact now")
+  && !isSmartCompactPrompt("$smart-compactor") && !isSmartCompactPrompt("explain $smart-compact"));
+check("smart-compact skill is named frontmatter plus the shared body", SMART_COMPACT_SKILL.startsWith("---\nname: smart-compact\ndescription: ")
+  && SMART_COMPACT_SKILL.endsWith(`---\n${SMART_COMPACT_BODY}\n`));
+check("smart-compact skill is explicit-only", /^policy:\n {2}allow_implicit_invocation: false\n$/.test(SMART_COMPACT_SKILL_POLICY));
 check("other prompts not detected", !isSmartCompactPrompt("/smart-compactor") && !isSmartCompactPrompt("explain /smart-compact"));
 
 // SessionStart: registration + banner + recall, default state dir under the disposable HOME.
@@ -143,6 +150,8 @@ check("other prompts not detected", !isSmartCompactPrompt("/smart-compactor") &&
     check(`force flag for ${sid}`, fs.existsSync(flag) && fs.statSync(flag).size === 0 && mode(flag) === 0o600);
   }
   check("smart-compact prompts make no recall call", calls.length === 0, calls.join(","));
+  await runHook("codex", "prompt", { home, env, repoRoot: ROOT, ev: { cwd: home, session_id: "cx-skill", prompt: "$smart-compact" }, fetchFn: memoryFetch(calls) });
+  check("Codex $smart-compact writes the force flag without recall", fs.existsSync(path.join(sessions, "cx-skill.force")) && calls.length === 0);
   await runHook("claude-code", "prompt", { home, env, repoRoot: ROOT, ev: { cwd: home, session_id: "plain", prompt: "fix it" }, fetchFn: memoryFetch(calls) });
   check("ordinary prompt writes no flag and recalls", !fs.existsSync(path.join(sessions, "plain.force")) && calls.length === 1);
 

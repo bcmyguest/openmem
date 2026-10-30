@@ -119,6 +119,10 @@ const count = (text, needle) => text.split(needle).length - 1;
   check("openmem mode does not run the upstream installer", spawned.length === 0);
   const command = path.join(home, ".claude/commands/smart-compact.md");
   check("Claude /smart-compact command installed", fs.existsSync(command) && /trim this session's earlier context on the next request/.test(read(command)));
+  const skill = path.join(home, ".agents/skills/smart-compact");
+  check("Codex $smart-compact skill installed", /^---\nname: smart-compact\n/.test(read(path.join(skill, "SKILL.md")))
+    && read(path.join(skill, "SKILL.md")).includes("openmem:smart-compact")
+    && read(path.join(skill, "agents/openai.yaml")).includes("allow_implicit_invocation: false"));
 
   await install(home, {});
   check("openmem reinstall does not duplicate hooks", count(hookText(home), "coding-agent/hook-runner.mjs") === 9);
@@ -133,6 +137,7 @@ const count = (text, needle) => text.split(needle).length - 1;
   check("provider runs the upstream installer", calls.some((c) => c[0] === "npx" && c.includes("@vectorize-io/hindsight-coding-agents") && c.includes("install")));
   check("provider keeps the unified MCP", Boolean(json(path.join(home, ".claude.json")).mcpServers?.openmem));
   check("provider removes the /smart-compact command", !fs.existsSync(command));
+  check("provider removes the Codex $smart-compact skill", !fs.existsSync(skill));
   check("unrelated settings survive the switch", JSON.stringify(json(path.join(home, ".claude/settings.json")).hooks.UserPromptSubmit).includes("codegraph prompt-hook"));
   const cfgFile = path.join(home, ".config/personal-memory/config.toml");
   check("provider choice persisted", TOML.parse(read(cfgFile)).agents?.integration === "provider");
