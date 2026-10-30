@@ -329,7 +329,7 @@ export async function callUnifiedTool(ctx, name, args = {}, fetchFn = fetch) {
 
   if (CONTEXT_STORE_TOOL_NAMES.has(name)) {
     try {
-      return textResult(callContextStoreTool(name, args));
+      return textResult(await callContextStoreTool(name, args));
     } catch (err) {
       return textResult(err instanceof Error ? err.message : String(err), true);
     }

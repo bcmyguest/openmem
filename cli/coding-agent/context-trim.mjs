@@ -1,6 +1,6 @@
 /**
  * Native context trimming for OpenCode 2: a port of the context proxy core (proxy/openmem_context/)
- * for OpenCode's LLM message shape. File layout, log rows and inserted text follow docs/context-store.md.
+ * for OpenCode's LLM message shape. File layout, database rows and inserted text follow docs/context-store.md.
  *
  * OpenCode 2 message: { id?, role: "system" | "user" | "assistant" | "tool", content: Part[] }.
  * Parts: text {text}, media, tool-call {id, name, input}, tool-result {id, name, result}, reasoning {text},
@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { contextRoot, sanitizeSessionId } from "./context-store.mjs";
+import { blobRef, chain, dropSession, openSession, scheduleEmbedding, storeSettings } from "./session-db.mjs";
 
 export const DEFAULT_TRIM_AT_TOKENS = 120000;
 export const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
@@ -27,7 +28,8 @@ export const STANDING_INSTRUCTION = "Context management: to fit your context win
   + "[openmem: …] pointer. Removed content is saved, not forgotten. Before answering anything that depends on "
   + "earlier content you cannot see in your context — values, ids, keys, counts, decisions — call "
   + "smart_compact_search (use `pattern` for exact ids/keys, `context` for neighbouring rows; `line_matches` gives "
-  + "exact counts); never guess or answer from memory you cannot see.";
+  + "exact counts) or smart_compact_sql for counts and aggregates over the session store; never guess or answer "
+  + "from memory you cannot see.";
 const HEAD_LINES = 40;
 const TAIL_LINES = 20;
 const HEAD_CHARS = 4000;
@@ -77,6 +79,7 @@ export function trimSettings(env = process.env, home = env.HOME) {
     compactionMaxChars: int("CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
     recallTimeoutS: float("CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
     contextDir: contextRoot(home, env),
+    ...storeSettings(env),
   };
 }
 
@@ -321,15 +324,46 @@ function toolNames(items) {
   return names;
 }
 
-/** Log rows for items[start, stop), skipping pinned messages and the index `skip` (the pinned first user turn). */
-function rows(items, start, stop, ts, skip = null) {
+/**
+ * Database rows for every non-pinned message, chained (session-db chain); the proxy's stored_rows. Text comes
+ * from the original messages, so a compressed tool result is stored in full with its blob_id. keep is false
+ * for messages the view drops (before the cut, except the pinned first user turn; every message when
+ * `dropAll`). Returns { rows, cutRow }, cutRow being the index of the cut turn's first row or null.
+ */
+export function storedRows(original, items, cut, first, dropAll = false) {
   const names = toolNames(items);
-  const out = [];
-  for (let j = start; j < Math.min(stop, items.length); j++) {
-    if (j === skip || isPinned(items[j])) continue;
-    for (const [role, kind, name, text] of logRows(items[j], names)) out.push({ ts, role, kind, name, text });
+  const rows = [];
+  let cutRow = null;
+  original.forEach((item, j) => {
+    if (isPinned(item)) return;
+    const base = logRows(item, names);
+    const shown = items[j] === item ? base : logRows(items[j], names);
+    if (cut && j === cut && base.length) cutRow = rows.length;
+    const keep = !dropAll && !(j < cut && j !== first);
+    base.forEach(([role, kind, name, text], k) => {
+      const blob = shown !== base && k < shown.length ? blobRef(shown[k][3]) : null;
+      rows.push({ role, kind, name, text, blob_id: blob, keep });
+    });
+  });
+  return { rows: rows.length ? chain(rows) : rows, cutRow };
+}
+
+/** Write the request's messages to sessions/<sid>.db; never throws (a database error is logged). */
+function storeMessages(store, sid, settings, original, items, cut, first, ts, deps, dropAll = false) {
+  let file = null;
+  try {
+    file = store.dbPath(sid);
+    const { rows, cutRow } = storedRows(original, items, cut, first, dropAll);
+    if (!rows.length) return;
+    const added = openSession(file).sync(rows, cutRow, ts);
+    if (added && settings.embeddingModel) {
+      void scheduleEmbedding(file, { model: settings.embeddingModel, url: settings.embeddingUrl, apiKey: settings.embeddingApiKey },
+        { fetchFn: deps.fetch, onError: logFailOpen });
+    }
+  } catch (error) {
+    if (file) dropSession(file);
+    logFailOpen(error);
   }
-  return out;
 }
 
 const droppable = (items, stop, first) => items.slice(0, stop).filter((x, j) => j !== first && !isPinned(x));
@@ -373,10 +407,11 @@ function locateCut(items, thread) {
   return 0;
 }
 
-export function pointerText(sid, dropped, logPath) {
+export function pointerText(sid, dropped) {
   return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. `
     + `You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering `
-    + `anything that depends on them; the handoff log is ${logPath} (JSONL, one row per block).]`;
+    + "anything that depends on them; every message of this session is stored and queryable with "
+    + `smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]`;
 }
 
 /**
@@ -460,39 +495,10 @@ export class Store {
     this.writeAtomic(this.file(sid, ".trim.json"), pyDumps(plain, true));
   }
 
-  nextSeq(sid) {
-    let fd;
-    try { fd = fs.openSync(this.file(sid, ".log.jsonl"), "r"); } catch (error) {
-      if (error?.code === "ENOENT") return 0;
-      throw error;
-    }
-    try {
-      const size = fs.fstatSync(fd).size;
-      for (let chunk = 65536; ; chunk *= 4) {
-        const start = Math.max(0, size - chunk);
-        const buffer = Buffer.alloc(size - start);
-        fs.readSync(fd, buffer, 0, buffer.length, start);
-        const lines = buffer.toString("utf8").split("\n").filter((line) => line.trim());
-        const complete = start === 0 ? lines : lines.slice(1);
-        for (const line of complete.reverse()) {
-          try {
-            const seq = JSON.parse(line).seq;
-            if (Number.isInteger(seq)) return seq + 1;
-          } catch { /* skip */ }
-        }
-        if (start === 0) return 0;
-      }
-    } finally { fs.closeSync(fd); }
-  }
-
-  /** Append rows (without seq); assigns seq and returns the number written. */
-  appendLog(sid, list) {
-    if (!list.length) return 0;
+  /** Session database (session-db.mjs); creates the sessions directory. */
+  dbPath(sid) {
     this.ensure(this.sessions);
-    let seq = this.nextSeq(sid);
-    const text = list.map((row) => pyDumps({ seq: seq++, ...row })).join("\n");
-    fs.appendFileSync(this.file(sid, ".log.jsonl"), `${text}\n`, { mode: 0o600 });
-    return list.length;
+    return this.file(sid, ".db");
   }
 
   writeBlob(id, text) {
@@ -530,7 +536,7 @@ export function logFailOpen(error) {
  * deps.recall(bank, query, maxChars) and deps.pending(bank) are best effort.
  */
 async function buildNote(items, cut, sid, dropped, store, settings, deps) {
-  const out = [pointerText(sid, dropped, store.file(sid, ".log.jsonl"))];
+  const out = [pointerText(sid, dropped)];
   const bank = store.registration(sid)?.bank;
   if (typeof bank === "string" && bank) {
     const query = cpSlice(stripReminders(userText(items[cut])), 0, RECALL_QUERY_MAX_CHARS);
@@ -598,7 +604,6 @@ export async function trimContext(request, settings, deps = {}) {
       const next = chooseCut(items, cut, first);
       if (next !== null) {
         const ts = utcNow(deps.now?.());
-        store.appendLog(sid, rows(items, cut, next, ts, first));
         note = await buildNote(items, next, sid, droppable(items, next, first).length, store, settings, deps);
         threads.delete(root);
         threads.set(root, { cut: next, cut_fp: fingerprint(items[next]), note, format: FORMAT, updated: ts });
@@ -606,8 +611,10 @@ export async function trimContext(request, settings, deps = {}) {
         store.saveTrim(sid, state);
         if (force) store.clearForce(sid);
         rendered = render(items, next, note, first, decorate);
+        cut = next;
       } else if (thread && !cut) store.saveTrim(sid, state);
     } else if (thread && !cut) store.saveTrim(sid, state);
+    storeMessages(store, sid, settings, original, items, cut, first, utcNow(deps.now?.()), deps);
     return rendered;
   });
   // Measured like the estimate, so a later recordPromptUsage compares like with like.
@@ -633,19 +640,7 @@ export async function recordPromptUsage(settings, sessionID, measured, tokens) {
 }
 
 /**
- * First index not yet in the log for a compaction. Trims logged items[0, cut) except the pinned first
- * user turn. When the stored cut message is no longer in the history, the stored cut index stands in
- * for it, so earlier rows are not logged twice.
- */
-function loggedUpTo(items, thread) {
-  if (!thread) return 0;
-  const located = locateCut(items, thread);
-  if (located) return located;
-  return Number.isInteger(thread.cut) && thread.cut > 0 ? Math.min(thread.cut, items.length) : 0;
-}
-
-/**
- * Compaction-hook result: log everything not yet logged, then return the pointer + recall summary
+ * Compaction-hook result: store every message as out of context, then return the pointer + recall summary
  * that replaces OpenCode's model-written summary. Null when there is nothing to compact.
  */
 export async function compactionSummary(request, settings, deps = {}) {
@@ -662,16 +657,13 @@ export async function compactionSummary(request, settings, deps = {}) {
   return withSessionLock(sid, async () => {
     const state = store.loadTrim(sid);
     const thread = state.threads.get(root);
-    const start = loggedUpTo(items, thread);
-    const ts = utcNow(deps.now?.());
-    // Compaction drops the pinned first user turn too; trims never logged it.
-    const pinned = thread && first !== null && first < start ? rows(items, first, first + 1, ts) : [];
-    store.appendLog(sid, [...pinned, ...rows(items, start, items.length, ts)]);
+    // Compaction drops every message, the pinned first user turn included; no cut turn, so trimmed_at_seq is NULL.
+    storeMessages(store, sid, settings, original, items, 0, first, utcNow(deps.now?.()), deps, true);
     let last = -1;
     for (let i = items.length - 1; i >= 0; i--) if (isTurnStart(items[i])) { last = i; break; }
     const note = last >= 0
       ? await buildNote(items, last, sid, roots.length, store, settings, deps)
-      : pointerText(sid, roots.length, store.file(sid, ".log.jsonl"));
+      : pointerText(sid, roots.length);
     if (thread) {
       state.threads.delete(root);
       store.saveTrim(sid, state);

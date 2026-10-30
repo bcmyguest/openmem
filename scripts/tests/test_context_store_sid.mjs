@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { callContextStoreTool, contextRoot, sanitizeSessionId } from "../../cli/mcp/context-store.mjs";
 import { registerSession } from "../../cli/coding-agent/context-store.mjs";
+import { writeSessionRows } from "./fixtures/session-db.mjs";
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -60,8 +61,8 @@ const state = path.join(tmp, "state");
   for (const raw of ["a/b", "a..b", "x\\y", "ses:1"]) {
     const file = registerSession({ home: tmp, env, sessionId: raw, agent: "claude-code", cwd: repo, bank: "b" });
     const sid = path.basename(file, ".json");
-    fs.writeFileSync(path.join(path.dirname(file), `${sid}.log.jsonl`), JSON.stringify({ seq: 0, role: "user", kind: "text", name: null, text: "parity needle" }) + "\n");
-    const r = callContextStoreTool("smart_compact_search", { query: "parity needle", session_id: sid }, { env, cwd: repo });
+    writeSessionRows(path.dirname(file), sid, [{ role: "user", kind: "text", name: null, text: "parity needle" }]);
+    const r = await callContextStoreTool("smart_compact_search", { query: "parity needle", session_id: sid }, { env, cwd: repo });
     check(`hook-registered ${JSON.stringify(raw)} is found by the MCP`, r.sessions_searched[0] === sid && r.results.length === 1, JSON.stringify(r.sessions_searched));
   }
 }

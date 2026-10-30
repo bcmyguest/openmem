@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from litellm.integrations.custom_logger import CustomLogger  # noqa: E402
 
-from openmem_context import process_request, process_usage  # noqa: E402
+from openmem_context import process_request, process_usage, startup  # noqa: E402
 
 
 class OpenMemContextHook(CustomLogger):
@@ -24,5 +24,8 @@ class OpenMemContextHook(CustomLogger):
         # async_pre_call_hook saw in data; process_usage never raises.
         await asyncio.to_thread(process_usage, kwargs, response_obj)
 
+
+# Session-file TTL cleanup, once per proxy start (and at most once a day); never blocks or raises.
+startup()
 
 handler = OpenMemContextHook()

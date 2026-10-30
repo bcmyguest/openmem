@@ -1,55 +1,95 @@
 /**
- * Provider-independent smart_compact_* tools: read the context proxy's handoff logs and blobs.
- * File layout and row shape follow docs/context-store.md. Local reads only; never writes.
+ * Provider-independent smart_compact_* tools over the session databases (`sessions/<sid>.db`) and blobs.
+ * Schema and file layout follow docs/context-store.md. Reads only: search and get open each database
+ * read-only; smart_compact_sql runs in a child process on a read-only connection.
  */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { contextRoot as hookContextRoot, sanitizeSessionId as hookSanitizeSessionId } from "../coding-agent/context-store.mjs";
+import {
+  DB_SUFFIX, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, sqlite, storeSettings,
+} from "../coding-agent/session-db.mjs";
 
+const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const SQL_RUNNER = path.join(path.dirname(fileURLToPath(import.meta.url)), "context-sql-runner.mjs");
 const DEFAULT_LIMIT = 8;
 const MAX_SESSIONS = 20;
 const RESULT_MAX_CHARS = 8000;
 const EXCERPT_CHARS = 400;
 const BLOB_MAX_CHARS = 100_000;
 const BLOB_ID_RE = /^[0-9a-f]{16}$/;
-const BLOB_REF_RE = /\[blob:([0-9a-f]{16})\]/g;
-const LOG_SUFFIX = ".log.jsonl";
 const PATTERN_MAX_CHARS = 200;
 const PATTERN_ROW_CHARS = 20_000;
 const PATTERN_BUDGET_MS = 1000;
 const CONTEXT_MAX = 5;
+const ROLES = ["user", "assistant", "tool"];
+const DEFAULT_ROLES = ["user", "tool"];
+/** Reciprocal rank fusion constant (Cormack et al. 2009) and vector candidates per search. */
+const RRF_K = 60;
+const VECTOR_CANDIDATES = 50;
+const SQL_TIMEOUT_MS = 2000;
+const SQL_ROW_CAP = 200;
+const SQL_CELL_MAX_CHARS = 2000;
+const SQL_RESULT_MAX_CHARS = 30_000;
+const SQL_MAX_CHARS = 10_000;
+/** Words that may not appear outside string literals and quoted identifiers in smart_compact_sql. */
+const SQL_FORBIDDEN = new Set([
+  "ATTACH", "DETACH", "PRAGMA", "INSERT", "UPDATE", "DELETE", "UPSERT", "CREATE", "DROP", "ALTER",
+  "VACUUM", "REINDEX", "ANALYZE", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "TRANSACTION",
+]);
+
+const SCHEMA_TEXT = "messages(seq INTEGER PRIMARY KEY, fingerprint, thread, role 'user'|'assistant'|'tool', "
+  + "kind 'text'|'tool_use'|'tool_result'|'thinking', name (tool name or NULL), text, blob_id, in_context 0|1, "
+  + "trimmed_at_seq, trimmed_at, created_at); lines(id, message_seq, line_no (1-based), role, text) with one row per "
+  + "line of each message; messages_fts(text) and lines_fts(text): FTS5 indexes whose rowid is messages.seq / lines.id; "
+  + "vectors(message_seq, model, dim, blob).";
 
 export const CONTEXT_STORE_MCP_TOOLS = [
   {
     name: "smart_compact_search",
-    title: "Search trimmed session context",
+    title: "Search this session's stored context",
     description:
-      "Search the handoff log of conversation turns the OpenMem context proxy trimmed from this or earlier sessions " +
-      "(user and assistant text, tool calls, tool results) and return matching rows with an excerpt. " +
-      "Use when an [openmem: continuing session …] pointer says earlier messages were trimmed and you need a detail from them; " +
-      "pass that session_id. Without session_id it searches recent sessions registered under this workspace's git root. " +
-      "Pass exactly one of query (words) or pattern (JavaScript regex, rg-style); context adds that many neighbouring rows " +
-      "before and after each hit. total_matches counts matching rows; line_matches counts matching lines of row text across every searched row, " +
-      "not only the returned ones (line_matches = grep -c over the saved log; use it for 'how many' questions). " +
-      "log_files maps each searched session to its JSONL log, which a shell-capable agent can rg directly. " +
-      "Rows citing [blob:<id>] return blob_ids for smart_compact_get. Not durable project memory: use memory_recall for that. " +
-      "Local files only; works with every provider. Read-only.",
+      "Search the session database where OpenMem stores every message of a coding session (user and assistant text, "
+      + "tool calls, tool results), whether or not it is still in your context, and return matching rows with an excerpt. "
+      + "Use when an [openmem: continuing session …] pointer says earlier messages were trimmed and you need a detail from them; "
+      + "pass that session_id. Without session_id it searches recent sessions registered under this workspace's git root. "
+      + "Pass exactly one of query (words; SQLite FTS5 full-text match ranked by BM25, merged with embedding similarity "
+      + "when the session has vectors) or pattern (JavaScript regex, rg-style). role defaults to user and tool rows; "
+      + "pass role: \"all\" (or include \"assistant\") for assistant text. in_context filters to rows still in (true) or "
+      + "trimmed from (false) your context. context adds that many neighbouring rows of the same conversation before and "
+      + "after each hit. total_matches counts matching rows; line_matches is an exact count of matching lines (the lines "
+      + "table) across the whole session under the same filters, not only the returned rows; use it for 'how many' "
+      + "questions, or smart_compact_sql for anything grouped or combined. Rows citing a compressed result return "
+      + "blob_ids for smart_compact_get. Not durable project memory: use memory_recall for that. Local files only; "
+      + "works with every provider. Read-only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Words to find (case-insensitive; rows containing every word rank first). Omit when passing pattern" },
+        query: { type: "string", description: "Words to find (case-insensitive whole words; rows with more words rank first). Omit when passing pattern" },
         pattern: {
           type: "string",
-          description: `JavaScript regex source, at most ${PATTERN_MAX_CHARS} characters; scans the first ${PATTERN_ROW_CHARS} characters of each row. Omit when passing query`,
+          description: `JavaScript regex source, at most ${PATTERN_MAX_CHARS} characters; tested against each row's first ${PATTERN_ROW_CHARS} characters and against every line. Omit when passing query`,
         },
         ignore_case: { type: "boolean", description: "Match pattern case-insensitively (default false)" },
-        context: { type: "number", description: `Neighbouring rows (by seq) to return before and after each hit, 0-${CONTEXT_MAX} (default 0)` },
+        context: { type: "number", description: `Neighbouring rows of the same conversation to return before and after each hit, 0-${CONTEXT_MAX} (default 0)` },
         session_id: { type: "string", description: "Session id from the [openmem: continuing session …] pointer" },
         limit: { type: "number", description: `Max rows (default ${DEFAULT_LIMIT})` },
+        role: {
+          description: 'Roles to search: "user", "assistant", "tool", a list of them, or "all" (default ["user", "tool"])',
+          anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+        },
+        in_context: { type: "boolean", description: "true: only rows still in your context; false: only trimmed rows (default both)" },
+        mode: {
+          type: "string",
+          enum: ["hybrid", "lexical"],
+          description: "hybrid merges full-text and embedding rankings (default when the session has vectors); lexical is full-text only",
+        },
       },
       additionalProperties: false,
     },
@@ -58,10 +98,10 @@ export const CONTEXT_STORE_MCP_TOOLS = [
     name: "smart_compact_get",
     title: "Read a compressed tool result",
     description:
-      "Return the full text of a tool result the context proxy compressed, by the 16-hex id from " +
-      '[openmem: tool result compressed … smart_compact_get(id="<id>")] or a smart_compact_search blob_ids entry. ' +
-      `Output is capped at ${BLOB_MAX_CHARS} characters; pass offset (next_offset) to page through longer results. ` +
-      "Not for searching: use smart_compact_search. Local files only; works with every provider. Read-only.",
+      "Return the full text of a tool result the context proxy compressed, by the 16-hex id from "
+      + '[openmem: tool result compressed … smart_compact_get(id="<id>")] or a smart_compact_search blob_ids entry. '
+      + `Output is capped at ${BLOB_MAX_CHARS} characters; pass offset (next_offset) to page through longer results. `
+      + "Not for searching: use smart_compact_search. Local files only; works with every provider. Read-only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -70,6 +110,32 @@ export const CONTEXT_STORE_MCP_TOOLS = [
         offset: { type: "number", description: "Character offset to start from (default 0)" },
       },
       required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "smart_compact_sql",
+    title: "Query a session database with SQL",
+    description:
+      "Run one read-only SQLite SELECT (or WITH … SELECT) against a session's database, for counts, aggregates and "
+      + "joins that smart_compact_search cannot express. The database holds every message of the session, in or out of "
+      + `your context. Schema: ${SCHEMA_TEXT} `
+      + "Full-text: `lines_fts MATCH 'error AND payments'` (FTS5 syntax; join lines ON lines.id = lines_fts.rowid); "
+      + "exact substrings: `text LIKE '%level=error%'` (case-insensitive for ASCII). Examples: "
+      + "(1) lines naming a level and a service: SELECT count(*) AS n FROM lines WHERE text LIKE '%level=error%' AND text LIKE '%service=payments%'; "
+      + "(2) tool calls per tool: SELECT name, count(*) AS calls FROM messages WHERE kind = 'tool_use' GROUP BY name ORDER BY calls DESC; "
+      + "(3) error lines per tool result: SELECT m.seq, m.name, count(*) AS errors FROM lines_fts JOIN lines l ON l.id = lines_fts.rowid "
+      + "JOIN messages m ON m.seq = l.message_seq WHERE lines_fts MATCH 'error' AND m.kind = 'tool_result' GROUP BY m.seq ORDER BY errors DESC LIMIT 10. "
+      + `Writes, ATTACH and PRAGMA are rejected; the query stops after ${SQL_TIMEOUT_MS / 1000} s; at most ${SQL_ROW_CAP} rows return `
+      + `(truncated: true when there were more; long text cells are cut at ${SQL_CELL_MAX_CHARS} characters). Local files only. Read-only.`,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Session id from the [openmem: continuing session …] pointer" },
+        sql: { type: "string", description: `One SELECT or WITH statement, at most ${SQL_MAX_CHARS} characters` },
+      },
+      required: ["session_id", "sql"],
       additionalProperties: false,
     },
   },
@@ -95,6 +161,32 @@ export function sanitizeSessionId(raw) {
   }
   if (!sid) throw new Error(`invalid session_id: ${JSON.stringify(text)}`);
   return sid;
+}
+
+/**
+ * Store settings (storeSettings) with config.toml `[context_store]` under the environment, which wins.
+ * config.toml is read lazily; an unreadable one leaves the defaults.
+ */
+export async function contextStoreSettings(env = process.env, { home = env.HOME || os.homedir(), stackRoot = PKG_ROOT } = {}) {
+  let fromConfig = {};
+  try {
+    const { contextTrimEnvFromPmConfig, loadPmConfig } = await import("../../wizard/lib/pm-config.mjs");
+    fromConfig = contextTrimEnvFromPmConfig(loadPmConfig(home, stackRoot).merged);
+  } catch {
+    // defaults
+  }
+  return storeSettings({ ...fromConfig, ...env });
+}
+
+/** MCP server start: TTL cleanup of old session files, at most once a day. Never throws; returns deleted sids. */
+export async function startContextStore(env = process.env, opts = {}) {
+  try {
+    const settings = await contextStoreSettings(env, opts);
+    return maybeSweepContextStore(contextRoot(env), settings.ttlDays, opts.now);
+  } catch (err) {
+    process.stderr.write(`openmem-mcp: context store cleanup failed: ${err instanceof Error ? err.message : err}\n`);
+    return [];
+  }
 }
 
 function gitRoot(dir) {
@@ -163,24 +255,22 @@ function workspaceSessions(sessionsDir, cwd) {
   return found.sort((a, b) => b.at - a.at).slice(0, MAX_SESSIONS).map((s) => s.sid);
 }
 
-function readLog(file) {
-  let text;
+/** Read-only connection to a session database, or null when it is missing or of another schema version. */
+function openReadOnly(file) {
+  if (!fs.existsSync(file)) return null;
+  const { DatabaseSync } = sqlite();
+  const db = new DatabaseSync(file, { readOnly: true });
   try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return [];
-  }
-  const rows = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line);
-      if (row && typeof row === "object" && typeof row.text === "string") rows.push(row);
-    } catch {
-      /* skip malformed line */
+    db.exec("PRAGMA busy_timeout = 1000");
+    if (db.prepare("PRAGMA user_version").get().user_version !== SCHEMA_VERSION) {
+      db.close();
+      return null;
     }
+  } catch (err) {
+    db.close();
+    throw err;
   }
-  return rows;
+  return db;
 }
 
 function excerpt(text, at) {
@@ -211,43 +301,53 @@ function contextCount(raw) {
   return n;
 }
 
-/** Word hits: the number of distinct terms found and the first match offset. */
-function termMatch(terms, text) {
-  const lower = text.toLowerCase();
-  let matched = 0;
-  let first = Infinity;
-  for (const t of terms) {
-    const i = lower.indexOf(t);
-    if (i >= 0) {
-      matched++;
-      first = Math.min(first, i);
-    }
-  }
-  return matched ? { matched, first } : null;
+function roleFilter(raw) {
+  if (raw === undefined || raw === null) return DEFAULT_ROLES;
+  const list = (Array.isArray(raw) ? raw : [raw]).map((r) => String(r).trim().toLowerCase());
+  if (list.includes("all")) return ROLES;
+  const bad = list.filter((r) => !ROLES.includes(r));
+  if (bad.length || !list.length) throw new Error(`role must be "user", "assistant", "tool", a list of them, or "all"`);
+  return [...new Set(list)];
 }
 
-/** Lines of text that contain every term (case-insensitive), the line form of termMatch. */
-function termLineCount(terms, text) {
-  let n = 0;
-  for (const line of text.toLowerCase().split("\n")) if (terms.every((t) => line.includes(t))) n++;
-  return n;
+function inContextFilter(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "boolean") throw new Error("in_context must be true or false");
+  return raw ? 1 : 0;
+}
+
+/** WHERE clause over messages `m` (and optionally lines `l` for the role) for the role and in_context filters. */
+function filterSql(roles, inContext, roleColumn = "m.role") {
+  const parts = [`${roleColumn} IN (${roles.map(() => "?").join(", ")})`];
+  const params = [...roles];
+  if (inContext !== null) {
+    parts.push("m.in_context = ?");
+    params.push(inContext);
+  }
+  return { where: parts.join(" AND "), params };
+}
+
+/** Query words as FTS5 strings; a word without letters or digits matches nothing and is dropped. */
+function ftsTerms(query) {
+  const words = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))];
+  return words.filter((w) => /[\p{L}\p{N}]/u.test(w)).map((w) => ({ word: w, fts: `"${w.replaceAll('"', '""')}"` }));
 }
 
 /**
- * Regex hits as [rowIndex, offset] pairs, scanning the first PATTERN_ROW_CHARS of each text, and
- * the number of matching lines of those scanned texts added to counter.lines. Runs in a vm context
- * so V8 interrupts catastrophic backtracking at the deadline; hits and lines counted before the
- * deadline are kept. Returns whether the deadline cut the scan short.
+ * Regex hits as [rowIndex, offset] pairs over the first PATTERN_ROW_CHARS of each text, and matching lines
+ * (lines[i]: the lines-table rows of texts[i]) added to counter.lines. Runs in a vm context so V8 interrupts catastrophic backtracking at the deadline;
+ * hits and lines counted before the deadline are kept. Returns whether the deadline cut the scan short.
  */
-function patternScan(re, texts, deadline, out, counter) {
+function patternScan(re, texts, lines, deadline, out, counter) {
   const timeout = Math.floor(deadline - Date.now());
   if (timeout < 1) return true;
-  const sandbox = { re, texts: texts.map((t) => t.slice(0, PATTERN_ROW_CHARS)), out, counter };
+  const cut = (t) => t.slice(0, PATTERN_ROW_CHARS);
+  const sandbox = { re, texts: texts.map(cut), lines: lines.map((group) => group.map(cut)), out, counter };
   try {
     vm.runInNewContext(
-      // Every row's lines are tested, not only hit rows': `^` and `$` match per line, as in grep -c.
+      // Row by row, its lines with it, so a deadline keeps the counts of every row scanned before it.
       "for (let i = 0; i < texts.length; i++) { const m = re.exec(texts[i]); if (m) out.push([i, m.index]); "
-        + "for (const line of texts[i].split('\\n')) if (re.test(line)) counter.lines++; }",
+        + "for (const line of lines[i]) if (re.test(line)) counter.lines++; }",
       sandbox,
       { timeout },
     );
@@ -259,88 +359,234 @@ function patternScan(re, texts, deadline, out, counter) {
 }
 
 function rowSummary(row, text) {
-  return { seq: row.seq ?? null, role: row.role ?? null, kind: row.kind ?? null, name: row.name ?? null, text };
+  return { seq: row.seq ?? null, role: row.role ?? null, kind: row.kind ?? null, name: row.name ?? null, in_context: row.in_context === 1, text };
 }
 
-function search(args, env, cwd) {
+const ROW_COLUMNS = "m.seq AS seq, m.thread AS thread, m.role AS role, m.kind AS kind, m.name AS name, m.text AS text, "
+  + "m.blob_id AS blob_id, m.in_context AS in_context";
+
+/** Lexical hits of one session: [{seq, matched, score, first}] and the exact line count. */
+function lexicalSession(db, terms, filter) {
+  const anyExpr = terms.map((t) => t.fts).join(" OR ");
+  const allExpr = terms.map((t) => t.fts).join(" AND ");
+  const hits = db.prepare(`SELECT m.seq AS seq, bm25(messages_fts) AS score FROM messages_fts JOIN messages m ON m.seq = messages_fts.rowid `
+    + `WHERE messages_fts MATCH ? AND ${filter.where}`).all(anyExpr, ...filter.params);
+  const matched = new Map(hits.map((h) => [h.seq, 0]));
+  if (terms.length > 1) {
+    const one = db.prepare("SELECT rowid AS seq FROM messages_fts WHERE messages_fts MATCH ?");
+    for (const t of terms) for (const r of one.all(t.fts)) if (matched.has(r.seq)) matched.set(r.seq, matched.get(r.seq) + 1);
+  } else for (const h of hits) matched.set(h.seq, 1);
+  const lines = db.prepare(`SELECT count(*) AS n FROM lines_fts JOIN lines l ON l.id = lines_fts.rowid JOIN messages m ON m.seq = l.message_seq `
+    + `WHERE lines_fts MATCH ? AND ${filterSql(filter.roles, filter.inContext, "l.role").where}`)
+    .get(allExpr, ...filterSql(filter.roles, filter.inContext, "l.role").params).n;
+  return { hits: hits.map((h) => ({ seq: h.seq, score: h.score, matched: matched.get(h.seq) })), lines };
+}
+
+function vectorModel(db, preferred) {
+  const models = db.prepare("SELECT model, count(*) AS n FROM vectors GROUP BY model ORDER BY n DESC, model").all();
+  if (!models.length) return null;
+  return models.find((m) => m.model === preferred)?.model ?? models[0].model;
+}
+
+function firstTermAt(text, terms) {
+  const lower = text.toLowerCase();
+  let first = Infinity;
+  for (const t of terms) {
+    const i = lower.indexOf(t.word);
+    if (i >= 0) first = Math.min(first, i);
+  }
+  return Number.isFinite(first) ? first : 0;
+}
+
+async function search(args, env, cwd, opts) {
   const hasQuery = given(args.query);
   const hasPattern = args.pattern !== undefined && args.pattern !== null && String(args.pattern) !== "";
   if (hasQuery === hasPattern) throw new Error("pass exactly one of query or pattern");
   const re = hasPattern ? compilePattern(args) : null;
   const query = hasQuery ? String(args.query).trim() : null;
-  const terms = hasQuery ? [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))] : [];
+  const terms = hasQuery ? ftsTerms(query) : [];
+  if (hasQuery && !terms.length) throw new Error("query has no searchable words (letters or digits); use pattern for punctuation");
   const context = contextCount(args.context);
   const limit = Number(args.limit) > 0 ? Math.floor(Number(args.limit)) : DEFAULT_LIMIT;
+  const roles = roleFilter(args.role);
+  const inContext = inContextFilter(args.in_context);
+  if (args.mode !== undefined && args.mode !== "hybrid" && args.mode !== "lexical") throw new Error('mode must be "hybrid" or "lexical"');
+  const filter = { ...filterSql(roles, inContext), roles, inContext };
   const sessionsDir = path.join(contextRoot(env), "sessions");
   const sessions = given(args.session_id) ? [sanitizeSessionId(args.session_id)] : workspaceSessions(sessionsDir, cwd);
 
   const deadline = Date.now() + PATTERN_BUDGET_MS;
   let timedOut = false;
-  const counter = { lines: 0 };
-  const hits = [];
-  const logs = new Map();
-  const logFiles = {};
-  sessions.forEach((sid, sessionRank) => {
-    const file = path.join(sessionsDir, `${sid}${LOG_SUFFIX}`);
-    if (fs.existsSync(file)) logFiles[sid] = file;
-    const rows = readLog(file).sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
-    logs.set(sid, rows);
-    const add = (index, matched, first) =>
-      hits.push({ sid, sessionRank, index, row: rows[index], matched, first, seq: Number(rows[index].seq) || 0 });
-    if (re) {
-      if (timedOut) return;
-      const found = [];
-      timedOut = patternScan(re, rows.map((r) => r.text), deadline, found, counter);
-      for (const [index, at] of found) add(index, 1, at);
-      return;
+  let lineMatches = 0;
+  const databases = {};
+  const open = new Map();
+  const lexical = [];
+  const vectorDbs = [];
+  try {
+    for (const [sessionRank, sid] of sessions.entries()) {
+      const file = path.join(sessionsDir, `${sid}${DB_SUFFIX}`);
+      const db = openReadOnly(file);
+      if (!db) continue;
+      open.set(sid, db);
+      databases[sid] = file;
+      if (re) {
+        if (timedOut) continue;
+        const rows = db.prepare(`SELECT ${ROW_COLUMNS} FROM messages m WHERE ${filter.where} ORDER BY m.seq`).all(...filter.params);
+        const lineFilter = filterSql(roles, inContext, "l.role");
+        const bySeq = new Map(rows.map((r) => [r.seq, []]));
+        for (const l of db.prepare(`SELECT l.message_seq AS seq, l.text AS text FROM lines l JOIN messages m ON m.seq = l.message_seq `
+          + `WHERE ${lineFilter.where} ORDER BY l.message_seq, l.line_no`).all(...lineFilter.params)) bySeq.get(l.seq)?.push(l.text);
+        const lines = rows.map((r) => bySeq.get(r.seq));
+        const found = [];
+        const counter = { lines: 0 };
+        timedOut = patternScan(re, rows.map((r) => r.text), lines, deadline, found, counter);
+        lineMatches += counter.lines;
+        for (const [index, at] of found) lexical.push({ sid, sessionRank, seq: rows[index].seq, matched: 1, score: 0, first: at });
+        continue;
+      }
+      const result = lexicalSession(db, terms, filter);
+      lineMatches += result.lines;
+      for (const h of result.hits) lexical.push({ sid, sessionRank, ...h });
+      vectorDbs.push({ sid, sessionRank, db });
     }
-    rows.forEach((row, index) => {
-      const m = termMatch(terms, row.text);
-      if (!m) return;
-      add(index, m.matched, m.first);
-      if (m.matched === terms.length) counter.lines += termLineCount(terms, row.text);
-    });
-  });
-  hits.sort((a, b) => b.matched - a.matched || a.sessionRank - b.sessionRank || b.seq - a.seq);
+    // Lexical rank: more query words first, then BM25 (lower is better), newer session, later row.
+    lexical.sort((a, b) => b.matched - a.matched || a.score - b.score || a.sessionRank - b.sessionRank || b.seq - a.seq);
 
-  const envelope = {
-    ...(re ? { pattern: String(args.pattern) } : { query }),
-    sessions_searched: sessions,
-    log_files: logFiles,
-    total_matches: hits.length,
-    line_matches: counter.lines,
-  };
-  const overhead = JSON.stringify(envelope, null, 2).length;
-  const results = [];
-  let truncated = timedOut || hits.length > limit;
-  for (const h of hits.slice(0, limit)) {
-    const blobIds = [...new Set([...h.row.text.matchAll(BLOB_REF_RE)].map((m) => m[1]))];
-    const rows = logs.get(h.sid);
-    const neighbour = (r) => rowSummary(r, excerpt(r.text, 0));
-    const item = {
-      session_id: h.sid,
-      ...rowSummary(h.row, excerpt(h.row.text, h.first)),
-      ...(re ? {} : { matched_terms: h.matched }),
-      ...(blobIds.length ? { blob_ids: blobIds } : {}),
-      ...(context
-        ? {
-            before: rows.slice(Math.max(0, h.index - context), h.index).map(neighbour),
-            after: rows.slice(h.index + 1, h.index + 1 + context).map(neighbour),
+    const settings = re ? null : opts.settings || await contextStoreSettings(env, opts);
+    const withVectors = re ? [] : vectorDbs.map((v) => ({ ...v, model: vectorModel(v.db, settings.embeddingModel) })).filter((v) => v.model);
+    let mode = "lexical";
+    let embeddingError;
+    let ranked = lexical.map((h) => ({ ...h, key: `${h.sid}\u0000${h.seq}` }));
+    if (!re && args.mode !== "lexical" && withVectors.length) {
+      try {
+        const vectorHits = [];
+        const byModel = new Map();
+        for (const v of withVectors) {
+          if (!byModel.has(v.model)) {
+            const config = { model: v.model, url: settings.embeddingUrl, apiKey: settings.embeddingApiKey };
+            byModel.set(v.model, (await fetchEmbeddings(config, [query], opts.fetch))[0]);
           }
-        : {}),
-    };
-    if (overhead + JSON.stringify([...results, item], null, 2).length > RESULT_MAX_CHARS) {
-      truncated = true;
-      break;
+          for (const [seq, similarity] of nearest(v.db, byModel.get(v.model), v.model, VECTOR_CANDIDATES, filter.where, filter.params)) {
+            vectorHits.push({ sid: v.sid, sessionRank: v.sessionRank, seq, similarity });
+          }
+        }
+        vectorHits.sort((a, b) => b.similarity - a.similarity || a.sessionRank - b.sessionRank || b.seq - a.seq);
+        const fused = new Map();
+        const add = (h, rank, extra) => {
+          const key = `${h.sid}\u0000${h.seq}`;
+          const entry = fused.get(key) || { sid: h.sid, sessionRank: h.sessionRank, seq: h.seq, matched: 0, rrf: 0, key };
+          entry.rrf += 1 / (RRF_K + rank + 1);
+          Object.assign(entry, extra);
+          fused.set(key, entry);
+        };
+        lexical.forEach((h, rank) => add(h, rank, { matched: h.matched, first: h.first }));
+        vectorHits.slice(0, VECTOR_CANDIDATES).forEach((h, rank) => add(h, rank, { similarity: Math.round(h.similarity * 1e4) / 1e4 }));
+        ranked = [...fused.values()].sort((a, b) => b.rrf - a.rrf || a.sessionRank - b.sessionRank || b.seq - a.seq);
+        mode = "hybrid";
+      } catch (err) {
+        embeddingError = err instanceof Error ? err.message : String(err);
+      }
     }
-    results.push(item);
+
+    const envelope = {
+      ...(re ? { pattern: String(args.pattern) } : { query }),
+      mode,
+      roles,
+      ...(inContext === null ? {} : { in_context: inContext === 1 }),
+      sessions_searched: sessions,
+      databases,
+      total_matches: lexical.length,
+      line_matches: lineMatches,
+      ...(embeddingError ? { embedding_error: embeddingError } : {}),
+    };
+    const overhead = JSON.stringify(envelope, null, 2).length;
+    const results = [];
+    let truncated = timedOut || ranked.length > limit;
+    for (const h of ranked.slice(0, limit)) {
+      const db = open.get(h.sid);
+      const row = db.prepare(`SELECT ${ROW_COLUMNS} FROM messages m WHERE m.seq = ?`).get(h.seq);
+      const at = h.first ?? (re ? 0 : firstTermAt(row.text, terms));
+      const neighbour = (r) => rowSummary(r, excerpt(r.text, 0));
+      const item = {
+        session_id: h.sid,
+        ...rowSummary(row, excerpt(row.text, at)),
+        ...(re ? {} : { matched_terms: h.matched ?? 0 }),
+        ...(h.similarity !== undefined ? { similarity: h.similarity } : {}),
+        ...(row.blob_id ? { blob_ids: [row.blob_id] } : {}),
+        ...(context
+          ? {
+              before: db.prepare(`SELECT ${ROW_COLUMNS} FROM messages m WHERE m.thread = ? AND m.seq < ? ORDER BY m.seq DESC LIMIT ?`)
+                .all(row.thread, row.seq, context).reverse().map(neighbour),
+              after: db.prepare(`SELECT ${ROW_COLUMNS} FROM messages m WHERE m.thread = ? AND m.seq > ? ORDER BY m.seq LIMIT ?`)
+                .all(row.thread, row.seq, context).map(neighbour),
+            }
+          : {}),
+      };
+      if (overhead + JSON.stringify([...results, item], null, 2).length > RESULT_MAX_CHARS) {
+        truncated = true;
+        break;
+      }
+      results.push(item);
+    }
+    return { ...envelope, results, truncated, ...(timedOut ? { timed_out: true } : {}) };
+  } finally {
+    for (const db of open.values()) db.close();
   }
-  return {
-    ...envelope,
-    results,
-    truncated,
-    ...(timedOut ? { timed_out: true } : {}),
-  };
+}
+
+/**
+ * Reject anything but one SELECT / WITH statement: comments, string literals and quoted identifiers are
+ * blanked, then the first word must be SELECT or WITH, no `;` may precede trailing whitespace, and no
+ * write, ATTACH, PRAGMA or transaction keyword may remain. The read-only connection is the second line of defence.
+ */
+export function checkReadOnlySql(sql) {
+  const text = String(sql ?? "");
+  if (!text.trim()) throw new Error("sql is required");
+  if (text.length > SQL_MAX_CHARS) throw new Error(`sql must be at most ${SQL_MAX_CHARS} characters`);
+  const blanked = text
+    .replace(/--[^\n]*|\/\*[\s\S]*?(\*\/|$)/g, " ")
+    .replace(/'(?:[^']|'')*'?|"(?:[^"]|"")*"?|`(?:[^`]|``)*`?|\[[^\]]*\]?/g, " '' ");
+  const statement = blanked.replace(/;\s*$/, "");
+  if (statement.includes(";")) throw new Error("smart_compact_sql runs one statement; remove the extra ';'");
+  const words = statement.toUpperCase().match(/[A-Z_][A-Z0-9_$]*/g) || [];
+  if (words[0] !== "SELECT" && words[0] !== "WITH") throw new Error("smart_compact_sql accepts only SELECT or WITH … SELECT");
+  // replace() is a function; REPLACE INTO is a write.
+  const bad = words.find((w) => SQL_FORBIDDEN.has(w)) || (/\bREPLACE\s+INTO\b/i.test(statement) ? "REPLACE INTO" : null);
+  if (bad) throw new Error(`smart_compact_sql is read-only: ${bad} is not allowed`);
+  return text.trim().replace(/;\s*$/, "");
+}
+
+function runSql(args, env) {
+  if (!given(args.session_id)) throw new Error("session_id is required");
+  const sid = sanitizeSessionId(args.session_id);
+  const sql = checkReadOnlySql(args.sql);
+  const file = path.join(contextRoot(env), "sessions", `${sid}${DB_SUFFIX}`);
+  if (!fs.existsSync(file)) throw new Error(`no session database for ${sid}`);
+  const child = spawnSync(process.execPath, ["--no-warnings", SQL_RUNNER], {
+    input: JSON.stringify({ file, sql, cap: SQL_ROW_CAP, cellMax: SQL_CELL_MAX_CHARS }),
+    encoding: "utf8",
+    timeout: SQL_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (child.error?.code === "ETIMEDOUT" || child.signal === "SIGKILL") {
+    throw new Error(`query stopped after ${SQL_TIMEOUT_MS / 1000} s; narrow it (LIMIT, FTS MATCH) and retry`);
+  }
+  if (child.error) throw child.error;
+  let out;
+  try {
+    out = JSON.parse(child.stdout);
+  } catch {
+    throw new Error(`query failed: ${String(child.stderr || "no output").trim().split("\n").at(-1)}`);
+  }
+  if (out.error) throw new Error(`query failed: ${out.error}`);
+  const result = { session_id: sid, columns: out.columns, rows: out.rows, row_count: out.rows.length, truncated: out.truncated };
+  while (result.rows.length && JSON.stringify(result).length > SQL_RESULT_MAX_CHARS) {
+    result.rows = result.rows.slice(0, Math.floor(result.rows.length / 2));
+    result.row_count = result.rows.length;
+    result.truncated = true;
+  }
+  return result;
 }
 
 function getBlob(args, env) {
@@ -369,11 +615,12 @@ function getBlob(args, env) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} args
- * @param {{ env?: NodeJS.ProcessEnv, cwd?: string }} [opts]
+ * @param {{ env?: NodeJS.ProcessEnv, cwd?: string, settings?: object, fetch?: typeof fetch, home?: string, stackRoot?: string }} [opts]
  */
-export function callContextStoreTool(name, args = {}, opts = {}) {
+export async function callContextStoreTool(name, args = {}, opts = {}) {
   const env = opts.env || process.env;
-  if (name === "smart_compact_search") return search(args, env, opts.cwd || process.cwd());
+  if (name === "smart_compact_search") return search(args, env, opts.cwd || process.cwd(), opts);
   if (name === "smart_compact_get") return getBlob(args, env);
+  if (name === "smart_compact_sql") return runSql(args, env);
   throw new Error(`unknown tool: ${name}`);
 }

@@ -38,12 +38,18 @@ const state = fs.mkdtempSync(path.join(os.tmpdir(), "pm-context-trim-"));
 const settingsFor = (over = {}) => ({ ...trimSettings({ OPENMEM_STATE_DIR: state }, state), ...over });
 const sessions = path.join(state, "context", "sessions");
 const read = (file) => fs.readFileSync(file, "utf8");
+/** Rows trimmed out of context (the former handoff log), as JSON lines, in seq order. */
 const logLines = (sid) => {
-  const file = path.join(sessions, `${sid}.log.jsonl`);
-  return fs.existsSync(file) ? read(file).trim().split("\n") : [];
+  const file = path.join(sessions, `${sid}.db`);
+  if (!fs.existsSync(file)) return [];
+  const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return db.prepare("SELECT * FROM messages WHERE in_context = 0 ORDER BY seq").all().map((r) => JSON.stringify({ ...r }));
+  } finally { db.close(); }
 };
 const mode = (file) => fs.statSync(file).mode & 0o777;
-const ptr = (sid, dropped) => pointerText(sid, dropped, path.join(sessions, `${sid}.log.jsonl`));
+const ptr = (sid, dropped) => pointerText(sid, dropped);
 
 const sys = { role: "system", content: [{ type: "text", text: "instructions update" }] };
 const user = (text) => ({ role: "user", content: [{ type: "text", text }] });
@@ -100,21 +106,23 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     view.length === 3 && view[0] === messages[0] && view[1] === sys && view[2].role === "user");
   check("pointer leads the kept turn", view[2].content[0].text === `${ptr(sid, 3)}\n\n` && view[2].content[1].text === "second question");
   check("pointer text follows the contract",
-    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them; the handoff log is ${path.join(sessions, `${sid}.log.jsonl`)} (JSONL, one row per block).]\n\n`);
+    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
   check("input messages are not mutated", messages[5].content.length === 1);
 
   const rows = logLines(sid);
   const parsed = rows.map((line) => JSON.parse(line));
   check("one row per dropped part", parsed.length === 4, rows.join("\n"));
   check("pinned first user turn is not logged", !parsed.some((r) => r.text === "first question"));
-  check("seq starts at 0 and is monotonic", parsed.every((r, i) => r.seq === i));
-  check("row field order and python separators", rows[0].startsWith('{"seq": 0, "ts": "') && /"role": "assistant", "kind": "thinking", "name": null, "text": "thinking about c1"}$/.test(rows[0]), rows[0]);
-  check("ts is ISO 8601 UTC without millis", /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(parsed[0].ts));
+  check("seq is monotonic", parsed.every((r, i) => i === 0 || r.seq > parsed[i - 1].seq));
+  check("row columns follow the schema", Object.keys(parsed[0]).join(",")
+    === "seq,fingerprint,thread,role,kind,name,text,blob_id,in_context,trimmed_at_seq,trimmed_at,created_at", rows[0]);
+  check("timestamps are ISO 8601 UTC without millis", /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(parsed[0].created_at)
+    && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(parsed[0].trimmed_at));
   check("reasoning is a thinking row", parsed[0].role === "assistant" && parsed[0].kind === "thinking" && parsed[0].text === "thinking about c1" && parsed[0].name === null);
   check("tool call is compact JSON", parsed[1].kind === "tool_use" && parsed[1].name === "bash" && parsed[1].text === '{"command":"ls"}');
   check("tool result row", parsed[2].role === "tool" && parsed[2].kind === "tool_result" && parsed[2].name === "bash" && parsed[2].text === "a\nb");
   check("pinned system messages are not logged", !parsed.some((r) => r.text === "instructions update"));
-  check("session files are private", mode(path.join(sessions, `${sid}.log.jsonl`)) === 0o600 && mode(path.join(sessions, `${sid}.trim.json`)) === 0o600 && mode(sessions) === 0o700);
+  check("session files are private", mode(path.join(sessions, `${sid}.db`)) === 0o600 && mode(path.join(sessions, `${sid}.trim.json`)) === 0o600 && mode(sessions) === 0o700);
 }
 
 // A cut never separates a tool call from its result.
@@ -162,7 +170,8 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const third = await trimContext({ sessionID: sid, messages: moved }, settings, deps);
   const rows = logLines(sid).map((l) => JSON.parse(l));
   check("next crossing moves the cut forward, first turn still pinned", third.length === 2 && third[0] === moved[0] && third[1].content[0].text.startsWith(ptr(sid, 4)));
-  check("seq continues across trims", rows.map((r) => r.seq).join(",") === "0,1,2,3,4", rows.map((r) => r.seq).join(","));
+  // seq counts every stored row: u1 is 1 (pinned, in context), a1..the c9 result are 2..6, u3 is 7.
+  check("seq continues across trims", rows.map((r) => r.seq).join(",") === "2,3,4,5,6", rows.map((r) => r.seq).join(","));
   check("dropped turn logged without the pointer", rows[1].text.includes("u2 question") && !rows.some((r) => r.text.includes("[openmem: continuing")));
   check("first user turn never logged", !rows.some((r) => r.text === "u1"));
   check("recall for the new cut", recalls.length === 2 && recalls[1].query === "u3");
@@ -195,7 +204,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check(".force stays when no cut is possible", fs.existsSync(flag));
 }
 
-// Large tool results are compressed in every request, logged by blob, and stored in blobs/.
+// Large tool results are compressed in every request, stored in full with their blob id, and written to blobs/.
 {
   const sid = "ses_blob";
   const big = Array.from({ length: 400 }, (_, i) => `row ${i} ${"q".repeat(60)}`).join("\n");
@@ -210,13 +219,13 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("compressed form is stable across requests", JSON.stringify(again) === JSON.stringify(plain));
   await trimContext({ sessionID: sid, messages }, settingsFor({ trimAtTokens: 1 }));
   const row = logLines(sid).map((l) => JSON.parse(l)).find((r) => r.kind === "tool_result");
-  check("log row references the blob", row.text.startsWith(`[blob:${id}]\n`) && row.name === "grep" && !row.text.includes("smart_compact_get"));
+  check("stored row keeps the full result and names the blob", row.text === big && row.blob_id === id && row.name === "grep");
   const json = { role: "tool", content: [{ type: "tool-result", id: "c2", name: "x", result: { type: "json", value: { a: "b".repeat(40000) } } }] };
   const out = await trimContext({ sessionID: "ses_json", messages: [user("q"), call("c2", "x", {}), json] }, settingsFor());
   check("json results pass through uncompressed", out[2] === json);
 }
 
-// Compaction: log what is not logged yet, then a pointer + recall summary.
+// Compaction: every message leaves context, then a pointer + recall summary.
 {
   const sid = "ses_compact";
   fs.writeFileSync(path.join(sessions, `${sid}.json`), JSON.stringify({ session_id: sid, bank: "bank-c" }));
@@ -226,7 +235,10 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("trim logged the first turn except the pinned task", logLines(sid).length === 1);
   const summary = await compactionSummary({ sessionID: sid, messages: [...history, user("five")] }, settingsFor(), deps);
   const rows = logLines(sid).map((l) => JSON.parse(l));
-  check("compaction logs the pinned task, then from the sticky cut on", rows.map((r) => r.text).join("|") === "two|one|three|four|five", rows.map((r) => r.text).join("|"));
+  check("compaction takes every message out of context, the pinned task included", rows.map((r) => r.text).join("|") === "one|two|three|four|five"
+    // "two" left at the earlier trim and keeps that cut's seq; the compaction has no cut turn.
+    && rows[1].trimmed_at_seq === rows[2].seq && rows.filter((r) => r.text !== "two").every((r) => r.trimmed_at_seq === null),
+  rows.map((r) => `${r.text}:${r.trimmed_at_seq}`).join("|"));
   check("compaction summary is pointer + recall", summary === `${ptr(sid, 5)}\n[openmem recall]\nrecall for five`, summary);
   const trim = JSON.parse(read(path.join(sessions, `${sid}.trim.json`)));
   check("compaction clears the thread", Object.keys(trim.threads).length === 0 && trim.version === 1);
@@ -277,7 +289,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("decorate: untrimmed request is decorated", (await trimContext({ sessionID: "ses_decorate2", messages: none }, settingsFor(), { decorate: tag }))[0].content.at(-1).text === "[deco]");
 }
 
-// P9: compaction after the stored cut message vanished does not log earlier rows twice.
+// P9: compaction after the stored cut message vanished does not store earlier rows twice.
 {
   const sid = "ses_p9";
   const history = [user("one"), assistant("two"), user("three"), assistant("four")];
@@ -287,14 +299,15 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   await compactionSummary({ sessionID: sid, messages: rewritten }, settingsFor());
   const texts = logLines(sid).map((l) => JSON.parse(l).text);
   check("P9: earlier rows logged once", texts.filter((t) => t === "two").length === 1, texts.join("|"));
-  check("P9: rows from the stored cut index on are logged", texts.join("|") === [...before, "one", "three (edited)", "four", "five"].join("|"), texts.join("|"));
+  // The rewritten history diverges at "three (edited)", so it and every later message are new rows.
+  check("P9: rows from the rewrite on are stored", before.join("|") === "two" && texts.join("|") === "one|two|three (edited)|four|five", texts.join("|"));
 }
 
 // Session ids are sanitized; disabled trimming is a no-op.
 {
   const messages = [user("a"), assistant("b"), user("c")];
   await trimContext({ sessionID: "ses/../weird id", messages }, settingsFor({ trimAtTokens: 1 }));
-  check("session id sanitized for file names", fs.existsSync(path.join(sessions, "ses_.._weird_id.log.jsonl")));
+  check("session id sanitized for file names", fs.existsSync(path.join(sessions, "ses_.._weird_id.db")));
   check("blank session id leaves the request alone", (await trimContext({ sessionID: " \t", messages }, settingsFor({ trimAtTokens: 1 }))) === messages
     && (await compactionSummary({ sessionID: "", messages }, settingsFor())) === null);
   check("disabled settings return input", (await trimContext({ sessionID: "ses_off", messages }, settingsFor({ enabled: false, trimAtTokens: 1 }))) === messages);

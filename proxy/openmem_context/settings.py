@@ -13,6 +13,10 @@ DEFAULT_COMPRESS_OVER_TOKENS = 4000
 DEFAULT_COMPACTION_MAX_CHARS = 12000
 DEFAULT_RECALL_TIMEOUT_S = 5.0
 DEFAULT_HINDSIGHT_URL = "http://127.0.0.1:8888"
+DEFAULT_TTL_DAYS = 30
+# OpenAI-compatible embeddings base URL (POST <url>/embeddings): Ollama on the host. compose.yaml sets the
+# container's view (host.docker.internal).
+DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
 
 
 def _int(env, name, default):
@@ -58,19 +62,18 @@ class Settings:
     recall_timeout_s: float = DEFAULT_RECALL_TIMEOUT_S
     hindsight_url: str = DEFAULT_HINDSIGHT_URL
     context_dir: Path = Path.home() / ".local" / "share" / "openmem" / "context"
-    # context_dir as the agent sees it; differs when the proxy runs in a container. None means context_dir.
-    host_context_dir: Path | None = None
-
-    @property
-    def pointer_context_dir(self):
-        return self.host_context_dir or self.context_dir
+    # Session files older than this are deleted at start, at most once a day; 0 keeps them (CONTEXT_STORE_TTL_DAYS).
+    ttl_days: int = DEFAULT_TTL_DAYS
+    # Embedding model for the session databases' vectors; empty turns vectors off (CONTEXT_EMBEDDING_MODEL).
+    embedding_model: str = ""
+    embedding_url: str = DEFAULT_EMBEDDING_URL
+    embedding_api_key: str = ""
 
     @classmethod
     def from_env(cls, env=None):
         env = os.environ if env is None else env
         state_dir = str(env.get("OPENMEM_STATE_DIR", "")).strip(ASCII_WHITESPACE)
         root = Path(state_dir) if state_dir else Path.home() / ".local" / "share" / "openmem"
-        host_state_dir = str(env.get("OPENMEM_HOST_STATE_DIR", "")).strip(ASCII_WHITESPACE)
         return cls(
             enabled=_flag(env, "CONTEXT_PROXY_ENABLED"),
             standing_instruction=_flag(env, "CONTEXT_STANDING_INSTRUCTION"),
@@ -81,5 +84,8 @@ class Settings:
             recall_timeout_s=_float(env, "CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
             hindsight_url=(str(env.get("HINDSIGHT_URL", "")).strip() or DEFAULT_HINDSIGHT_URL).rstrip("/"),
             context_dir=root / "context",
-            host_context_dir=Path(host_state_dir) / "context" if host_state_dir else None,
+            ttl_days=_int(env, "CONTEXT_STORE_TTL_DAYS", DEFAULT_TTL_DAYS),
+            embedding_model=str(env.get("CONTEXT_EMBEDDING_MODEL", "")).strip(),
+            embedding_url=(str(env.get("CONTEXT_EMBEDDING_URL", "")).strip() or DEFAULT_EMBEDDING_URL).rstrip("/"),
+            embedding_api_key=str(env.get("CONTEXT_EMBEDDING_API_KEY", "")).strip(),
         )
