@@ -115,7 +115,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     view.length === 3 && view[0] === messages[0] && view[1] === sys && view[2].role === "user");
   check("pointer leads the kept turn", view[2].content[0].text === `${ptr(sid, 3)}\n\n` && view[2].content[1].text === "second question");
   check("pointer text follows the contract",
-    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
+    view[2].content[0].text === `[openmem: continuing session ${sid}; 3 earlier messages are NOT in your context. They were delivered to you and later removed to fit your context window, so a gap in what you see (missing batches, lines, keys) is in them. You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering anything that depends on them, and never answer "not found" or "never received" without searching; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]\n\n`);
   check("input messages are not mutated", messages[5].content.length === 1);
 
   const rows = logLines(sid);

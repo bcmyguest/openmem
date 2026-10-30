@@ -238,7 +238,7 @@ It is a constant (`STANDING_INSTRUCTION` in `proxy/openmem_context/core.py` and 
 Pointer block placed at the start of the cut turn after a trim:
 
 ```
-[openmem: continuing session <sid>; <n> earlier messages are NOT in your context. You MUST call smart_compact_search(session_id="<sid>", query=... or pattern=...) before answering anything that depends on them; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="<sid>", sql=...).]
+[openmem: continuing session <sid>; <n> earlier messages are NOT in your context. They were delivered to you and later removed to fit your context window, so a gap in what you see (missing batches, lines, keys) is in them. You MUST call smart_compact_search(session_id="<sid>", query=... or pattern=...) before answering anything that depends on them, and never answer "not found" or "never received" without searching; every message of this session is stored and queryable with smart_compact_search and smart_compact_sql(session_id="<sid>", sql=...).]
 ```
 
 It names no file path, so the proxy (in its container) and the OpenCode 2 plugin (on the host) produce the same bytes.

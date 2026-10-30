@@ -518,9 +518,12 @@ function locate(items, idx, want, lo = 0) {
 }
 
 export function pointerText(sid, dropped) {
-  return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. `
+  return `[openmem: continuing session ${sid}; ${dropped} earlier messages are NOT in your context. They were `
+    + "delivered to you and later removed to fit your context window, so a gap in what you see (missing "
+    + "batches, lines, keys) is in them. "
     + `You MUST call smart_compact_search(session_id="${sid}", query=... or pattern=...) before answering `
-    + "anything that depends on them; every message of this session is stored and queryable with "
+    + 'anything that depends on them, and never answer "not found" or "never received" without searching; '
+    + "every message of this session is stored and queryable with "
     + `smart_compact_search and smart_compact_sql(session_id="${sid}", sql=...).]`;
 }
 
