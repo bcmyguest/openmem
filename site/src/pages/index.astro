@@ -14,7 +14,7 @@ const supportedNames = providers.filter((p) => p.status === 'supported').map((p)
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
-  'Memory interface for coding agents: stable memory_* tools over Hindsight, mem0, Cognee, or the next provider.';
+  'Memory and context management for coding agents: smart compaction that keeps every turn searchable, and memory_* tools over Hindsight, mem0, or Cognee.';
 
 // Benchmark tiles, read from contextbench.json (site/scripts/bench/compute-contextbench.py).
 const fmt = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(2));
@@ -79,10 +79,10 @@ npx ${site.npm.package} switch mem0 --yes`;
   <main id="main">
     <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
       <div class="max-w-3xl">
-        <Badge variant="outline">Pluggable providers · one agent surface</Badge>
+        <Badge variant="outline">Smart compaction · pluggable memory</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          One <code>memory_*</code> surface, wizard, and indexer over pluggable backends — keep using Hindsight, mem0, or Cognee without rewriting agent wiring. OpenMem is the interface, not a memory product. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
+          Smart compaction keeps long sessions under the limit with every turn kept and searchable. One <code>memory_*</code> surface, wizard, and indexer over pluggable providers. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
           <Button href={withBase('docs/concepts/')} size="lg">Concepts</Button>
@@ -116,7 +116,7 @@ npx ${site.npm.package} switch mem0 --yes`;
     <section class="py-16" aria-labelledby="compact-h">
       <div class="mx-auto max-w-6xl px-4 sm:px-6">
         <div class="grid items-start gap-10 lg:grid-cols-12">
-          <div class="lg:col-span-5 lg:sticky lg:top-20">
+          <div class="lg:col-span-5">
             <p class="text-sm font-semibold uppercase tracking-wider text-source">Context management</p>
             <h2 id="compact-h" class="mt-2 text-3xl font-bold tracking-tight">Smart compaction</h2>
             <p class="mt-3 text-muted">Long sessions keep going without a slow LLM summary. Older turns move to a local store; a pointer and bounded recall take their place; the agent searches the store when it needs a detail back.</p>
@@ -129,15 +129,18 @@ npx ${site.npm.package} switch mem0 --yes`;
                 </li>
               ))}
             </ul>
+            <figure class="mt-6">
+              <div class="overflow-hidden rounded-xl border border-line">
+              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-quality-compact.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall" width="480" loading="lazy" />
+              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-quality-compact-dark.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall (dark theme)" width="480" loading="lazy" />
+              </div>
+              <figcaption class="mt-2 text-xs text-muted">Mean score per task size, all three settings.</figcaption>
+            </figure>
             <p class="mt-4 text-xs leading-relaxed text-muted">OpenMem smart compaction at the largest ContextBench sizes; Claude Haiku 5.5, synthetic tasks, {seedRange}. <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
             <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-proxy/')}>Context proxy</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/compatibility/')}>Which agents support it</a></p>
           </div>
-          <div class="grid gap-6 lg:col-span-7">
+          <div class="lg:col-span-7">
             <SmartCompactionFigure />
-            <figure class="mx-auto w-full max-w-[30rem] overflow-hidden rounded-xl border border-line">
-              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-quality-compact.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall" width="480" loading="lazy" />
-              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-quality-compact-dark.svg')} alt="Score by task size: OpenMem holds 1.0 as tasks grow while native compaction and keep everything fall (dark theme)" width="480" loading="lazy" />
-            </figure>
           </div>
         </div>
       </div>

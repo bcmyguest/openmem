@@ -32,7 +32,7 @@ const SHORT = { smart: 'OpenMem', s2: 'Native', s1: 'Keep all' };
 const DASH = { smart: '', s2: '6 4', s1: '2 4' };
 const FONT = "font-family=\"'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif\"";
 const W = 480;
-const PAD = { l: 52, r: 84, t: 30, b: 30 };
+const PAD = { l: 52, r: 90, t: 30, b: 30 };
 const PANEL_H = 168;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -64,7 +64,7 @@ function heading(t, title, takeaway) {
   const lines = wrap(takeaway, 56);
   const out = [`<text x="16" y="26" font-size="17" font-weight="700" fill="${t.ink}">${esc(title)}</text>`];
   lines.forEach((l, i) => out.push(`<text x="16" y="${50 + i * 20}" font-size="15" fill="${t.muted}">${esc(l)}</text>`));
-  return [out.join(''), 50 + lines.length * 20];
+  return [out.join(''), lines.length ? 50 + lines.length * 20 : 36];
 }
 
 /** One line panel: x = task sizes, one line per setting, direct labels at the right; null leaves a gap. */
@@ -146,12 +146,12 @@ function barChart(data, t) {
   const trim = tm.smart.smart_trim_request_latency_s;
   const other = tm.smart.smart_other_request_latency_s;
   const rows = [
-    ['s2', 'Native: summary call', nat],
+    ['s2', 'Native: summary call (model only)', nat],
     ['s2', 'Native: Claude Code timer', tm.s2.native_cc_compaction_s],
-    ['smart', 'OpenMem: trimming request', trim],
+    ['smart', 'OpenMem: whole request incl. answer (upper bound)', trim],
     ['smart', 'OpenMem: other requests', other],
   ];
-  const takeaway = `A native compaction waits on a summary call (median ${nat.median.toFixed(1)} s). OpenMem makes no model call: its trimming request takes ${trim.median.toFixed(1)} s, against ${other.median.toFixed(1)} s for an ordinary request.`;
+  const takeaway = `A native compaction waits on a summary call (median ${nat.median.toFixed(1)}\u00a0s). OpenMem trims without a model call; the whole request that carried a trim, answer included, took ${trim.median.toFixed(1)}\u00a0s, against ${other.median.toFixed(1)}\u00a0s for other requests.`;
   const [head, hh] = heading(t, 'Time per compaction event', takeaway);
   const max = niceMax(Math.max(...rows.map((r) => r[2].p90)));
   const lw = 16;
@@ -174,7 +174,9 @@ function barChart(data, t) {
     out.push(`<text x="${px(d.median) + 6}" y="${y + 37}" font-size="12.5" font-weight="700" fill="${t.ink}">${d.median.toFixed(1)} s</text>`);
   });
   out.push(`<text x="${lw}" y="${top + rows.length * rowH + 36}" font-size="11.5" fill="${t.muted}">Bar: median. Whisker: 10th to 90th percentile.</text>`);
-  return svg(top + rows.length * rowH + 50, out.join(''), t, 'Time per compaction event', takeaway);
+  out.push(`<text x="${lw}" y="${top + rows.length * rowH + 52}" font-size="11.5" fill="${t.muted}">Native (run B) and OpenMem (run D) ran on different LiteLLM builds</text>`);
+  out.push(`<text x="${lw}" y="${top + rows.length * rowH + 67}" font-size="11.5" fill="${t.muted}">at different times; compare the scale, not small gaps.</text>`);
+  return svg(top + rows.length * rowH + 80, out.join(''), t, 'Time per compaction event', takeaway);
 }
 
 const num = (v) => v.toFixed(1).replace(/\.0$/, '');
@@ -222,7 +224,7 @@ const CHARTS = {
   'contextbench-quality-compact': (d, t) =>
     lineChart(d, t, {
       title: 'Score by task size',
-      takeaway: qualityTakeaway(d),
+      takeaway: '',
       desc: 'Mean tag-insensitive score per task size.',
       panels: [
         { fam: 'kv', title: 'kv-store', get: (c) => c.score ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
