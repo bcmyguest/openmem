@@ -178,6 +178,22 @@ Run 2026-10-30. d-sqlite only, log-triage L1600 seed 44, five repeats. Commit f1
 
 Every Dp trial searched after the trim and answered every question; mean 0.94. All 7 lost points are r3's count questions.
 
+### Run Df (thinking kept from after the trim; 5 trials)
+
+Run 2026-10-30. d-sqlite only, log-triage L1600 seed 44, five repeats. Commit 47d17fa is Dp plus one change: after a trim, thinking blocks from before the trim are dropped and later ones kept, so the cached prefix stays stable.
+
+| Trial | Trims | Cache write | Cache hit | Cost | Score |
+| --- | --- | --- | --- | --- | --- |
+| Df r1 | 1 | 229k | 0.967 | $0.122 | 1.00 |
+| Df r2 | 1 | 154k | 0.979 | $0.110 | 1.00 |
+| Df r3 | 1 | 140k | 0.979 | $0.101 | 1.00 |
+| Df r4 | 1 | 147k | 0.979 | $0.105 | 1.00 |
+| Df r5 | 1 | 145k | 0.979 | $0.103 | 1.00 |
+| Df mean | 1 | 163k | 0.976 | $0.108 | 1.00 |
+| Dp mean | 1–3 | 598k | 0.919 | $0.218 | 0.94 |
+
+Df halves Dp's mean cost. Most of the gap is Dp r5: it trimmed 3 times, wrote 2.2M cache tokens at a 0.693 hit and cost $0.589. Without r5, Dp averages $0.126. No Df trial repeated that pattern; five trials cannot rule it out. Peak prompt stayed under 95k in every trial of both runs.
+
 ## Limitations
 
 - One model (Haiku 5.5) and three seeds per task; run B's baselines have one or two seeds per cell.
