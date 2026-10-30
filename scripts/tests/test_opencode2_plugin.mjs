@@ -211,6 +211,24 @@ try {
   await oc.hooks.context(repeat);
   check("later request renders the same pointer turn", JSON.stringify(repeat.messages.slice(0, 3)) === JSON.stringify(forced.messages));
 
+  // Signed Anthropic reasoning through the context hook: a trim drops it from every kept assistant message except
+  // the latest; an untrimmed request keeps it.
+  const signed = (id, text) => ({ role: "assistant", content: [{ type: "reasoning", text, providerMetadata: { anthropic: { signature: `S-${id}` } } },
+    { type: "tool-call", id, name: "bash", input: {} }] });
+  const signedHistory = [user("sig task"), assistant("sig a"), user("sig middle"), assistant("first done"), user("sig next"), signed("k1", "plan"),
+    { role: "tool", content: [{ type: "tool-result", id: "k1", name: "bash", result: { type: "text", value: "ok" } }] }, signed("k2", "again")];
+  const untrimmedSigned = contextEvent("ses_sig", signedHistory);
+  await oc.hooks.context(untrimmedSigned);
+  check("signed reasoning: untrimmed request keeps every message as sent", untrimmedSigned.messages.every((m, k) => m === signedHistory[k]));
+  fs.writeFileSync(path.join(sessions, "ses_sig.force"), "");
+  const trimmedSigned = contextEvent("ses_sig", signedHistory);
+  await oc.hooks.context(trimmedSigned);
+  const keptReasoning = trimmedSigned.messages.flatMap((m) => (m.role === "assistant" ? m.content.filter((p) => p.type === "reasoning") : []));
+  check("signed reasoning: trim keeps only the latest assistant message's signed part",
+    trimmedSigned.messages.at(-1) === signedHistory.at(-1) && keptReasoning.length === 1 && keptReasoning[0].text === "again"
+    && trimmedSigned.messages.some((m) => m.role === "assistant" && JSON.stringify(m.content) === JSON.stringify([signedHistory[5].content[1]])),
+    JSON.stringify(trimmedSigned.messages));
+
   // Tool-result compression reaches the model request and smart_compact_get returns the full text.
   const big = Array.from({ length: 200 }, (_, i) => `out ${i} ${"v".repeat(100)}`).join("\n");
   const withTool = contextEvent("ses_tool", [

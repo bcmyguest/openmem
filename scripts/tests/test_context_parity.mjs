@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeSessionId } from "../../cli/coding-agent/context-store.mjs";
 import { proxyCodeVersion } from "../../cli/coding-agent/session-db.mjs";
-import { STANDING_INSTRUCTION, addStandingInstruction, pointerText, recallBlock, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
+import { STANDING_INSTRUCTION, addStandingInstruction, isSignedReasoning, pointerText, recallBlock, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "scripts/tests/fixtures/context-parity.json"), "utf8"));
@@ -80,6 +80,9 @@ function toChat(m) {
     default: {
       const out = { role: "assistant", content: m.text ?? null };
       if (m.reasoning) out.reasoning_content = m.reasoning;
+      // LiteLLM's Chat shape for signed Anthropic thinking: thinking_blocks beside the reasoning_content copy.
+      if (m.signature) out.thinking_blocks = [{ type: "thinking", thinking: m.reasoning, signature: m.signature }];
+      if (m.redacted) out.thinking_blocks = [{ type: "redacted_thinking", data: m.redacted }];
       if (m.calls) out.tool_calls = m.calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.input) } }));
       return out;
     }
@@ -94,7 +97,8 @@ function toOpenCode(m) {
     default: return {
       role: "assistant",
       content: [
-        ...(m.reasoning ? [{ type: "reasoning", text: m.reasoning }] : []),
+        ...(m.reasoning ? [{ type: "reasoning", text: m.reasoning, ...(m.signature ? { providerMetadata: { anthropic: { signature: m.signature } } } : {}) }] : []),
+        ...(m.redacted ? [{ type: "reasoning", text: "", providerMetadata: { anthropic: { redactedData: m.redacted } } }] : []),
         ...(m.text ? [{ type: "text", text: m.text }] : []),
         ...(m.calls || []).map((c) => ({ type: "tool-call", id: c.id, name: c.name, input: c.input })),
       ],
@@ -109,7 +113,7 @@ function normalizeOpenCode(m) {
     if (p.type === "text") {
       if (segments.at(-1)?.startsWith("text:")) segments[segments.length - 1] += p.text;
       else segments.push(`text:${p.text}`);
-    } else if (p.type === "reasoning") segments.push(`reasoning:${p.text}`);
+    } else if (p.type === "reasoning") segments.push(`reasoning:${p.text}${isSignedReasoning(p) ? ":signed" : ""}`);
     else if (p.type === "tool-call") segments.push(`call:${p.id}:${p.name}`);
     else if (p.type === "tool-result") segments.push(`result:${p.id}:${p.result.value}`);
   }
@@ -119,7 +123,8 @@ function normalizeOpenCode(m) {
 function normalizeChat(m) {
   if (m.role === "tool") return ["tool", `result:${m.tool_call_id}:${m.content}`];
   const segments = [];
-  if (m.reasoning_content) segments.push(`reasoning:${m.reasoning_content}`);
+  if (m.thinking_blocks) segments.push(...m.thinking_blocks.map((b) => `reasoning:${b.thinking ?? ""}:signed`));
+  else if (m.reasoning_content) segments.push(`reasoning:${m.reasoning_content}`);
   if (m.content) segments.push(`text:${m.content}`);
   for (const c of m.tool_calls || []) segments.push(`call:${c.id}:${c.function.name}`);
   return [m.role, ...segments];
@@ -232,6 +237,12 @@ try {
   check("recall case: framed block in the note, reused byte for byte by the next request",
     recallViews.length === 2 && JSON.stringify(recallViews[0]).includes(JSON.stringify(framed).slice(1, -1))
     && JSON.stringify(recallViews[1].slice(0, recallViews[0].length)) === JSON.stringify(recallViews[0]));
+  const thinkingViews = pyOut.views[cases.findIndex((c) => c.sid === "ses_thinking")] || [];
+  const signed = (view) => view.filter((m) => m.thinking_blocks).map((m) => m.thinking_blocks[0].signature);
+  // Only the latest assistant message keeps its signature; the redacted-only reply before the cut is dropped.
+  check("thinking case: only the latest assistant message keeps signed thinking, on the sticky re-render too",
+    JSON.stringify(thinkingViews.map(signed)) === '[["SIG3"],["SIG4"]]'
+    && !thinkingViews.flat().some((m) => m.thinking_blocks?.[0]?.type === "redacted_thinking"), JSON.stringify(thinkingViews.map(signed)));
   const basic = storeSnapshot(jsState, "ses_basic").log;
   check("fixture exercised a compressed result, trimmed rows and a pinned first turn",
     Object.keys(storeSnapshot(jsState, "ses_blob").blobs).length === 1

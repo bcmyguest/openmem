@@ -458,9 +458,39 @@ export function chooseGap(items, cut, after, first, fits) {
 export function render(items, cut, note, first = null, gap = null, decorate = (m) => m) {
   if (cut === null) return items.map(decorate);
   const keep = keptIndices(items, cut, gap, first);
-  return items.flatMap((x, j) => {
+  return stripReasoning(items.flatMap((x, j) => {
     if (!keep.has(j)) return [];
     return [j === cut ? prependNote(decorate(x), note) : decorate(x)];
+  }));
+}
+
+/**
+ * Whether a reasoning part is signed against the conversation before it: Anthropic thinking (`encrypted` or a
+ * provider `signature`) or redacted thinking (provider `redactedData`). OpenAI reasoning
+ * (`reasoningEncryptedContent`) is not tied to the prefix and stays, as in the proxy's Responses adapter.
+ */
+export function isSignedReasoning(part) {
+  if (part?.type !== "reasoning") return false;
+  if (typeof part.encrypted === "string" && part.encrypted) return true;
+  return Object.values(isObject(part.providerMetadata) ? part.providerMetadata : {}).some((meta) => isObject(meta)
+    && ((typeof meta.signature === "string" && meta.signature) || (typeof meta.redactedData === "string" && meta.redactedData)));
+}
+
+/**
+ * Remove signed reasoning parts from every assistant message of a trimmed view except the latest assistant run,
+ * which goes out unchanged; a message left with no parts is dropped. Same rule as strip_reasoning in
+ * proxy/openmem_context/core.py.
+ */
+export function stripReasoning(view) {
+  let last = -1;
+  for (let j = view.length - 1; j >= 0; j--) if (view[j]?.role === "assistant") { last = j; break; }
+  if (last < 0) return view;
+  let start = last;
+  while (start > 0 && view[start - 1]?.role === "assistant") start--;
+  return view.flatMap((x, j) => {
+    if (j >= start || x?.role !== "assistant" || !Array.isArray(x.content) || !x.content.some(isSignedReasoning)) return [x];
+    const content = x.content.filter((p) => !isSignedReasoning(p));
+    return content.length ? [{ ...x, content }] : [];
   });
 }
 

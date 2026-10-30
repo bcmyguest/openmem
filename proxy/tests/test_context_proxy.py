@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openmem_context import Settings, process_request  # noqa: E402
+from openmem_context.adapters import _litellm_thinking  # noqa: E402
 from openmem_context.compress import blob_id, compress_text  # noqa: E402
 from openmem_context.core import (  # noqa: E402
     RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, STANDING_INSTRUCTION, pointer_text, recall_block,
@@ -43,6 +44,32 @@ def anth_history(turns, filler=200):
         ]})
         msgs.append({"role": "assistant", "content": [{"type": "text", "text": f"answer {t}"}]})
     return msgs
+
+
+THINKING_TYPES = ("thinking", "redacted_thinking")
+
+
+def latest_assistant_run(msgs):
+    """(start, end) of the trailing run of assistant messages ending at the last one; None when there is none."""
+    last = next((j for j in range(len(msgs) - 1, -1, -1) if msgs[j].get("role") == "assistant"), None)
+    if last is None:
+        return None
+    start = last
+    while start > 0 and msgs[start - 1].get("role") == "assistant":
+        start -= 1
+    return start, last + 1
+
+
+def strip_thinking(msgs):
+    """Expected bytes after a trim: thinking blocks removed from assistant messages before the latest assistant run.
+    Keeps the list length (no fixture here has a thinking-only message), so indices match the original."""
+    run = latest_assistant_run(msgs)
+    out = []
+    for j, m in enumerate(msgs):
+        if m.get("role") == "assistant" and run and j < run[0] and isinstance(m.get("content"), list):
+            m = {**m, "content": [b for b in m["content"] if b.get("type") not in THINKING_TYPES]}
+        out.append(m)
+    return out
 
 
 def anth_request(msgs, sid=SID):
@@ -93,6 +120,17 @@ class Base(unittest.TestCase):
         """Rows trimmed out of context (the former handoff log)."""
         return self.db_rows(sid, "in_context = 0")
 
+    def assert_no_stale_thinking(self, view, original):
+        """Error mode for signed thinking: a trimmed Anthropic view keeps no thinking block outside its latest
+        assistant run, and that run is byte-identical to the original's."""
+        run, orig = latest_assistant_run(view), latest_assistant_run(original)
+        self.assertIsNotNone(run)
+        for j, m in enumerate(view[:run[0]]):
+            if m.get("role") == "assistant" and isinstance(m.get("content"), list):
+                kinds = [b.get("type") for b in m["content"]]
+                self.assertFalse(set(kinds) & set(THINKING_TYPES), f"stale thinking kept in view[{j}]: {kinds}")
+        self.assertEqual(json.dumps(view[run[0]:run[1]]), json.dumps(original[orig[0]:orig[1]]))
+
     def force(self, sid=SID):
         (self.ctx / "sessions").mkdir(parents=True, exist_ok=True)
         (self.ctx / "sessions" / f"{sid}.force").write_text("")
@@ -134,13 +172,14 @@ class AnthropicTrimTests(Base):
         self.assertEqual(kept[1], msgs[7])
         self.assertEqual(kept[2]["content"][0], {"type": "text", "text": self.ptr(6)})
         self.assertEqual(kept[2]["content"][1:], msgs[8]["content"])
-        self.assertEqual(kept[3:], msgs[9:])
+        self.assertEqual(kept[3:], strip_thinking(msgs)[9:])
 
-    def test_signed_thinking_kept_byte_identical(self):
+    def test_latest_assistant_run_byte_identical_older_thinking_stripped(self):
         msgs = anth_history(2)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
-        self.assertEqual(json.dumps(out["messages"][1]), json.dumps(msgs[3]))
-        self.assertEqual(json.dumps(out["messages"][3:]), json.dumps(msgs[5:]))
+        self.assertEqual(json.dumps(out["messages"][1]), json.dumps(strip_thinking(msgs)[3]))
+        self.assertEqual(json.dumps(out["messages"][3:]), json.dumps(strip_thinking(msgs)[5:]))
+        self.assert_no_stale_thinking(out["messages"], msgs)
 
     def test_single_turn_tool_loop_not_trimmed(self):
         msgs = anth_history(1)
@@ -196,7 +235,7 @@ class AnthropicTrimTests(Base):
         self.assertEqual(out[0], msgs[0])
         self.assertEqual(out[1], msgs[7])
         self.assertEqual(out[2]["content"][0]["text"], self.ptr(6))
-        self.assertEqual(out[3:], msgs[9:])
+        self.assertEqual(out[3:], strip_thinking(msgs)[9:])
 
     def test_sticky_cut_survives_text_block_to_string_change(self):
         # Observed from Claude Code 2.1: the newest user turn is a cached text block, later a plain string.
@@ -654,7 +693,7 @@ class InTurnGapTests(Base):
         msgs = [{"role": "user", "content": "task"}] + anth_loop(6)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         self.assertEqual(out[0]["content"], [{"type": "text", "text": self.ptr(6)}, {"type": "text", "text": "task"}])
-        self.assertEqual(out[1:], msgs[7:])
+        self.assertEqual(out[1:], strip_thinking(msgs)[7:])
         rows = self.db_rows()
         self.assertEqual([r["in_context"] for r in rows if r["kind"] in ("tool_use", "tool_result")],
                          [0] * 6 + [1] * 6)
@@ -665,19 +704,20 @@ class InTurnGapTests(Base):
         self.assertEqual(out[:2], [msgs[0], msgs[7]])
         self.assertEqual(out[2]["content"], [{"type": "text", "text": self.ptr(10)},
                                              {"type": "text", "text": "now this"}])
-        self.assertEqual(json.dumps(out[3:]), json.dumps(msgs[13:]))
+        self.assertEqual(json.dumps(out[3:]), json.dumps(strip_thinking(msgs)[13:]))
 
     def test_gap_is_sticky_and_grows_within_the_turn(self):
         msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(5)
         first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         msgs += anth_loop(1, start=5)
         quiet = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=BIG)["messages"]
-        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(first))
+        # The former latest assistant message is no longer the latest, so its thinking goes too.
+        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(strip_thinking(first + msgs[-2:])[:len(first)]))
         self.assertEqual(quiet[len(first):], msgs[-2:])
         # Over the threshold again with no newer user turn: the gap moves forward, the cut stays.
         grown = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         self.assertEqual(grown[2]["content"][0]["text"], self.ptr(12))
-        self.assertEqual(json.dumps(grown[3:]), json.dumps(msgs[15:]))
+        self.assertEqual(json.dumps(grown[3:]), json.dumps(strip_thinking(msgs)[15:]))
         self.assertEqual([r["seq"] for r in self.log_rows()], sorted({r["seq"] for r in self.log_rows()}))
 
     def test_new_user_turn_moves_the_cut_and_resets_the_gap(self):
@@ -697,18 +737,18 @@ class InTurnGapTests(Base):
         msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(5)
         out = self.run_req(anth_request(copy.deepcopy(msgs)))["messages"]
         self.assertEqual(out[2]["content"][0]["text"], self.ptr(8))
-        self.assertEqual(json.dumps(out[3:]), json.dumps(msgs[11:]))
+        self.assertEqual(json.dumps(out[3:]), json.dumps(strip_thinking(msgs)[11:]))
 
     def test_trim_depth_follows_trim_to_fraction(self):
         # The same request at the same threshold: the default 0.3 keeps only the newest 3 exchanges, 0.5 keeps 6.
         msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(8)
         self.force()
         deep = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=2000)["messages"]
-        self.assertEqual(json.dumps(deep[3:]), json.dumps(msgs[-6:]))
+        self.assertEqual(json.dumps(deep[3:]), json.dumps(strip_thinking(msgs)[-6:]))
         self.force("other")
         shallow = self.run_req(anth_request(copy.deepcopy(msgs), sid="other"), trim_at_tokens=2000,
                                trim_to_fraction=0.5)["messages"]
-        self.assertEqual(json.dumps(shallow[3:]), json.dumps(msgs[-12:]))
+        self.assertEqual(json.dumps(shallow[3:]), json.dumps(strip_thinking(msgs)[-12:]))
 
     def test_fewer_than_four_exchanges_means_no_gap(self):
         msgs = [{"role": "user", "content": "task"}] + anth_loop(3)
@@ -725,7 +765,7 @@ class InTurnGapTests(Base):
                                               {"type": "tool_result", "tool_use_id": "pb", "content": "b"}]}]
         msgs += anth_loop(2, start=2)
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
-        self.assertEqual(out[1:], msgs[5:])
+        self.assertEqual(out[1:], strip_thinking(msgs)[5:])
 
     def test_chat_gap(self):
         msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "task"}]
@@ -750,6 +790,92 @@ class InTurnGapTests(Base):
         self.assertEqual(out[0], items[0])
         self.assertEqual(out[1]["content"][0], {"type": "input_text", "text": self.ptr(6)})
         self.assertEqual(out[2:], items[8:])
+
+
+class ThinkingStripTests(Base):
+    """A trim edits the prefix every signed thinking block covers: kept older ones go, the latest assistant run stays."""
+
+    def test_in_flight_loop_keeps_only_the_latest_thinking(self):
+        msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(5)
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        self.assert_no_stale_thinking(out, msgs)
+        self.assertEqual(out[-2]["content"][0]["type"], "thinking")
+        self.assertEqual([b["type"] for b in out[-4]["content"]], ["tool_use"])
+
+    def test_untrimmed_request_keeps_every_thinking_block(self):
+        msgs = anth_history(2) + [{"role": "user", "content": "now this"}] + anth_loop(5)
+        out = self.run_req(anth_request(copy.deepcopy(msgs)))["messages"]
+        self.assertEqual(json.dumps(out), json.dumps(msgs))
+
+    def test_sticky_rerender_stays_stripped(self):
+        msgs = anth_history(3)
+        first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        again = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=BIG)["messages"]
+        self.assertEqual(json.dumps(again), json.dumps(first))
+        self.assert_no_stale_thinking(again, msgs)
+
+    def test_message_left_empty_is_dropped_and_pairs_stay(self):
+        msgs = [{"role": "user", "content": "task"},
+                {"role": "assistant", "content": [{"type": "thinking", "thinking": "a", "signature": "S0"},
+                                                  {"type": "tool_use", "id": "t0", "name": "Bash", "input": {}}]},
+                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t0", "content": "r0"}]},
+                {"role": "assistant", "content": [{"type": "redacted_thinking", "data": "R1"}]},
+                {"role": "user", "content": "now this"},
+                {"role": "assistant", "content": [{"type": "thinking", "thinking": "b", "signature": "S1"},
+                                                  {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]},
+                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "r1"}]},
+                {"role": "assistant", "content": [{"type": "thinking", "thinking": "c", "signature": "S2"},
+                                                  {"type": "text", "text": "done"}]}]
+        out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
+        # The reply before the cut held only redacted thinking, so it goes; the user turns around it stay.
+        self.assertEqual(out[0], msgs[0])
+        self.assertEqual(out[1]["content"][1:], [{"type": "text", "text": "now this"}])
+        self.assertEqual(out[2:], [{"role": "assistant", "content": [msgs[5]["content"][1]]}, msgs[6], msgs[7]])
+        self.assert_no_stale_thinking(out, msgs)
+
+    def test_chat_thinking_blocks_stripped_with_their_text_copy(self):
+        msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "task"}]
+        for k in range(5):
+            msgs += [{"role": "assistant", "content": None, "reasoning_content": f"why {k}",
+                      "thinking_blocks": [{"type": "thinking", "thinking": f"why {k}", "signature": f"C{k}"}],
+                      "tool_calls": [{"id": f"c{k}", "type": "function", "function": {"name": "ls", "arguments": "{}"}}]},
+                     {"role": "tool", "tool_call_id": f"c{k}", "content": f"files {k}"}]
+        out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)["messages"]
+        older = [{k: v for k, v in m.items() if k not in ("thinking_blocks", "reasoning_content")} for m in msgs[6:10]]
+        self.assertEqual(out[2:6], older)
+        self.assertEqual(json.dumps(out[6:]), json.dumps(msgs[10:]))
+
+    def test_chat_unsigned_reasoning_content_kept(self):
+        msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "task"}]
+        for k in range(5):
+            msgs += [{"role": "assistant", "content": None, "reasoning_content": f"why {k}",
+                      "tool_calls": [{"id": f"c{k}", "type": "function", "function": {"name": "ls", "arguments": "{}"}}]},
+                     {"role": "tool", "tool_call_id": f"c{k}", "content": f"files {k}"}]
+        out = self.run_req({"messages": copy.deepcopy(msgs), **headers()}, "acompletion", trim_at_tokens=1)["messages"]
+        self.assertEqual(out[2:], msgs[6:])
+
+    def test_responses_drops_litellm_thinking_and_keeps_openai_reasoning(self):
+        def enc(k):
+            if k % 2:
+                return f"gAAAA-openai-{k}"
+            return json.dumps([{"type": "thinking", "thinking": f"t{k}", "signature": f"S{k}"}], separators=(",", ":"))
+        items = [{"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "DEV"}]},
+                 {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "task"}]}]
+        for k in range(5):
+            items += [{"type": "reasoning", "id": f"r{k}", "summary": [], "encrypted_content": enc(k)},
+                      {"type": "function_call", "call_id": f"f{k}", "name": "shell", "arguments": "{}"},
+                      {"type": "function_call_output", "call_id": f"f{k}", "output": f"out {k}"}]
+        out = self.run_req({"input": copy.deepcopy(items), **headers()}, "aresponses", trim_at_tokens=1)["input"]
+        # Tail = steps 2, 3, 4. Step 2's LiteLLM-encoded thinking goes; step 3's OpenAI reasoning and the latest
+        # step (4) go out as sent.
+        self.assertEqual(out[2:], items[9:11] + items[11:])
+
+    def test_litellm_encoded_thinking_detection(self):
+        self.assertTrue(_litellm_thinking('[{"type":"redacted_thinking","data":"X"}]'))
+        self.assertTrue(_litellm_thinking('[{"type":"thinking","thinking":"x","signature":"S"}]'))
+        self.assertFalse(_litellm_thinking('[{"type":"thinking","thinking":"x"}]'))
+        self.assertFalse(_litellm_thinking("gAAAA"))
+        self.assertFalse(_litellm_thinking("[not json"))
 
 
 class ContractTests(Base):

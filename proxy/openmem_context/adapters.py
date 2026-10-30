@@ -15,6 +15,8 @@ _CALL_TYPES = ("function_call", "custom_tool_call", "local_shell_call")
 # LiteLLM's ChatGPT-subscription pass-through (PR #41522): Codex posts Responses bodies here, and the pre-call hook
 # sees them with call type "pass_through_endpoint".
 CODEX_RESPONSES_ROUTE = "/backend-api/codex/responses"
+# Anthropic thinking blocks: each carries a signature over the conversation before it, so an edited prefix voids it.
+THINKING_TYPES = ("thinking", "redacted_thinking")
 
 
 class UnsupportedCallType(LookupError):
@@ -84,6 +86,29 @@ def _compress_content(content, over_tokens, text_type):
     return None
 
 
+def _without_thinking_blocks(content):
+    """Content with its thinking blocks removed, or the same object when it has none."""
+    if not isinstance(content, list):
+        return content
+    kept = [b for b in content if not (isinstance(b, dict) and b.get("type") in THINKING_TYPES)]
+    return content if len(kept) == len(content) else kept
+
+
+def _litellm_thinking(encrypted):
+    """Whether a Responses reasoning item's encrypted_content is LiteLLM's encoding of signed Anthropic thinking
+    blocks (a JSON list holding a thinking block with a signature or a redacted_thinking block with data)."""
+    if not isinstance(encrypted, str) or not encrypted.strip().startswith("["):
+        return False
+    try:
+        blocks = json.loads(encrypted)
+    except ValueError:
+        return False
+    return isinstance(blocks, list) and any(
+        isinstance(b, dict) and ((b.get("type") == "thinking" and b.get("signature"))
+                                 or (b.get("type") == "redacted_thinking" and b.get("data")))
+        for b in blocks)
+
+
 def strip_reminders(text):
     return _REMINDER_RE.sub("", text).strip()
 
@@ -138,6 +163,17 @@ class AnthropicAdapter:
     def is_step_start(self, items, j):
         """Whether items[j] opens one tool exchange of a turn (where an in-turn cut may resume)."""
         return items[j].get("role") == "assistant"
+
+    def is_assistant(self, item):
+        return item.get("role") == "assistant"
+
+    def without_reasoning(self, item):
+        """The assistant message without thinking blocks: the same object when it has none, None when nothing
+        else is left (the API merges the neighbours of a dropped message, and no tool_use goes with it)."""
+        content = _without_thinking_blocks(item.get("content"))
+        if content is item.get("content"):
+            return item
+        return {**item, "content": content} if content else None
 
     def tool_names(self, items):
         names = {}
@@ -247,6 +283,24 @@ class ChatAdapter:
     def is_step_start(self, items, j):
         return items[j].get("role") == "assistant"
 
+    def is_assistant(self, item):
+        return item.get("role") == "assistant"
+
+    def without_reasoning(self, item):
+        """The assistant message without LiteLLM's signed thinking: the `thinking_blocks` field and thinking
+        parts of list content. With `thinking_blocks`, `reasoning_content` is LiteLLM's text copy of the same
+        thinking (never replayed to Anthropic) and goes too, as the OpenCode 2 port drops the whole reasoning part;
+        `reasoning_content` alone is unsigned and stays. None when no content, tool call or function call is left."""
+        content = _without_thinking_blocks(item.get("content"))
+        if content is item.get("content") and "thinking_blocks" not in item:
+            return item
+        drop = ("thinking_blocks", "reasoning_content") if "thinking_blocks" in item else ()
+        out = {k: v for k, v in item.items() if k not in drop}
+        out["content"] = content
+        if not (content or out.get("tool_calls") or out.get("function_call")):
+            return None
+        return out
+
     def tool_names(self, items):
         names = {}
         for item in items:
@@ -344,6 +398,17 @@ class ResponsesAdapter:
             return False
         prev = items[j - 1] if j > 0 else {}
         return not (prev.get("type") == "reasoning" or prev.get("type") in _CALL_TYPES)
+
+    def is_assistant(self, item):
+        """An item the model produced: reasoning, a tool call or an assistant message."""
+        return item.get("type") == "reasoning" or item.get("type") in _CALL_TYPES or self.is_reply(item)
+
+    def without_reasoning(self, item):
+        """None for a reasoning item that carries LiteLLM-encoded Anthropic thinking (signed against the prefix);
+        every other item as is. OpenAI's own encrypted reasoning is not tied to the prefix and stays."""
+        if item.get("type") == "reasoning" and _litellm_thinking(item.get("encrypted_content")):
+            return None
+        return item
 
     def tool_names(self, items):
         return {i.get("call_id"): i.get("name", "shell" if i.get("type") == "local_shell_call" else None)

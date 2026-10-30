@@ -436,6 +436,40 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("trim depth: 0.5 keeps 5 exchanges", shallow.length === 11 && shallow.slice(1).every((m, k) => m === history[13 + k]));
 }
 
+{
+  // Signed reasoning: a trim edits the prefix every signature covers, so kept older signed parts go and the latest
+  // assistant message goes out as sent.
+  const thought = (id, meta) => ({ type: "reasoning", text: `thinking about ${id}`, providerMetadata: { anthropic: meta } });
+  const signedCall = (id) => ({ role: "assistant", content: [thought(id, { signature: `S-${id}` }), { type: "tool-call", id, name: "bash", input: {} }] });
+  const openaiCall = (id) => ({ role: "assistant", content: [thought(id, { itemId: `rs_${id}`, reasoningEncryptedContent: "gAAAA" }), { type: "tool-call", id, name: "bash", input: {} }] });
+  const redactedReply = { role: "assistant", content: [{ type: "reasoning", text: "", providerMetadata: { anthropic: { redactedData: "R" } } }] };
+  const encryptedCall = (id) => ({ role: "assistant", content: [{ type: "reasoning", text: "t", encrypted: `E-${id}` }, { type: "tool-call", id, name: "bash", input: {} }] });
+  const history = [user("task"), signedCall("a0"), result("a0", "bash", "r"), redactedReply, user("next"),
+    encryptedCall("b1"), result("b1", "bash", "r"), openaiCall("b2"), result("b2", "bash", "r"), signedCall("b3"), result("b3", "bash", "r")];
+  const before = JSON.stringify(history);
+  /** Error mode: fails when a signed reasoning part survives before the latest assistant run, or that run changed. */
+  const staleSigned = (view) => {
+    const last = view.findLastIndex((m) => m.role === "assistant");
+    return view.slice(0, last).flatMap((m, j) => (m.role === "assistant" ? m.content.filter((p) => p.type === "reasoning"
+      && (p.encrypted || p.providerMetadata?.anthropic?.signature || p.providerMetadata?.anthropic?.redactedData)).map(() => j) : []));
+  };
+  const view = await trimContext({ sessionID: "ses_signed", messages: history }, settingsFor({ trimAtTokens: 1 }));
+  check("signed reasoning: none survives before the latest assistant message", staleSigned(view).length === 0, JSON.stringify(staleSigned(view)));
+  check("signed reasoning: latest assistant message is the same object", view.at(-2) === history[9]);
+  check("signed reasoning: redacted-only reply before the cut is dropped, its neighbours stay",
+    view.length === 8 && view[0] === history[0] && view[1].content.at(-1).text === "next" && !view.includes(history[3]));
+  check("signed reasoning: tool calls kept without their signed part",
+    JSON.stringify(view[2].content) === JSON.stringify([history[5].content[1]]) && view[3] === history[6]);
+  check("signed reasoning: OpenAI encrypted reasoning kept as sent", view[4] === history[7]);
+  check("signed reasoning: input history untouched", JSON.stringify(history) === before);
+  const quiet = await trimContext({ sessionID: "ses_signed", messages: [...history, assistant("done")] }, settingsFor({ trimAtTokens: 10 ** 9 }));
+  check("signed reasoning: sticky re-render strips the former latest message too",
+    staleSigned(quiet).length === 0 && JSON.stringify(quiet.slice(0, 6)) === JSON.stringify(view.slice(0, 6))
+    && JSON.stringify(quiet[6].content) === JSON.stringify([history[9].content[1]]) && quiet.length === 9);
+  const untrimmed = await trimContext({ sessionID: "ses_signed_none", messages: history }, settingsFor({ trimAtTokens: 10 ** 9 }));
+  check("signed reasoning: an untrimmed request keeps every part", untrimmed.length === history.length && untrimmed.every((m, k) => m === history[k]));
+}
+
 fs.rmSync(state, { recursive: true, force: true });
 if (failed) process.exit(1);
 console.log("all context trim tests passed");
