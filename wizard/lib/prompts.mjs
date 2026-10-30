@@ -29,6 +29,34 @@ export async function ask(ctx, prompt, defaultValue) {
 }
 
 /**
+ * Pick any of `options`; `--yes` and non-TTY runs return `initial`.
+ * @param {import("./run-wizard.mjs").WizardContext} ctx
+ * @param {string} prompt
+ * @param {{ value: string, label: string }[]} options
+ * @param {string[]} initial
+ * @returns {Promise<string[]>}
+ */
+export async function multiselect(ctx, prompt, options, initial) {
+  if (ctx.yes) return initial;
+  if (!process.stdin.isTTY) return initial;
+  try {
+    const clack = await import("@clack/prompts");
+    const v = await clack.multiselect({ message: prompt, options, initialValues: initial, required: false });
+    if (clack.isCancel(v)) process.exit(0);
+    return /** @type {string[]} */ (v);
+  } catch {
+    const rl = readline.createInterface({ input, output });
+    const names = options.map((o) => o.value).join(", ");
+    const line = await rl.question(`  ${prompt} (comma-separated: ${names}; "none" for none) [${initial.join(",") || "none"}]: `);
+    rl.close();
+    const s = line.trim();
+    if (!s) return initial;
+    if (s === "none") return [];
+    return s.split(",").map((x) => x.trim()).filter((x) => options.some((o) => o.value === x));
+  }
+}
+
+/**
  * @param {import("./run-wizard.mjs").WizardContext} ctx
  * @param {string} prompt
  * @param {"y"|"n"} defaultYN

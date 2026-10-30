@@ -1,23 +1,60 @@
 import { spawnSync } from "node:child_process";
-import { CONTEXT_PROXY_SERVICE, contextProxyRunning, prepareContextProxyFiles } from "../../cli/context-management.mjs";
+import {
+  CONTEXT_AGENT_ROUTE,
+  CONTEXT_PROXY_SERVICE,
+  contextProxyRunning,
+  prepareContextProxyFiles,
+  proxyServiceNeeded,
+} from "../../cli/context-management.mjs";
 import { agentsPointedAtContextProxy } from "../../cli/coding-agent/install-context-proxy.mjs";
 import { act } from "./exec.mjs";
 import { composeArgs, composeSpawnOptions } from "./compose.mjs";
 import { info, ok, step, warn } from "./log.mjs";
-import { confirm } from "./prompts.mjs";
-import { contextProxyFromPmConfig, updatePmConfigTable } from "./pm-config.mjs";
+import { multiselect } from "./prompts.mjs";
+import { CONTEXT_AGENT_KEYS, contextAgentsFromPmConfig, updatePmConfigContextAgents } from "./pm-config.mjs";
 
 /**
- * Wizard step "Context management (smart compaction)": ask on/off, save `[context_proxy] enabled`
- * (syncPmConfig keeps the table when it rewrites config.toml), and start or stop the compose
- * `context-proxy` service. install-coding-agent reads the saved value when the next step wires agents.
+ * Wizard step "Context management (smart compaction)": pick the installed agents to trim, save
+ * `[context_proxy.agents]` and `[context_proxy] enabled` (syncPmConfig keeps the table when it rewrites
+ * config.toml), and start or stop the compose `context-proxy` service. install-coding-agent reads the
+ * saved values when the next step wires agents.
  */
 
 export const CONTEXT_STEP_TITLE = "Context management (smart compaction)";
+/** Agents the step offers. Codex is left out until it is routed (CONTEXT_AGENT_ROUTE.codex). */
+const SELECTABLE = ["claude-code", "opencode1", "opencode2"];
+const LABELS = {
+  "claude-code": "Claude Code (context-proxy service)",
+  opencode1: "OpenCode 1 (context-proxy service)",
+  opencode2: "OpenCode 2 (native plugin, no service)",
+};
 
-/** The saved choice: `[context_proxy] enabled` in the merged config, default off. */
-export function contextManagementFromConfig(ctx) {
-  return contextProxyFromPmConfig(ctx.pmMerged || {}).enabled;
+/**
+ * Config keys for detected harnesses (`claude-code`, `codex`, `opencode`, `cursor-cli`).
+ * @param {string[]} harnesses
+ * @param {number} opencodeMajor
+ */
+export function contextAgentKeys(harnesses, opencodeMajor) {
+  const keys = [];
+  if (harnesses.includes("claude-code")) keys.push("claude-code");
+  if (harnesses.includes("codex")) keys.push("codex");
+  if (harnesses.includes("opencode")) keys.push(opencodeMajor >= 2 ? "opencode2" : "opencode1");
+  return keys;
+}
+
+/**
+ * Defaults: a saved per-agent key, else a saved `enabled`, else OpenCode 2 on and the proxy-routed agents off.
+ * @param {Record<string, unknown>} cfg
+ * @returns {Record<string, boolean>}
+ */
+export function contextAgentDefaults(cfg) {
+  const { agents, saved, enabledSaved } = contextAgentsFromPmConfig(cfg);
+  return Object.fromEntries(CONTEXT_AGENT_KEYS.map((k) => [k, saved.includes(k) || enabledSaved ? agents[k] : k === "opencode2"]));
+}
+
+/** Whether the proxy service is needed: the step's choice, else the saved config. */
+export function contextServiceWanted(ctx) {
+  return proxyServiceNeeded(ctx.contextAgents || contextAgentsFromPmConfig(ctx.pmMerged || {}).agents);
 }
 
 /** Context with the context-proxy profile added, for compose calls on that service. */
@@ -26,37 +63,57 @@ function withProxyProfile(ctx) {
 }
 
 /**
- * Ask on/off (default: the saved value, else off) and save the answer when it differs from config.
+ * Multi-select the installed agents (defaults: contextAgentDefaults) and save the values when they differ
+ * from config. Agents that are not installed keep their saved value, else their default.
  * @param {import("./run-wizard.mjs").WizardContext} ctx
  * @param {string} number step number shown in the title
- * @returns {Promise<boolean>}
+ * @param {string[]} installed config keys of the installed agents (contextAgentKeys)
+ * @returns {Promise<Record<string, boolean>>}
  */
-export async function chooseContextManagement(ctx, number) {
+export async function chooseContextManagement(ctx, number, installed) {
   step(`${number}. ${CONTEXT_STEP_TITLE}`);
   info("Trims long agent sessions into a local saved log; agents search the saved turns with smart_compact_search.");
   info("Claude Code and OpenCode 1 go through the local context-proxy compose service; OpenCode 2 uses its native plugin.");
-  const current = contextManagementFromConfig(ctx);
-  const on = await confirm(ctx, "Turn context management on?", current ? "y" : "n");
-  ctx.contextManagement = on;
-  const saved = ctx.pmMerged?.context_proxy?.enabled;
-  if (saved !== on) {
-    const r = updatePmConfigTable(ctx.home, "context_proxy", { enabled: on }, { dry: ctx.dry });
-    info(`${r === "dry-run" ? "[dry-run] would save" : "saved"} [context_proxy] enabled = ${on}`);
-    if (r !== "dry-run") {
-      ctx.pmMerged = { ...(ctx.pmMerged || {}), context_proxy: { ...(ctx.pmMerged?.context_proxy || {}), enabled: on } };
+  const cfg = ctx.pmMerged || {};
+  const { agents: current, saved } = contextAgentsFromPmConfig(cfg);
+  const defaults = contextAgentDefaults(cfg);
+  if (installed.includes("codex")) info(`codex: ${CONTEXT_AGENT_ROUTE.codex}; not offered`);
+  const offered = SELECTABLE.filter((k) => installed.includes(k));
+  let values;
+  if (!offered.length) {
+    info("no agent that supports context management is installed; saved values kept");
+    values = current;
+  } else {
+    const picked = await multiselect(
+      ctx,
+      "Trim long sessions for which agents?",
+      offered.map((k) => ({ value: k, label: LABELS[k] })),
+      offered.filter((k) => defaults[k]),
+    );
+    values = Object.fromEntries(CONTEXT_AGENT_KEYS.map((k) => [k, offered.includes(k) ? picked.includes(k) : (saved.includes(k) ? current[k] : defaults[k])]));
+    const changed = CONTEXT_AGENT_KEYS.some((k) => !saved.includes(k) || current[k] !== values[k]);
+    if (changed) {
+      const r = updatePmConfigContextAgents(ctx.home, values, { dry: ctx.dry });
+      const summary = CONTEXT_AGENT_KEYS.map((k) => `${k} = ${values[k]}`).join(", ");
+      info(`${r.result === "dry-run" ? "[dry-run] would save" : "saved"} [context_proxy.agents] ${summary}`);
+      if (r.result !== "dry-run") {
+        const table = { ...(cfg.context_proxy || {}), enabled: r.enabled, agents: r.agents };
+        ctx.pmMerged = { ...cfg, context_proxy: table };
+      }
     }
   }
-  ok(`context management ${on ? "on" : "off"}`);
-  return on;
+  ctx.contextAgents = values;
+  ok(`context management: ${CONTEXT_AGENT_KEYS.map((k) => `${k} ${values[k] ? "on" : "off"}`).join(", ")}`);
+  return values;
 }
 
 /**
- * Start the service when on (before agents are pointed at it). Writes the key file and store
- * directories compose needs first.
+ * Start the service when a proxy-routed agent is on (before agents are pointed at it). Writes the key file
+ * and store directories compose needs first.
  * @param {import("./run-wizard.mjs").WizardContext} ctx
  */
 export async function startContextProxy(ctx) {
-  if (!(ctx.contextManagement ?? contextManagementFromConfig(ctx))) return;
+  if (!contextServiceWanted(ctx)) return;
   if (!ctx.dry) prepareContextProxyFiles(ctx.home);
   const c = withProxyProfile(ctx);
   const up = composeArgs(c, "up", "-d", "--no-build", CONTEXT_PROXY_SERVICE);
@@ -65,18 +122,18 @@ export async function startContextProxy(ctx) {
 }
 
 /**
- * Stop the service when off and it runs, unless an agent still points at it (stopping would
- * break that agent's every request).
+ * Stop the service when no proxy-routed agent is on and it runs, unless an agent still points at it
+ * (stopping would break that agent's every request).
  * @param {import("./run-wizard.mjs").WizardContext} ctx
  * @param {typeof spawnSync} [spawn]
  */
 export async function stopContextProxy(ctx, spawn = spawnSync) {
-  if (ctx.contextManagement ?? contextManagementFromConfig(ctx)) return;
+  if (contextServiceWanted(ctx)) return;
   const c = withProxyProfile(ctx);
   if (!contextProxyRunning(composeArgs(c), composeSpawnOptions(c), spawn)) return;
   const pointed = ctx.dry ? [] : agentsPointedAtContextProxy(ctx.home);
   if (pointed.length) {
-    warn(`context-proxy left running: ${pointed.join(", ")} still point at it. Run: npx @bcmyguest/openmem context off`);
+    warn(`context-proxy left running: ${pointed.join(", ")} still point at it. Run: npx @bcmyguest/openmem install-coding-agent --yes`);
     return;
   }
   const stop = composeArgs(c, "stop", CONTEXT_PROXY_SERVICE);

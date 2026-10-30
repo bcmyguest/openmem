@@ -40,8 +40,8 @@ Configure runs these steps in order (provider hooks replace or extend some steps
 | 5 | Sources to index | Writes `~/.config/hindsight/index.yml`; lists sources with a dry indexer run |
 | 6 | NotebookLM sync | Opt-in; Google login when enabled |
 | 7 | Start the stack | Build indexer image if inputs changed; health wait; smoke retain/recall (unless `--no-smoke`) |
-| 8 | Context management (smart compaction) | Asks on/off; the default is `[context_proxy] enabled`, else off. Saves the answer to `config.toml`. On: writes the proxy key file and store directories, then starts the `context-proxy` compose service. Off: stops a running `context-proxy` after step 9, unless an agent still points at it ([Context management](context-management.md)) |
-| 9 | Coding agents (optional) | For detected CLIs (claude, codex, opencode, cursor-agent), offers `install-coding-agent --yes`: unified MCP, OpenMem skill, session hooks; honours `[agents] integration` (OpenMem hooks or the provider plugin) and `[context_proxy] enabled`. Default answer is no |
+| 8 | Context management (smart compaction) | Multi-select of the installed agents (Claude Code, OpenCode 1, OpenCode 2). Defaults: saved `[context_proxy.agents]` keys, else `[context_proxy] enabled`, else OpenCode 2 on and the proxy-routed agents off. Saves all four keys to `config.toml`. Claude Code or OpenCode 1 on: writes the proxy key file and store directories, then starts the `context-proxy` compose service. Neither on: stops a running `context-proxy` after step 9, unless an agent still points at it ([Context management](context-management.md)) |
+| 9 | Coding agents (optional) | For detected CLIs (claude, codex, opencode, cursor-agent), offers `install-coding-agent --yes`: unified MCP, OpenMem skill, session hooks; honours `[agents] integration` (OpenMem hooks or the provider plugin) and `[context_proxy.agents]`. Default answer is no |
 | 10 | Validate memory setup | Provider checks + shared validation |
 
 The last line is `wizard: changed=N` (files and containers this run touched). An unchanged re-run prints `changed=0`.

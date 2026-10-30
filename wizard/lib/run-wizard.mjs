@@ -25,7 +25,8 @@ import { validateMemorySetup } from "./validate-setup.mjs";
 import { actionLabel, parseActionFromArgv } from "./wizard-action.mjs";
 import { applyPmConfigEnv, loadPmConfig, syncPmConfig } from "./pm-config.mjs";
 import { writeWizardConf } from "./wizard-conf.mjs";
-import { chooseContextManagement, contextManagementFromConfig, startContextProxy, stopContextProxy } from "./context-step.mjs";
+import { chooseContextManagement, contextAgentKeys, contextServiceWanted, startContextProxy, stopContextProxy } from "./context-step.mjs";
+import { opencodeMajorVersion } from "../../cli/coding-agent/opencode-config.mjs";
 import { setupNotebooklm as runNotebooklmSetup } from "./notebooklm.mjs";
 import { createHelpers } from "./provider-wizard/helpers.mjs";
 import {
@@ -494,7 +495,7 @@ async function stackDown(ctx) {
   step("Stop the stack");
   info(`action: ${actionLabel("down")}`);
   // A profiled service is part of `down` only when its profile is active.
-  const c = contextManagementFromConfig(ctx) ? { ...ctx, extraComposeProfiles: [...(ctx.extraComposeProfiles || []), "context-proxy"] } : ctx;
+  const c = contextServiceWanted(ctx) ? { ...ctx, extraComposeProfiles: [...(ctx.extraComposeProfiles || []), "context-proxy"] } : ctx;
   const args = composeArgs(c, "down");
   await act(ctx, `docker ${args.join(" ")}`, "docker", args, composeSpawnOptions(c));
   ok(`compose project ${ctx.project} stopped`);
@@ -735,7 +736,9 @@ export async function runWizard(repoRoot, argv) {
   await setupNotebooklm(ctx);
   await runProviderPhase(ctx, PROVIDER_PHASES.beforeStack, providerHelpers());
   await startStack(ctx);
-  await chooseContextManagement(ctx, "8");
+  const harnesses = detectedCodingHarnesses();
+  const opencodeMajor = harnesses.includes("opencode") ? opencodeMajorVersion() : 1;
+  await chooseContextManagement(ctx, "8", contextAgentKeys(harnesses, opencodeMajor));
   // On: start the proxy before agents point at it. Off: stop it after they are unwired.
   await startContextProxy(ctx);
   await setupCodingAgents(ctx);

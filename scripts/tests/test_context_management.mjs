@@ -11,6 +11,7 @@ import TOML from "@iarna/toml";
 import { runInstallCodingAgent } from "../../cli/install-coding-agent.mjs";
 import { runContextCommand } from "../../cli/context-management.mjs";
 import { chooseContextManagement, startContextProxy, stopContextProxy } from "../../wizard/lib/context-step.mjs";
+import { contextAgentsFromPmConfig, syncPmConfig, updatePmConfigContextAgents, updatePmConfigTable } from "../../wizard/lib/pm-config.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const DOWN = async () => ({ ok: false });
@@ -87,58 +88,147 @@ function install(home, flags = {}) {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// Wizard step: default from config (else off), saves only a change, dry run writes nothing.
+// install-coding-agent: [context_proxy.agents] per agent, missing keys follow enabled; flags override every agent.
 {
   const home = tmpHome();
-  const ctx = { yes: true, dry: true, home, pmMerged: {} };
-  const { value, lines } = await captured(() => chooseContextManagement(ctx, "8"));
-  check("step title printed", lines.some((l) => l.includes("== 8. Context management (smart compaction) ==")));
-  check("step says what it does", lines.some((l) => /smart_compact_search/.test(l)) && lines.some((l) => /OpenCode 2 uses its native plugin/.test(l)));
-  check("no config: default off", value === false && ctx.contextManagement === false);
-  check("dry run plans the save", lines.some((l) => l.includes("[dry-run] would save [context_proxy] enabled = false")));
-  check("dry run writes no config.toml", !fs.existsSync(cfgFile(home)));
-
-  const on = { yes: true, dry: true, home, pmMerged: { context_proxy: { enabled: true, port: 4200 } } };
-  const r2 = await captured(() => chooseContextManagement(on, "8"));
-  check("config enabled=true: default on", r2.value === true);
-  check("unchanged choice saves nothing", !r2.lines.some((l) => /(would save|saved) \[context_proxy\]/.test(l)));
-
-  const real = { yes: true, dry: false, home, pmMerged: {} };
-  await captured(() => chooseContextManagement(real, "8"));
-  check("real run saves enabled = false", readCfg(home).context_proxy?.enabled === false);
-  check("ctx.pmMerged follows the save", real.pmMerged.context_proxy?.enabled === false);
+  writeCfg(home, "[context_proxy]\nenabled = true\n[context_proxy.agents]\nclaude-code = false\n");
+  await install(home);
+  check("per-agent claude-code = false wins over enabled = true", !("ANTHROPIC_BASE_URL" in claudeEnv(home)));
+  writeCfg(home, "[context_proxy]\nenabled = false\n[context_proxy.agents]\nclaude-code = true\n");
+  await install(home);
+  check("per-agent claude-code = true wins over enabled = false", claudeEnv(home).ANTHROPIC_BASE_URL === "http://127.0.0.1:4100");
+  writeCfg(home, "[context_proxy]\nenabled = true\n[context_proxy.agents]\nclaude-code = false\n");
+  await install(home, { contextProxy: true });
+  check("--context-proxy overrides a per-agent false", claudeEnv(home).ANTHROPIC_BASE_URL === "http://127.0.0.1:4100");
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// Wizard step: start/stop the compose service.
+// install-coding-agent manages the service when the stack root has compose.yaml.
+{
+  const home = tmpHome();
+  const stackRoot = path.join(home, "stack");
+  fs.mkdirSync(stackRoot, { recursive: true });
+  fs.writeFileSync(path.join(stackRoot, "compose.yaml"), "services: {}\n");
+  const docker = [];
+  let running = "";
+  const fakeDocker = (cmd, args) => {
+    docker.push([cmd, ...args].join(" "));
+    return { status: 0, stdout: args.includes("ps") ? running : "" };
+  };
+  const run = (flags = {}) => runInstallCodingAgent({
+    home, repoRoot: ROOT, stackRoot,
+    flags: { yes: true, dry: false, help: false, agents: ["claude-code"], unknown: [], rtk: false, ...flags },
+    env: { PATH: "/usr/bin:/bin", HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:18888", PM_PROJECT: "pm-unit" },
+    h: silent, spawn: () => ({ status: 0 }), docker: fakeDocker, fetch: DOWN,
+  });
+  writeCfg(home, "[context_proxy.agents]\nclaude-code = true\n");
+  await run();
+  check("installer starts the service when a proxy-routed agent is on",
+    docker.some((c) => c === `docker compose -p pm-unit --project-directory ${stackRoot} --profile context-proxy up -d context-proxy`), docker.join("\n"));
+  docker.length = 0;
+  writeCfg(home, "[context_proxy.agents]\nclaude-code = false\nopencode1 = false\nopencode2 = true\n");
+  running = "ctxid\n";
+  await run();
+  check("installer stops the running service when no proxy-routed agent is on (opencode2 needs none)",
+    docker.some((c) => c.endsWith("ps -q context-proxy")) && docker.at(-1)?.endsWith("stop context-proxy") && !docker.some((c) => c.includes(" up ")), docker.join("\n"));
+  docker.length = 0;
+  running = "";
+  await run();
+  check("installer does nothing when the service is not running", docker.every((c) => c.endsWith("ps -q context-proxy")));
+  docker.length = 0;
+  writeCfg(home, "[context_proxy.agents]\ncodex = true\n");
+  await run();
+  check("codex = true alone does not start the service (not routed yet)", !docker.some((c) => c.includes(" up ")));
+  docker.length = 0;
+  const noStack = tmpHome();
+  writeCfg(noStack, "[context_proxy.agents]\nclaude-code = true\n");
+  await runInstallCodingAgent({
+    home: noStack, repoRoot: ROOT, stackRoot: path.join(noStack, "stack"),
+    flags: { yes: true, dry: false, help: false, agents: ["claude-code"], unknown: [], rtk: false },
+    env: { PATH: "/usr/bin:/bin", HOME: noStack, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:18888" },
+    h: silent, spawn: () => ({ status: 0 }), docker: fakeDocker, fetch: DOWN,
+  });
+  check("installer runs no docker without a stack compose.yaml", docker.length === 0);
+  fs.rmSync(home, { recursive: true, force: true });
+  fs.rmSync(noStack, { recursive: true, force: true });
+}
+
+// Config: per-agent resolution, the writer, and syncPmConfig keeping the subtable.
+{
+  const home = tmpHome();
+  check("no config: every agent off", Object.values(contextAgentsFromPmConfig({}).agents).every((v) => v === false));
+  const r = updatePmConfigContextAgents(home, { "claude-code": true, opencode2: false });
+  check("writer sets enabled from the agents", r.enabled === true && readCfg(home).context_proxy?.enabled === true);
+  check("writer stores [context_proxy.agents]", readCfg(home).context_proxy?.agents?.["claude-code"] === true && readCfg(home).context_proxy?.agents?.opencode2 === false);
+  updatePmConfigContextAgents(home, { "claude-code": false });
+  check("writer merges with saved keys", readCfg(home).context_proxy?.agents?.opencode2 === false && readCfg(home).context_proxy?.enabled === false);
+  updatePmConfigTable(home, "context_proxy", { port: 4200 });
+  syncPmConfig({ home, project: "pm-unit", memoryProvider: { id: "hindsight" } });
+  const after = readCfg(home);
+  check("syncPmConfig keeps [context_proxy.agents] and other keys", after.context_proxy?.agents?.["claude-code"] === false && after.context_proxy?.port === 4200 && after.memory?.provider === "hindsight");
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
+// Wizard step: multi-select of installed agents; defaults from saved values, else OpenCode 2 on and proxy agents off.
+{
+  const home = tmpHome();
+  const ctx = { yes: true, dry: true, home, pmMerged: {} };
+  const { value, lines } = await captured(() => chooseContextManagement(ctx, "8", ["claude-code", "opencode2"]));
+  check("step title printed", lines.some((l) => l.includes("== 8. Context management (smart compaction) ==")));
+  check("step says what it does", lines.some((l) => /smart_compact_search/.test(l)) && lines.some((l) => /OpenCode 2 uses its native plugin/.test(l)));
+  check("nothing saved: OpenCode 2 on, Claude Code off", value.opencode2 === true && value["claude-code"] === false && ctx.contextAgents === value);
+  check("nothing saved: agents not installed are off", value.opencode1 === false && value.codex === false);
+  check("dry run plans the per-agent save", lines.some((l) => l.includes("[dry-run] would save [context_proxy.agents] claude-code = false, opencode1 = false, codex = false, opencode2 = true")));
+  check("dry run writes no config.toml", !fs.existsSync(cfgFile(home)));
+
+  const savedCfg = { context_proxy: { enabled: false, agents: { "claude-code": true, opencode1: false, codex: false, opencode2: false } } };
+  const r2 = await captured(() => chooseContextManagement({ yes: true, dry: true, home, pmMerged: savedCfg }, "8", ["claude-code", "opencode2"]));
+  check("saved values are the defaults", r2.value["claude-code"] === true && r2.value.opencode2 === false);
+  check("unchanged choice saves nothing", !r2.lines.some((l) => /(would save|saved) \[context_proxy/.test(l)));
+  const r3 = await captured(() => chooseContextManagement({ yes: true, dry: true, home, pmMerged: { context_proxy: { enabled: true } } }, "8", ["claude-code"]));
+  check("saved enabled = true without agent keys: Claude Code defaults on", r3.value["claude-code"] === true);
+  const r4 = await captured(() => chooseContextManagement({ yes: true, dry: true, home, pmMerged: {} }, "8", ["codex"]));
+  check("codex is named but not offered", r4.lines.some((l) => /codex: not routed.*not offered/.test(l)) && r4.lines.some((l) => /saved values kept/.test(l)));
+
+  const real = { yes: true, dry: false, home, pmMerged: {} };
+  await captured(() => chooseContextManagement(real, "8", ["claude-code", "opencode2"]));
+  const saved = readCfg(home).context_proxy;
+  check("real run saves all four keys and enabled", saved?.enabled === true && saved?.agents?.opencode2 === true && saved?.agents?.["claude-code"] === false && saved?.agents?.codex === false);
+  check("ctx.pmMerged follows the save", real.pmMerged.context_proxy?.agents?.opencode2 === true);
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
+// Wizard step: start/stop the compose service from the per-agent choice.
 {
   const home = tmpHome();
   const base = { yes: true, dry: true, home, project: "pm-unit", repoRoot: home, memoryProvider: { compose: { profile: "hindsight" } } };
-  const up = await captured(() => startContextProxy({ ...base, contextManagement: true }));
-  check("on: dry run plans compose up of context-proxy with its profile",
+  const proxyOn = { "claude-code": true, opencode1: false, codex: false, opencode2: false };
+  const nativeOnly = { "claude-code": false, opencode1: false, codex: false, opencode2: true };
+  const up = await captured(() => startContextProxy({ ...base, contextAgents: proxyOn }));
+  check("proxy agent on: dry run plans compose up of context-proxy with its profile",
     up.lines.some((l) => l.includes("[dry-run] docker compose -p pm-unit --profile hindsight --profile context-proxy up -d --no-build context-proxy")));
-  check("on: dry run writes no key file", !fs.existsSync(path.join(home, ".config/personal-memory/context-proxy.env")));
-  const offUp = await captured(() => startContextProxy({ ...base, contextManagement: false }));
-  check("off: no compose up", offUp.lines.length === 0);
+  check("proxy agent on: dry run writes no key file", !fs.existsSync(path.join(home, ".config/personal-memory/context-proxy.env")));
+  const offUp = await captured(() => startContextProxy({ ...base, contextAgents: nativeOnly }));
+  check("only OpenCode 2 on: no compose up", offUp.lines.length === 0);
 
   const calls = [];
   const running = (cmd, args) => {
     calls.push([cmd, ...args].join(" "));
     return { status: 0, stdout: "abc123\n" };
   };
-  const stop = await captured(() => stopContextProxy({ ...base, contextManagement: false }, running));
-  check("off: checks the service with compose ps", calls.some((c) => c.endsWith("--profile context-proxy ps -q context-proxy")));
-  check("off: dry run plans compose stop when it runs",
+  const stop = await captured(() => stopContextProxy({ ...base, contextAgents: nativeOnly }, running));
+  check("no proxy agent: checks the service with compose ps", calls.some((c) => c.endsWith("--profile context-proxy ps -q context-proxy")));
+  check("no proxy agent: dry run plans compose stop when it runs",
     stop.lines.some((l) => l.includes("[dry-run] docker compose -p pm-unit --profile hindsight --profile context-proxy stop context-proxy")));
-  const idle = await captured(() => stopContextProxy({ ...base, contextManagement: false }, () => ({ status: 0, stdout: "" })));
-  check("off: nothing to stop when not running", idle.lines.length === 0);
-  const onStop = await captured(() => stopContextProxy({ ...base, contextManagement: true }, running));
-  check("on: stop is a no-op", onStop.lines.length === 0);
+  const idle = await captured(() => stopContextProxy({ ...base, contextAgents: nativeOnly }, () => ({ status: 0, stdout: "" })));
+  check("no proxy agent: nothing to stop when not running", idle.lines.length === 0);
+  const onStop = await captured(() => stopContextProxy({ ...base, contextAgents: proxyOn }, running));
+  check("proxy agent on: stop is a no-op", onStop.lines.length === 0);
 
   fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
   fs.writeFileSync(path.join(home, ".claude/settings.json"), JSON.stringify({ env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:4100" } }));
-  const kept = await captured(() => stopContextProxy({ ...base, dry: false, contextManagement: false }, running));
-  check("off: proxy left running while Claude Code points at it", kept.lines.some((l) => /left running: claude-code/.test(l)));
+  const kept = await captured(() => stopContextProxy({ ...base, dry: false, contextAgents: nativeOnly }, running));
+  check("proxy left running while Claude Code points at it", kept.lines.some((l) => /left running: claude-code/.test(l)));
   fs.rmSync(home, { recursive: true, force: true });
 }
 
@@ -151,42 +241,39 @@ function install(home, flags = {}) {
   const calls = [];
   const spawn = (cmd, args) => {
     calls.push([path.basename(cmd), ...args].join(" "));
-    return { status: 0, stdout: args.includes("ps") ? "abc\n" : "" };
+    return { status: 0, stdout: "" };
   };
   const run = (argv) => runContextCommand({ argv, home, stackRoot, env: { HOME: home, PM_PROJECT: "pm-unit" }, log, spawn, fetch: DOWN });
 
   check("unknown action exits 2", (await run(["sideways"])) === 2);
   check("--help exits 0", (await run(["--help"])) === 0);
+  check("unknown agent exits 2", (await run(["on", "--agents", "cursor"])) === 2);
 
   logs.length = 0;
-  writeCfg(home, "[context_proxy]\nenabled = true\nport = 4300\n");
+  writeCfg(home, "[context_proxy]\nenabled = true\nport = 4300\n[context_proxy.agents]\nopencode2 = false\n");
   check("status exits 0", (await run(["status"])) === 0);
-  check("status reports the config value and port", logs.some((l) => /context management: on/.test(l)) && logs.some((l) => /127\.0\.0\.1:4300: not answering/.test(l)));
+  check("status lists each agent with its source", logs.some((l) => /^claude-code\s+on\s+follows enabled = true\s+\(context-proxy\)$/.test(l)) && logs.some((l) => /^opencode2\s+off\s+saved\s+\(native plugin\)$/.test(l)), logs.join("\n"));
+  check("status reports the port", logs.some((l) => /127\.0\.0\.1:4300: not answering/.test(l)));
   logs.length = 0;
   await run(["status", "--json"]);
   const json = JSON.parse(logs[0]);
-  check("status --json shape", json.enabled === true && json.port === 4300 && json.proxyUp === false && Array.isArray(json.pointedAgents));
+  check("status --json shape", json.agents.opencode2.on === false && json.agents.opencode2.saved === true && json.agents["claude-code"].on === true && json.port === 4300 && json.proxyUp === false);
 
   calls.length = 0;
   logs.length = 0;
-  check("on --dry-run exits 0", (await run(["on", "--dry-run"])) === 0);
-  check("on --dry-run plans compose up", logs.some((l) => l === `[dry-run] docker compose -p pm-unit --project-directory ${stackRoot} --profile context-proxy up -d context-proxy`));
-  check("on --dry-run runs install-coding-agent --yes --context-proxy --dry-run",
-    calls.some((c) => /install-coding-agent\.mjs --yes --context-proxy --dry-run$/.test(c)));
-  check("on --dry-run starts no container", !calls.some((c) => c.startsWith("docker")));
-  check("on --dry-run writes no key file", !fs.existsSync(path.join(home, ".config/personal-memory/context-proxy.env")));
+  check("on --dry-run exits 0", (await run(["on", "--agents", "claude-code", "--dry-run"])) === 0);
+  check("on --dry-run plans the per-agent save", logs.some((l) => l === "[dry-run] would save [context_proxy.agents] claude-code = true"));
+  check("on --dry-run runs install-coding-agent --yes --dry-run", calls.length === 1 && /install-coding-agent\.mjs --yes --dry-run$/.test(calls[0]));
+  check("on --dry-run leaves config.toml alone", readCfg(home).context_proxy?.agents?.["claude-code"] === undefined);
 
   calls.length = 0;
-  check("on exits 0", (await run(["on", "--agents", "claude-code"])) === 0);
-  check("on starts the service before wiring agents",
-    calls[0]?.startsWith("docker compose -p pm-unit") && calls[0].endsWith("up -d context-proxy") && /--context-proxy --agents claude-code$/.test(calls[1] || ""), calls.join("\n"));
-  check("on writes the key file", fs.existsSync(path.join(home, ".config/personal-memory/context-proxy.env")));
-  check("on creates the store directories", fs.existsSync(path.join(home, ".local/share/openmem/context/sessions")));
-
-  calls.length = 0;
-  check("off exits 0", (await run(["off"])) === 0);
-  check("off unwires agents, then stops the running service",
-    /--no-context-proxy$/.test(calls[0] || "") && calls.some((c) => c.endsWith("ps -q context-proxy")) && calls.at(-1)?.endsWith("stop context-proxy"), calls.join("\n"));
+  check("off --agents opencode1,codex exits 0", (await run(["off", "--agents", "opencode1,codex"])) === 0);
+  const cfg = readCfg(home).context_proxy;
+  check("off sets the named agents and freezes the others at their resolved value", cfg.agents.opencode1 === false && cfg.agents.codex === false && cfg.agents["claude-code"] === true && cfg.agents.opencode2 === false);
+  check("enabled is true while any agent is on", cfg.enabled === true);
+  check("off re-runs install-coding-agent without a proxy flag", calls.length === 1 && /install-coding-agent\.mjs --yes$/.test(calls[0]));
+  await run(["off"]);
+  check("off without --agents turns every agent off", Object.values(readCfg(home).context_proxy.agents).every((v) => v === false) && readCfg(home).context_proxy.enabled === false);
   fs.rmSync(home, { recursive: true, force: true });
 }
 

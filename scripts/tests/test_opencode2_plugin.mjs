@@ -30,7 +30,8 @@ const oldFetch = globalThis.fetch;
 Object.assign(process.env, { HOME: home, HINDSIGHT_URL: "http://memory.test", MEMORY_PROVIDER: "hindsight", PM_STACK_ROOT: path.join(home, "stack") });
 delete process.env.OPENMEM_STATE_DIR;
 delete process.env.CONTEXT_TRIM_AT_TOKENS;
-delete process.env.CONTEXT_PROXY_ENABLED;
+// Trimming is off without [context_proxy.agents] opencode2 / enabled; these tests exercise it on.
+process.env.CONTEXT_PROXY_ENABLED = "1";
 delete process.env.CONTEXT_STANDING_INSTRUCTION;
 
 const sessions = path.join(home, ".local", "share", "openmem", "context", "sessions");
@@ -259,6 +260,30 @@ try {
   envWinsCleanup();
   delete process.env.CONTEXT_TRIM_AT_TOKENS;
   fs.rmSync(path.join(cfgDir, "config.toml"));
+
+  // [context_proxy.agents] opencode2 gates the native trim, falling back to [context_proxy] enabled;
+  // CONTEXT_PROXY_ENABLED still overrides.
+  delete process.env.CONTEXT_PROXY_ENABLED;
+  const trimsWith = async (toml, sid) => {
+    if (toml === null) fs.rmSync(path.join(cfgDir, "config.toml"), { force: true });
+    else fs.writeFileSync(path.join(cfgDir, "config.toml"), `[context_proxy]\ntrim_at_tokens = 1\n${toml}`);
+    const g = fakeContext(project);
+    const gCleanup = await plugin.setup(g.ctx);
+    const event = contextEvent(sid, [user("a"), assistant("b"), user("c")]);
+    await g.hooks.context(event);
+    gCleanup();
+    return event.messages.length === 2;
+  };
+  check("per-agent: opencode2 = true trims although enabled = false", await trimsWith("enabled = false\n[context_proxy.agents]\nopencode2 = true\n", "ses_g1"));
+  check("per-agent: opencode2 = false does not trim although enabled = true", !(await trimsWith("enabled = true\n[context_proxy.agents]\nopencode2 = false\n", "ses_g2")));
+  check("per-agent: a missing opencode2 key follows enabled = true", await trimsWith("enabled = true\n", "ses_g3"));
+  check("per-agent: a missing opencode2 key follows enabled = false", !(await trimsWith("enabled = false\n", "ses_g4")));
+  check("per-agent: no config.toml means no trim", !(await trimsWith(null, "ses_g5")));
+  process.env.CONTEXT_PROXY_ENABLED = "0";
+  check("per-agent: CONTEXT_PROXY_ENABLED=0 overrides opencode2 = true", !(await trimsWith("[context_proxy.agents]\nopencode2 = true\n", "ses_g6")));
+  process.env.CONTEXT_PROXY_ENABLED = "1";
+  check("per-agent: CONTEXT_PROXY_ENABLED=1 overrides opencode2 = false", await trimsWith("[context_proxy.agents]\nopencode2 = false\n", "ses_g7"));
+  fs.rmSync(path.join(cfgDir, "config.toml"), { force: true });
 
   // Denied workspace: no memory calls or registration, but /smart-compact and trimming still work.
   fs.writeFileSync(path.join(cfgDir, "coding-agent.json"), JSON.stringify({ disabled: true }));
