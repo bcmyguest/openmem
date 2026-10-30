@@ -711,8 +711,8 @@ class InTurnGapTests(Base):
         first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         msgs += anth_loop(1, start=5)
         quiet = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=BIG)["messages"]
-        # The former latest assistant message is no longer the latest, so its thinking goes too.
-        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(strip_thinking(first + msgs[-2:])[:len(first)]))
+        # The latest assistant message at trim time keeps its thinking until the next trim: the prefix is unchanged.
+        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(first))
         self.assertEqual(quiet[len(first):], msgs[-2:])
         # Over the threshold again with no newer user turn: the gap moves forward, the cut stays.
         grown = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
@@ -927,6 +927,31 @@ class SafetyTests(Base):
         for bad in ("0", "1", "-0.2", "1.5", "nan", "inf", "x", ""):
             self.assertEqual(Settings.from_env({"CONTEXT_TRIM_TO_FRACTION": bad}).trim_to_fraction, 0.3, bad)
 
+    def test_trim_at_by_model(self):
+        s = Settings.from_env({})
+        self.assertEqual(s.trim_at_for("anthropic/claude-haiku-5-5"), 95000)
+        self.assertEqual(s.trim_at_for("Claude-HAIKU"), 95000)
+        for model in ("claude-sonnet-5", "anthropic/claude-opus-5-5", None, 7):
+            self.assertEqual(s.trim_at_for(model), 120000, model)
+        for raw in ("120000", " 50 "):
+            s = Settings.from_env({"CONTEXT_TRIM_AT_TOKENS": raw})
+            self.assertEqual(s.trim_at_for("claude-haiku-5-5"), int(raw), raw)
+        self.assertEqual(Settings.from_env({"CONTEXT_TRIM_AT_TOKENS": "x"}).trim_at_for("claude-haiku-5-5"), 95000)
+        self.assertEqual(Settings(trim_at_tokens=50).trim_at_for("claude-haiku-5-5"), 50)
+
+    def test_haiku_trims_at_its_threshold(self):
+        def trims(model, filler):
+            ctx = Path(tempfile.mkdtemp(dir=self.tmp.name))
+            settings = Settings(trim_at_by_model=True, chars_per_token=1.0, context_dir=ctx)
+            msgs = anth_history(3, filler=filler)
+            data = anth_request(copy.deepcopy(msgs))
+            data["model"] = model
+            return len(process_request(data, "anthropic_messages", settings)["messages"]) < len(msgs)
+        # Three user turns of filler characters: about 100k estimated tokens, then about 126k.
+        self.assertTrue(trims("anthropic/claude-haiku-5-5", 33000))
+        self.assertFalse(trims("anthropic/claude-sonnet-5", 33000))
+        self.assertTrue(trims("anthropic/claude-sonnet-5", 42000))
+
     def test_disabled_from_env(self):
         self.assertFalse(Settings.from_env({"CONTEXT_PROXY_ENABLED": "0"}).enabled)
         s = Settings.from_env({"OPENMEM_STATE_DIR": "/state"})
@@ -963,9 +988,15 @@ class StandingInstructionTests(Base):
 
     def test_pointer_text_contract(self):
         self.assertEqual(pointer_text("s1", 3),
-                         "[openmem: continuing session s1; 3 earlier messages are NOT in your context. "
+                         "[openmem: continuing session s1; 3 earlier messages are NOT in your context. They "
+                         "were delivered to you and later removed to fit your context window, so a gap in what you "
+                         "see (missing batches, lines, keys) is in them. "
+                         "The tools smart_compact_search and smart_compact_sql are available to you in this "
+                         "request. "
                          'You MUST call smart_compact_search(session_id="s1", query=... or pattern=...) before '
-                         "answering anything that depends on them; every message of this session is stored and "
+                         'answering anything that depends on them, and never answer "not found", "never '
+                         'received" or "no search tool" without calling it; every message of this session is '
+                         'stored and '
                          'queryable with smart_compact_search and smart_compact_sql(session_id="s1", sql=...).]')
 
     def test_anthropic_first_request_appends_one_block(self):

@@ -1,0 +1,15 @@
+.venv/
+cb/
+clm/
+node/
+node24
+repo-*/
+results-*/
+state*/
+ctx/*
+!ctx/dh_smoke.sh
+mem/
+compact-bench/
+compact-bench-openmem/results/
+compact-bench-openmem/work/
+__pycache__/
