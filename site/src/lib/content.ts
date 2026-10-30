@@ -37,6 +37,10 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 
 export const features = [
   {
+    title: 'Context management',
+    body: 'Smart compaction keeps long Claude Code, Codex and OpenCode sessions under a token limit without an LLM summary. Every turn stays in a local SQLite store that the agent searches with `smart_compact_search` and `smart_compact_sql`.',
+  },
+  {
     title: 'Pluggable providers',
     body: 'Hindsight, mem0, Cognee, or the next manifest. One wizard and indexer; `npx @bcmyguest/openmem switch` rewires compose and MCP. Data stays on each backend until you export/import yourself.',
   },

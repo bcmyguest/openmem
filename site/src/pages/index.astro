@@ -8,12 +8,30 @@ import Badge from '../components/ui/Badge.astro';
 import CodeBlock from '../components/ui/CodeBlock.astro';
 import { features, next, providers, security, site, STATUS_LABEL, steps, works } from '../lib/content';
 import { withBase } from '../lib/url';
+import bench from '../data/contextbench.json';
 
 const supportedNames = providers.filter((p) => p.status === 'supported').map((p) => p.label).join(', ');
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
   'Memory interface for coding agents: stable memory_* tools over Hindsight, mem0, Cognee, or the next provider.';
+
+// Headline benchmark line, read from contextbench.json (site/scripts/bench/compute-contextbench.py).
+const fmt = (v: number | null | undefined) => (v == null ? null : v.toFixed(2));
+const kTok = (v: number | null | undefined) => (v == null ? null : `${Math.round(v / 1000)}k`);
+const label = Object.fromEntries(bench.settings.map((s) => [s.key, s.label.toLowerCase()]));
+const headlineFor = (fam: 'kv' | 'log', task: string) => {
+  const h = bench.headline[fam];
+  const others = (['s2', 's1'] as const)
+    .map((k) => {
+      if (h[k].score == null) return `${label[k]}: no completed trial`;
+      const stepLimit = (bench.cells[k][fam] as Record<string, { terminated_by?: string[] }>)[h.size].terminated_by?.includes('max_steps');
+      return `${label[k]} ${fmt(h[k].score)}${stepLimit ? ', stopped at the step limit' : ''}`;
+    })
+    .join(', ');
+  return `${task} ${h.size}: ${fmt(h.smart.score)} (${others})`;
+};
+const benchHeadline = `Score at the largest sizes, smart compaction against the alternatives. ${headlineFor('kv', 'kv-store')}; ${headlineFor('log', 'log-triage')}. Peak prompt stayed at ${kTok(bench.headline.smart_peak_prompt_max_all)} tokens or less, where keeping everything reached ${kTok(Math.max(bench.headline.kv.s1.peak_prompt_max ?? 0, bench.headline.log.s1.peak_prompt_max ?? 0))}.`;
 
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
@@ -85,11 +103,17 @@ npx ${site.npm.package} switch mem0 --yes`;
         <div class="lg:col-span-2">
           <h2 id="compact-h" class="text-3xl font-bold tracking-tight">Smart compaction</h2>
           <p class="mt-3 text-muted">Long sessions keep going without a slow LLM summary. Older turns move to a local transcript and memory; a pointer and bounded recall take their place; the agent retrieves details when it needs them.</p>
+          <p class="mt-4 text-sm leading-relaxed">{benchHeadline} Claude Haiku 5.5, synthetic ContextBench tasks; <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>benchmarks and caveats</a>.</p>
           <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-proxy/')}>Context proxy</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/compatibility/')}>Which agents support it</a></p>
         </div>
         <div class="lg:col-span-3">
           <SmartCompactionFigure />
         </div>
+        <figure class="lg:col-span-5 mx-auto w-full max-w-xl">
+          <img class="block h-auto w-full rounded-xl border border-line dark:hidden" src={withBase('charts/contextbench-quality.svg')} alt="Answer quality by task size for smart compaction, native compaction and keep everything" width="560" loading="lazy" />
+          <img class="hidden h-auto w-full rounded-xl border border-line dark:block" src={withBase('charts/contextbench-quality-dark.svg')} alt="Answer quality by task size for smart compaction, native compaction and keep everything (dark theme)" width="560" loading="lazy" />
+          <figcaption class="mt-2 text-sm text-muted">Mean tag-insensitive score per task size. Seed counts per cell are in the <a class="text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>benchmark table</a>.</figcaption>
+        </figure>
       </div>
     </section>
 

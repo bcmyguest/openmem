@@ -7,7 +7,9 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
-**OpenMem** is a **memory interface for coding agents**: a stable `memory_*` API over pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/), with a shared wizard, indexer, and import/export format (PMM first).
+**OpenMem.** Memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/) (Hindsight, mem0, Cognee), one setup wizard.
+
+**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks)
 
 **Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
 
