@@ -62,6 +62,28 @@ export async function probeContextProxy(port, { fetch = globalThis.fetch, timeou
   }
 }
 
+/**
+ * Agents whose config still points at the loopback proxy: Claude Code (settings.json `env`)
+ * and OpenCode 1 (`provider.anthropic.options.baseURL`). Stopping the proxy breaks them.
+ * @returns {string[]}
+ */
+export function agentsPointedAtContextProxy(home) {
+  const out = [];
+  try {
+    if (LOOPBACK_URL.test(String(readJson(path.join(home, ".claude", "settings.json")).env?.ANTHROPIC_BASE_URL || ""))) out.push("claude-code");
+  } catch {
+    // Unreadable settings: treat as not pointed.
+  }
+  try {
+    const file = opencodeConfigPath(home);
+    const options = fs.existsSync(file) ? parseJsonc(fs.readFileSync(file, "utf8"))?.provider?.anthropic?.options : undefined;
+    if (LOOPBACK_URL.test(String(options?.baseURL || ""))) out.push("opencode");
+  } catch {
+    // Unreadable config: treat as not pointed.
+  }
+  return out;
+}
+
 function readBackup(home) {
   try {
     return readJson(contextProxyBackupPath(home));
@@ -170,33 +192,37 @@ function wireOpencode(home, { enabled, port, key }) {
  * OpenCode 2 trims in OpenMem's plugin, so it is never pointed at the proxy and earlier
  * proxy settings are removed; such agents are returned in `pluginTrimmed`.
  */
-export function installContextProxy({ home, agents, enabled, port, dry = false, h, opencodeMajor = 1 }) {
+export function installContextProxy({ home, agents, enabled, agentEnabled = {}, port, dry = false, h, opencodeMajor = 1 }) {
   const targets = agents.filter((id) => id === "claude-code" || id === "opencode");
   const isOpencode2 = (id) => id === "opencode" && opencodeMajor >= 2;
+  // Per-agent choice ({ "claude-code"?, opencode? }); a missing entry uses `enabled`.
+  const on = (id) => (typeof agentEnabled[id] === "boolean" ? agentEnabled[id] : Boolean(enabled));
   const pluginTrimmed = targets.filter(isOpencode2);
   if (dry) {
     for (const id of targets) {
       if (isOpencode2(id)) h?.info(`[dry-run] ${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
-      else h?.info(`[dry-run] ${enabled ? "point" : "unpoint"} ${id} ${enabled ? "at" : "from"} context proxy http://127.0.0.1:${port}`);
+      else h?.info(`[dry-run] ${on(id) ? "point" : "unpoint"} ${id} ${on(id) ? "at" : "from"} context proxy http://127.0.0.1:${port}`);
     }
     return { changed: [], pluginTrimmed };
   }
-  const key = enabled ? ensureContextProxyKey(home) : "";
+  const anyOn = targets.some((id) => !isOpencode2(id) && on(id));
+  const key = anyOn ? ensureContextProxyKey(home) : "";
   // compose mounts this with create_host_path: false, so it must exist (700, host-owned) before `up`.
-  if (enabled) {
+  if (anyOn) {
     for (const sub of ["sessions", "blobs"]) fs.mkdirSync(path.join(contextRoot(home), sub), { recursive: true, mode: 0o700 });
   }
   const changed = [];
   for (const id of targets) {
     if (isOpencode2(id)) {
       if (wireOpencode(home, { enabled: false, port, key })) h?.ok(`${id}: removed context proxy settings (OpenCode 2 trims natively)`);
-      if (enabled) h?.info(`${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
+      if (on(id)) h?.info(`${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
       continue;
     }
-    const done = id === "claude-code" ? wireClaude(home, { enabled, port, key }) : wireOpencode(home, { enabled, port, key });
+    const enable = on(id);
+    const done = id === "claude-code" ? wireClaude(home, { enabled: enable, port, key }) : wireOpencode(home, { enabled: enable, port, key });
     if (!done) continue;
     changed.push(id);
-    h?.ok(`${id}: context proxy ${enabled ? `→ http://127.0.0.1:${port}` : "settings removed"}`);
+    h?.ok(`${id}: context proxy ${enable ? `→ http://127.0.0.1:${port}` : "settings removed"}`);
   }
   return { changed, pluginTrimmed };
 }

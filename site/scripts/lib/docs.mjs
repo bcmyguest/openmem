@@ -125,6 +125,15 @@ export const PAGES = [
     description: 'The mise-like config.toml: files, precedence, sections, and the pm tasks.',
   },
   {
+    slug: 'context-management',
+    kind: 'doc',
+    source: 'docs/context-management.md',
+    group: 'Reference',
+    optional: true,
+    title: 'Context management',
+    description: 'Smart compaction: what it trims, how to turn it on or off, per-agent support, tools, and config keys.',
+  },
+  {
     slug: 'context-proxy',
     kind: 'doc',
     source: 'docs/context-proxy.md',

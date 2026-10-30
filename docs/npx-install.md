@@ -40,6 +40,7 @@ exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `node cli/
 | `doctor` | validate the configuration without the smoke test |
 | `install-mcp` | merge **openmem** unified MCP (`memory_*`) by default; NotebookLM when sync is on or `--notebooklm`; native mem0/Cognee with `--provider-only`; `--no-unified-mcp` to skip |
 | `install-coding-agent` | `install-mcp` + session hooks for all providers; `--provider-plugin` runs `@vectorize-io/hindsight-coding-agents` instead of OpenMem hooks on Hindsight stacks (saved as `[agents] integration`; `--no-provider-plugin` reverts) |
+| `context <on\|off\|status>` | context management (smart compaction) per agent: saves `[context_proxy.agents]` (`--agents claude-code,opencode1,codex,opencode2`, default all), re-runs `install-coding-agent`, which starts or stops the `context-proxy` service (`--dry-run`); `status` lists each agent, proxy health and pointed agents ([Context management](context-management.md)) |
 | `wiring` | report `MEMORY_PROVIDER`, API URLs, and `mcp.json` alignment (`--json`) |
 | `switch <provider>` | change `MEMORY_PROVIDER` (optional stack restart + MCP; no data migration) |
 | `providers [--json]` | list the provider manifests shipped in the package with their status |

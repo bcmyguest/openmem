@@ -25,6 +25,8 @@ import { validateMemorySetup } from "./validate-setup.mjs";
 import { actionLabel, parseActionFromArgv } from "./wizard-action.mjs";
 import { applyPmConfigEnv, loadPmConfig, syncPmConfig } from "./pm-config.mjs";
 import { writeWizardConf } from "./wizard-conf.mjs";
+import { chooseContextManagement, contextAgentKeys, contextServiceWanted, startContextProxy, stopContextProxy } from "./context-step.mjs";
+import { opencodeMajorVersion } from "../../cli/coding-agent/opencode-config.mjs";
 import { setupNotebooklm as runNotebooklmSetup } from "./notebooklm.mjs";
 import { createHelpers } from "./provider-wizard/helpers.mjs";
 import {
@@ -492,8 +494,10 @@ async function smokeTest(ctx) {
 async function stackDown(ctx) {
   step("Stop the stack");
   info(`action: ${actionLabel("down")}`);
-  const args = composeArgs(ctx, "down");
-  await act(ctx, `docker ${args.join(" ")}`, "docker", args, composeSpawnOptions(ctx));
+  // A profiled service is part of `down` only when its profile is active.
+  const c = contextServiceWanted(ctx) ? { ...ctx, extraComposeProfiles: [...(ctx.extraComposeProfiles || []), "context-proxy"] } : ctx;
+  const args = composeArgs(c, "down");
+  await act(ctx, `docker ${args.join(" ")}`, "docker", args, composeSpawnOptions(c));
   ok(`compose project ${ctx.project} stopped`);
 }
 
@@ -555,7 +559,7 @@ function detectedCodingHarnesses() {
 }
 
 async function setupCodingAgents(ctx) {
-  step("8. Coding agents (optional)");
+  step("9. Coding agents (optional)");
   const pkg = ctx.memoryProvider.codingAgent?.pluginPackage;
   const harnesses = detectedCodingHarnesses();
   // Link config/coding-agent.json first (mem0/Cognee hooks print their own guidance here).
@@ -577,7 +581,7 @@ async function setupCodingAgents(ctx) {
 }
 
 async function assertMemorySetup(ctx) {
-  step("9. Validate memory setup");
+  step("10. Validate memory setup");
   ctx.validationErrors = [];
   ctx.validationChecks = [];
   await runProviderPhase(ctx, PROVIDER_PHASES.extendValidation, providerHelpers());
@@ -709,6 +713,8 @@ export async function runWizard(repoRoot, argv) {
     }
     await runProviderPhase(ctx, PROVIDER_PHASES.beforeStack, providerHelpers());
     await startStack(ctx);
+    await startContextProxy(ctx);
+    await stopContextProxy(ctx);
     await assertMemorySetup(ctx);
     await summary(ctx);
     console.log(`wizard: changed=${await changedCount(ctx, before)}`);
@@ -730,7 +736,13 @@ export async function runWizard(repoRoot, argv) {
   await setupNotebooklm(ctx);
   await runProviderPhase(ctx, PROVIDER_PHASES.beforeStack, providerHelpers());
   await startStack(ctx);
+  const harnesses = detectedCodingHarnesses();
+  const opencodeMajor = harnesses.includes("opencode") ? opencodeMajorVersion() : 1;
+  await chooseContextManagement(ctx, "8", contextAgentKeys(harnesses, opencodeMajor));
+  // On: start the proxy before agents point at it. Off: stop it after they are unwired.
+  await startContextProxy(ctx);
   await setupCodingAgents(ctx);
+  await stopContextProxy(ctx);
   await assertMemorySetup(ctx);
   syncPmConfig(ctx, await providerConfigSections(ctx));
   await summary(ctx);

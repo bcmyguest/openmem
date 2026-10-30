@@ -411,6 +411,58 @@ test_package_root_split() {
     check "package/stack split: validation passed" grep -q 'memory setup validation passed' "${out}"
 }
 
+# (i) step 8 context management: the default follows [context_proxy] enabled; on starts the
+# context-proxy service with its profile (key file and store dirs first), off stops it when it runs.
+test_context_management_step() {
+    local home="${WORK}/home-ctx" copy="${WORK}/copy-ctx" log="${WORK}/ctx.log" rc=0
+    local cfg="${home}/.config/personal-memory/config.toml"
+    mkdir -p "${home}/.config/personal-memory"; make_home "${home}"; copy_repo "${copy}"
+    printf '[context_proxy]\nenabled = true\n' > "${cfg}"
+    run_wizard "${home}" "${copy}" "${log}" "${WORK}/ctx-dry.out" --yes --dry-run || rc=$?
+    check "context step: dry run exits 0" [ "${rc}" -eq 0 ]
+    check "context step: title printed" grep -q '== 8. Context management (smart compaction) ==' "${WORK}/ctx-dry.out"
+    check "context step: no agent installed keeps saved values (enabled = true)" \
+        grep -q 'ok context management: claude-code on, opencode1 on, codex on, opencode2 on' "${WORK}/ctx-dry.out"
+    check "context step: dry run plans the proxy start" \
+        grep -q '\[dry-run\] docker compose -p pm-wizard-unit --profile hindsight --profile context-proxy up -d --no-build context-proxy' "${WORK}/ctx-dry.out"
+    check "context step: dry run writes no key file" [ ! -e "${home}/.config/personal-memory/context-proxy.env" ]
+
+    rc=0
+    run_wizard "${home}" "${copy}" "${log}.on" "${WORK}/ctx-on.out" --yes || rc=$?
+    check "context step on: real run exits 0" [ "${rc}" -eq 0 ]
+    check "context step on: compose starts context-proxy" grep -q 'compose -p pm-wizard-unit --profile hindsight --profile context-proxy up -d --no-build context-proxy' "${log}.on"
+    check "context step on: key file mode 600" [ "$(stat -c %a "${home}/.config/personal-memory/context-proxy.env")" = 600 ]
+    check "context step on: store directory created" [ -d "${home}/.local/share/openmem/context/sessions" ]
+    check "context step on: config sync keeps enabled = true" grep -q '^enabled = true' "${cfg}"
+
+    # A docker stub whose compose ps reports a running context-proxy container.
+    local stubs="${WORK}/stubs-ctx"
+    make_stubs "${stubs}"
+    sed -i '/\*" version"\*)/i\            *" ps -q context-proxy"*) echo ctxid ;;' "${stubs}/docker"
+    sed -i 's/^enabled = true/enabled = false/' "${cfg}"
+    rc=0
+    env -i PATH="${stubs}:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home}" \
+        STUB_LOG="${log}.off" PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes > "${WORK}/ctx-off.out" 2>&1 || rc=$?
+    check "context step off: real run exits 0" [ "${rc}" -eq 0 ]
+    check "context step off: no proxy start" bash -c "! grep -q 'up -d --no-build context-proxy' '${log}.off'"
+    check "context step off: running proxy stopped" grep -q 'compose -p pm-wizard-unit --profile hindsight --profile context-proxy stop context-proxy' "${log}.off"
+    check "context step off: config keeps enabled = false" grep -q '^enabled = false' "${cfg}"
+
+    # Claude Code installed, nothing saved: the per-agent default is off, saved as such; no proxy start.
+    local home2="${WORK}/home-ctx2" cfg2="${WORK}/home-ctx2/.config/personal-memory/config.toml"
+    mkdir -p "${home2}"; make_home "${home2}"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "${stubs}/claude"; chmod +x "${stubs}/claude"
+    rc=0
+    env -i PATH="${stubs}:/usr/bin:/bin" LANG=C.UTF-8 TERM=dumb HOME="${home2}" \
+        STUB_LOG="${log}.agent" PM_PROJECT=pm-wizard-unit HINDSIGHT_PORT=28888 HINDSIGHT_CP_PORT=29999 \
+        "${TEST_NODE}" "${copy}/wizard/bin/setup.mjs" --yes > "${WORK}/ctx-agent.out" 2>&1 || rc=$?
+    check "context step per-agent: real run exits 0" [ "${rc}" -eq 0 ]
+    check "context step per-agent: Claude Code defaults off" grep -q 'ok context management: claude-code off, opencode1 off, codex off, opencode2 on' "${WORK}/ctx-agent.out"
+    check "context step per-agent: config sync keeps [context_proxy.agents]" grep -Eq '^[[:space:]]*claude-code = false' "${cfg2}"
+    check "context step per-agent: no proxy start" bash -c "! grep -q 'up -d --no-build context-proxy' '${log}.agent'"
+}
+
 test_dry_run
 test_setup_entry_dry_run
 test_clack_backend_handoff
@@ -423,6 +475,7 @@ test_provider_with_hooks
 test_shipped_experimental_providers
 test_compose_version_guard
 test_package_root_split
+test_context_management_step
 
 if [ -n "${TEST_NODE}" ]; then
     (cd "${REPO}" && npm ci --no-fund --no-audit --silent 2>/dev/null) ||
