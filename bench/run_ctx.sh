@@ -21,6 +21,7 @@
 # Dsmoke = the same arms with TRIM_AT=20000, own proxies, results-Dsmoke/.
 #   ./run_ctx.sh prep D            export $D_SHA to $R_D (replacing it) and npm ci there
 # Run Dp: d-sqlite only at $DP_SHA in $R_DP (results-Dp/, state-Dp/); `./run_ctx.sh prep Dp` exports it.
+# Run Df: d-sqlite only at $DF_SHA in $R_DF (the thinking-strip cache fix); `./run_ctx.sh prep Df`.
 #   ./run_ctx.sh ollama up|down    the bench Ollama (cbench-ollama, $D_EMB_MODEL pulled), port $D_EMB_PORT
 #   ./run_ctx.sh smoke Dsmoke ARM [TASK]
 set -euo pipefail
@@ -37,11 +38,11 @@ setrun() {
     C) ARMS="s3c-semantic-nudged s3d-recall";;
     Csmoke) ARMS="s3c-semantic s3d-recall";;
     D|Dsmoke) ARMS="d-sqlite d-hybrid";;
-    Dp) ARMS="d-sqlite";;
+    Dp|Df) ARMS="d-sqlite";;
     *) echo "unknown run $RUN" >&2; exit 2;; esac
   [ "$RUN" = Csmoke ] && TRIM_AT=20000
   [ "$RUN" = Dsmoke ] && TRIM_AT=20000
-  [ "$RUN" = Dp ] && TRIM_AT=  # as run D: the proxy's per-model threshold
+  case $RUN in Dp|Df) TRIM_AT=;; esac  # as run D: the proxy's per-model threshold
   return 0
 }
 port() {
@@ -51,7 +52,7 @@ port() {
     C:s3c-semantic) echo 4241;; C:s3d-recall) echo 4242;; C:s3c-semantic-nudged) echo 4247;;
     Csmoke:s3c-semantic) echo 4243;; Csmoke:s3d-recall) echo 4244;; Csmoke:s3c-semantic-nudged) echo 4248;;
     D:d-sqlite) echo 4251;; D:d-hybrid) echo 4252;; Dsmoke:d-sqlite) echo 4253;; Dsmoke:d-hybrid) echo 4254;;
-    Dp:d-sqlite) echo 4255;;
+    Dp:d-sqlite) echo 4255;; Df:d-sqlite) echo 4256;;
     *) echo "no port for $RUN $1" >&2; exit 2;;
   esac
 }
@@ -121,8 +122,11 @@ R_DH=$B/repo-Dh
 # Run Dp: d-sqlite at $DP_SHA, run D's code plus the pointer that names the search tools as available.
 DP_SHA=f1fd9f3
 R_DP=$B/repo-Dp
-d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
-d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
+# Run Df: d-sqlite at $DF_SHA, Dp plus thinking kept from after the trim (stable cached prefix).
+DF_SHA=47d17fa
+R_DF=$B/repo-Df
+d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; Df:*) echo "$DF_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
+d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; Df:*) echo "$R_DF";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
 D_IMAGE=ghcr.io/berriai/litellm:v1.109.0-dev.1
 D_EMB_MODEL=nomic-embed-text
 D_EMB_PORT=18434
@@ -208,7 +212,7 @@ wait_live() {
 }
 
 case "${1:-}" in
-  prep) case ${2:-} in D|Dp) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp" >&2; exit 2 ;; esac ;;
+  prep) case ${2:-} in D|Dp|Df) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp|Df" >&2; exit 2 ;; esac ;;
   ollama) d_ollama "${2:-}" ;;
   up) setrun "$2"; load_token; for a in $ARMS; do proxy_up "$a"; done; wait_live ;;
   down) setrun "$2"; for a in $ARMS; do
