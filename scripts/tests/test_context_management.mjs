@@ -9,7 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import { runInstallCodingAgent } from "../../cli/install-coding-agent.mjs";
-import { runContextCommand } from "../../cli/context-management.mjs";
+import { eventLines, runContextCommand } from "../../cli/context-management.mjs";
+import { SCHEMA, openSession, proxyCodeVersion, summarizeEvents } from "../../cli/coding-agent/session-db.mjs";
 import { chooseContextManagement, startContextProxy, stopContextProxy } from "../../wizard/lib/context-step.mjs";
 import { contextAgentsFromPmConfig, syncPmConfig, updatePmConfigContextAgents, updatePmConfigTable } from "../../wizard/lib/pm-config.mjs";
 
@@ -279,6 +280,37 @@ function install(home, flags = {}) {
   check("off re-runs install-coding-agent without a proxy flag", calls.length === 1 && /install-coding-agent\.mjs --yes$/.test(calls[0]));
   await run(["off"]);
   check("off without --agents turns every agent off", Object.values(readCfg(home).context_proxy.agents).every((v) => v === false) && readCfg(home).context_proxy.enabled === false);
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
+{
+  // Events summary: last 24 h only, trims and fail-opens across sessions, newest writer versions, v1 DBs skipped.
+  const home = tmpHome();
+  const dir = path.join(home, "sessions");
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  const a = openSession(path.join(dir, "ses_a.db"));
+  a.addEvent("trim", "2026-10-30T10:00:00Z", "proxy:aaaaaaaaaaaa", { tokens_before: 130000, tokens_after: 40000, dropped: 50 });
+  a.addEvent("trim", "2026-10-28T10:00:00Z", "proxy:000000000000", { tokens_before: 9, tokens_after: 1, dropped: 1 });
+  a.addEvent("fail_open", "2026-10-30T11:00:00Z", "proxy:bbbbbbbbbbbb", { error: "TypeError", location: "tokens.py:40" });
+  openSession(path.join(dir, "ses_b.db")).addEvent("trim", "2026-10-30T09:00:00Z", "opencode:0.7.0",
+    { tokens_before: 1000, tokens_after: 400, dropped: 4 });
+  const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+  const v1 = new DatabaseSync(path.join(dir, "ses_v1.db"));
+  for (const ddl of SCHEMA) v1.exec(ddl);
+  v1.exec("PRAGMA user_version = 1");
+  v1.close();
+  const e = summarizeEvents(dir, { now });
+  check("events summary counts the window", e.sessions === 2 && e.trims === 2 && e.tokensSaved === 90600 && e.dropped === 54
+    && e.failOpens === 1 && e.unreadable === 0, JSON.stringify(e));
+  check("events summary keeps the newest error and version per writer", e.lastErrors.length === 1
+    && e.lastErrors[0].session === "ses_a" && e.lastErrors[0].error === "TypeError"
+    && e.latest.proxy === "proxy:bbbbbbbbbbbb" && e.latest.opencode === "opencode:0.7.0", JSON.stringify(e));
+  const lines = eventLines({ events: e, checkoutProxyVersion: "proxy:cccccccccccc" });
+  check("status flags a stale proxy", lines.some((l) => l.includes("restart the context-proxy service")), lines.join("\n"));
+  check("status reports a current proxy", eventLines({ events: e, checkoutProxyVersion: "proxy:bbbbbbbbbbbb" })
+    .some((l) => l.includes("matches the checkout")));
+  check("checkout proxy version has the proxy shape", /^proxy:[0-9a-f]{12}$/.test(proxyCodeVersion(path.join(ROOT, "proxy", "openmem_context"))));
+  check("missing sessions dir summarizes to zero", summarizeEvents(path.join(home, "none"), { now }).trims === 0);
   fs.rmSync(home, { recursive: true, force: true });
 }
 
