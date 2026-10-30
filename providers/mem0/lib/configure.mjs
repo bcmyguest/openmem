@@ -7,6 +7,7 @@
 import path from "node:path";
 import { applyConfig, configToml } from "./config.mjs";
 import { dirTooOpen, fileMode, keyProblem, readKey, tooOpen, writeKey } from "./env-file.mjs";
+import { EMBED_BACKENDS, storedChoice } from "./litellm.mjs";
 import { capturedKey, captureKeyFromEnv } from "./secret.mjs";
 import { ensureState, envFileProblem, resolveEnvFile } from "./state.mjs";
 import { displayUrl, resolveApiUrl, urlProblem } from "./url.mjs";
@@ -130,6 +131,71 @@ export async function clackSetup(ctx, ui, h) {
   const handoff = { WIZARD_SKIP_BACKEND_STEP: "1", MEM0_API_URL: url };
   const key = String(secret || "").trim();
   if (key) handoff.PM_MEM0_API_KEY = key;
+  Object.assign(handoff, await clackLitellm(stub, ui, h));
   ui.note("Next: Docker, indexing, and starting the stack.", "mem0 configured");
   return handoff;
+}
+
+/**
+ * Clack questions for "route mem0's LLM through the stack LiteLLM". Returns the MEM0_LITELLM_*
+ * handoff (and ANTHROPIC_API_KEY when typed); the wizard step reads them under WIZARD_SKIP_BACKEND_STEP.
+ * @param {Record<string, any>} ctx
+ * @param {typeof import("@clack/prompts")} ui
+ * @param {Helpers} h
+ * @returns {Promise<Record<string, string>>}
+ */
+async function clackLitellm(ctx, ui, h) {
+  const exitIfCancel = (v) => {
+    if (ui.isCancel(v)) {
+      ui.cancel("Setup cancelled.");
+      process.exit(0);
+    }
+    return v;
+  };
+  const current = storedChoice(ctx, h);
+  const on = exitIfCancel(
+    await ui.confirm({
+      message: "Route mem0's LLM through the stack LiteLLM (same gateway as Hindsight; 127.0.0.1 only)?",
+      initialValue: current.enabled,
+    }),
+  );
+  if (!on) return { MEM0_LITELLM: "0" };
+  const backend = /** @type {string} */ (
+    exitIfCancel(
+      await ui.select({
+        message: "LiteLLM backend for mem0's LLM",
+        options: [
+          { value: "ollama", label: "Ollama", hint: "LLM and embeddings (nomic-embed-text)" },
+          { value: "custom", label: "Custom OpenAI-compatible URL", hint: "lemond, vLLM, OpenAI, ..." },
+          { value: "anthropic", label: "Anthropic API key", hint: "Claude; no embeddings" },
+          { value: "meridian", label: "Claude subscription (Meridian)", hint: "Anthropic Consumer Terms apply; no embeddings" },
+        ],
+        initialValue: current.backend,
+      }),
+    )
+  );
+  const c = storedChoice(ctx, h, backend);
+  /** @type {Record<string, string>} */
+  const out = { MEM0_LITELLM: "1", MEM0_LITELLM_BACKEND: backend };
+  if (backend === "ollama" || backend === "custom") {
+    out.MEM0_LITELLM_API_BASE = String(
+      exitIfCancel(await ui.text({ message: "Model server base URL (as the litellm container sees it)", placeholder: c.apiBase, defaultValue: c.apiBase })) || c.apiBase,
+    ).trim();
+  }
+  out.MEM0_LITELLM_MODEL = String(
+    exitIfCancel(await ui.text({ message: "Model id for mem0's LLM", placeholder: c.model, defaultValue: c.model })) || c.model,
+  ).trim();
+  if (EMBED_BACKENDS.includes(backend)) {
+    const def = c.embedModel || "none";
+    out.MEM0_LITELLM_EMBED_MODEL = String(
+      exitIfCancel(await ui.text({ message: "Embedding model through LiteLLM (none keeps mem0's own embedder)", placeholder: def, defaultValue: def })) || def,
+    ).trim();
+  }
+  if (backend === "anthropic") {
+    const secret = String(
+      exitIfCancel(await ui.password({ message: "ANTHROPIC_API_KEY for litellm.env (empty keeps the one there)" })) || "",
+    ).trim();
+    if (secret) out.PM_ANTHROPIC_API_KEY = secret;
+  }
+  return out;
 }

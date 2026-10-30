@@ -4,29 +4,13 @@
  * Runs as a plain Node script step (no wizard context), so it only reads process
  * environment and the paths it is given.
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { ensureLitellmEnv } from "../../../wizard/lib/litellm-env.mjs";
 import { envValue } from "../../../wizard/lib/paths.mjs";
 
-/**
- * Create litellm.env (mode 600) with a fresh LITELLM_MASTER_KEY when it does not exist.
- * @param {string} litellmEnv
- * @returns {boolean} true when the file was created
- */
-export function ensureLitellmEnv(litellmEnv) {
-  if (fs.existsSync(litellmEnv)) return false;
-  const key = crypto.randomBytes(24).toString("hex");
-  const body =
-    "# LiteLLM proxy secrets. Read by the litellm compose service. Do not commit.\n" +
-    `LITELLM_MASTER_KEY=sk-${key}\n` +
-    "# lemond ignores the key; any non-empty value works.\n" +
-    "LEMOND_API_KEY=placeholder\n" +
-    "# Hosted models: add the provider key here, e.g. ANTHROPIC_API_KEY=..., and reference it as os.environ/ANTHROPIC_API_KEY.\n";
-  fs.mkdirSync(path.dirname(litellmEnv), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(litellmEnv, body, { mode: 0o600 });
-  return true;
-}
+// Moved to wizard/lib/litellm-env.mjs (mem0 shares it); re-exported for existing importers.
+export { ensureLitellmEnv };
 
 /**
  * @param {{ repo: string, home: string, env: NodeJS.ProcessEnv }} opts

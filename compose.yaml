@@ -4,7 +4,9 @@ name: openmem
 # Set HINDSIGHT_ENV_FILE to use an env file other than ~/.config/hindsight/hindsight.env.
 #
 # Provider selection is by compose profile:
-#   - litellm and hindsight carry the profile "hindsight" (and "notebooklm", which needs them).
+#   - litellm and hindsight carry the profile "hindsight" (and "notebooklm", which needs them). litellm also carries
+#     its own profile "litellm", so a provider other than Hindsight can run the stack LiteLLM as its model gateway
+#     (mem0: providers/mem0/compose.yaml publishes it on loopback; docs/mem0.md "Models through the stack LiteLLM").
 #   - indexer and indexer-state-init have no profile and no hard provider dependency; they start for every provider.
 #   - Another provider ships providers/<id>/compose.yaml (see providers/_template/compose.yaml) with its own
 #     profile, and layers over this file: docker compose -f compose.yaml -f providers/<id>/compose.yaml --profile <id> up -d
@@ -21,9 +23,10 @@ x-indexer-build: &indexer-build
 services:
   # OpenAI-compatible proxy in front of the model server. Hindsight calls it at http://litellm:4000/v1 with the
   # fixed aliases memory-retain, memory-reflect, memory-consolidate. Routes live in LITELLM_CONFIG (set by scripts/setup.sh).
-  # Internal network only: nothing is published to the host.
+  # Internal network only under Hindsight: nothing is published to the host. The "litellm" profile runs it without
+  # Hindsight; providers/mem0/compose.yaml then publishes it on 127.0.0.1 and refuses to start without a master key.
   litellm:
-    profiles: ["hindsight", "notebooklm"]
+    profiles: ["hindsight", "notebooklm", "litellm"]
     image: ghcr.io/berriai/litellm:v1.106.6
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     env_file: ${LITELLM_ENV_FILE:-${HOME}/.config/hindsight/litellm.env}
