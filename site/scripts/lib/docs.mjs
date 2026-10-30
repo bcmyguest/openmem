@@ -260,6 +260,27 @@ export function rewriteLinks(md, { sourcePath, published, kindOf, repoUrl, branc
   );
 }
 
+const PICTURE = /<picture>\s*<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+)"\s*\/?>\s*<img src="([^"]+)" alt="([^"]*)"\s*\/?>\s*<\/picture>/g;
+
+/**
+ * Turn GitHub-style light/dark `<picture>` blocks into the site's theme-toggled duo (`pm-diagram-duo`),
+ * and make image URLs under the published site (`siteRoot`, e.g. https://host/openmem/) relative to
+ * `basePath`, so the docs build serves the copy it deploys. Repository markdown keeps the absolute URLs,
+ * which GitHub renders. Other pictures are left alone.
+ * @param {string} md
+ * @param {{ siteRoot: string, basePath: string }} opts
+ */
+export function pictureToDuo(md, { siteRoot, basePath }) {
+  const root = siteRoot.replace(/\/?$/, '/');
+  const base = basePath.replace(/\/?$/, '/');
+  const local = (u) => (u.startsWith(root) ? `${base}${u.slice(root.length)}` : u);
+  return md.replace(
+    PICTURE,
+    (_m, dark, light, alt) =>
+      `<div class="pm-diagram-duo">\n<img class="pm-diagram-light" src="${local(light)}" alt="${alt}" />\n<img class="pm-diagram-dark" src="${local(dark)}" alt="${alt}" />\n</div>`,
+  );
+}
+
 /** First `# ` heading, with Markdown code ticks removed, or null. */
 export function firstHeading(md) {
   const m = /^#\s+(.+?)\s*$/m.exec(md);

@@ -43,6 +43,7 @@
       "total_tokens": 2756867.0
      },
      "usd": 0.0471362,
+     "cache_hit": 0.9662180741530726,
      "agent_wall_s": 170.7957079410553,
      "requests": 34.0,
      "native_compactions": 0.0,
@@ -70,6 +71,7 @@
       "total_tokens": 15769631.5
      },
      "usd": 1.04757181,
+     "cache_hit": 0.9777827071566354,
      "agent_wall_s": 577.3797116279602,
      "requests": 64.0,
      "native_compactions": 0.0,
@@ -97,6 +99,7 @@
       "total_tokens": 55999937.0
      },
      "usd": 3.642993615,
+     "cache_hit": 0.9825717786469201,
      "agent_wall_s": 554.6104744672775,
      "requests": 113.0,
      "native_compactions": 0.0,
@@ -125,6 +128,7 @@
       "total_tokens": 10156663.0
      },
      "usd": 0.56511827,
+     "cache_hit": 0.9825680204624851,
      "agent_wall_s": 836.3061580657959,
      "requests": 139.0,
      "native_compactions": 0.0,
@@ -154,6 +158,7 @@
       "total_tokens": 32566050.5
      },
      "usd": 1.882888135,
+     "cache_hit": 0.9882186079184859,
      "agent_wall_s": 586.2923275232315,
      "requests": 144.0,
      "native_compactions": 0.0,
@@ -182,6 +187,7 @@
       "total_tokens": 109397774.0
      },
      "usd": 6.11573032,
+     "cache_hit": 0.9930241529245284,
      "agent_wall_s": 809.4562680721283,
      "requests": 262.0,
      "native_compactions": 0.0,
@@ -214,6 +220,7 @@
       "total_tokens": 2781188.0
      },
      "usd": 0.04649562,
+     "cache_hit": 0.969589044649136,
      "agent_wall_s": 165.65034198760986,
      "requests": 34.0,
      "native_compactions": 0.0,
@@ -240,6 +247,7 @@
       "total_tokens": 3350145.0
      },
      "usd": 0.243886655,
+     "cache_hit": 0.8849148128065107,
      "agent_wall_s": 303.8590259552002,
      "requests": 67.0,
      "native_compactions": 3.0,
@@ -266,6 +274,7 @@
       "total_tokens": 12783081.0
      },
      "usd": 0.882588335,
+     "cache_hit": 0.8795081190167591,
      "agent_wall_s": 749.2227170467377,
      "requests": 196.0,
      "native_compactions": 12.0,
@@ -294,6 +303,7 @@
       "total_tokens": 8597503.0
      },
      "usd": 0.308945065,
+     "cache_hit": 0.9860140023339946,
      "agent_wall_s": 568.3481750488281,
      "requests": 140.0,
      "native_compactions": 1.0,
@@ -323,6 +333,7 @@
       "total_tokens": 8670137.0
      },
      "usd": 0.357550815,
+     "cache_hit": 0.951021058239879,
      "agent_wall_s": 571.718554019928,
      "requests": 146.0,
      "native_compactions": 3.0,
@@ -361,6 +372,7 @@
       "total_tokens": 2869311.3333333335
      },
      "usd": 0.05344848333333333,
+     "cache_hit": 0.968041018348862,
      "agent_wall_s": 154.88367533683777,
      "requests": 34.0,
      "native_compactions": 0.0,
@@ -391,6 +403,7 @@
       "total_tokens": 4992924.666666667
      },
      "usd": 0.22359620000000002,
+     "cache_hit": 0.9271676823420472,
      "agent_wall_s": 351.98578937848407,
      "requests": 85.33333333333333,
      "native_compactions": 0.0,
@@ -421,6 +434,7 @@
       "total_tokens": 13847712.0
      },
      "usd": 0.84858498,
+     "cache_hit": 0.8984702007069997,
      "agent_wall_s": 1129.457926273346,
      "requests": 208.66666666666666,
      "native_compactions": 0.0,
@@ -451,6 +465,7 @@
       "total_tokens": 9029552.0
      },
      "usd": 0.27413594,
+     "cache_hit": 0.984277478245204,
      "agent_wall_s": 672.9365476767222,
      "requests": 154.0,
      "native_compactions": 0.0,
@@ -481,6 +496,7 @@
       "total_tokens": 10640572.666666666
      },
      "usd": 0.3204452933333333,
+     "cache_hit": 0.9622867257694654,
      "agent_wall_s": 656.8417637348175,
      "requests": 166.0,
      "native_compactions": 0.0,
@@ -511,6 +527,7 @@
       "total_tokens": 18578809.0
      },
      "usd": 0.73692899,
+     "cache_hit": 0.9573803933537913,
      "agent_wall_s": 1463.2154732545216,
      "requests": 286.6666666666667,
      "native_compactions": 0.0,
@@ -567,7 +584,8 @@
     "p90": 853.6904240608216,
     "min": 170.7957079410553,
     "max": 923.2274880409241
-   }
+   },
+   "cache_hit_all_requests": 0.9865462281530041
   },
   "s2": {
    "trials": 6,
@@ -621,7 +639,8 @@
     "detected": 22,
     "cc_compact_boundaries": 22,
     "trials_matching": 6
-   }
+   },
+   "cache_hit_all_requests": 0.9335588491709719
   },
   "smart": {
    "trials": 18,
@@ -662,7 +681,8 @@
     "min": 0.868443,
     "max": 56.696871
    },
-   "smart_trim_hook_timing": null
+   "smart_trim_hook_timing": null,
+   "cache_hit_all_requests": 0.9466786899977173
   }
  },
  "headline": {
@@ -703,6 +723,35 @@
    }
   },
   "smart_peak_prompt_max_all": 120079
+ },
+ "vs_native": {
+  "cells": [
+   "kv R1000",
+   "kv R4000",
+   "kv R16000",
+   "log L1600",
+   "log L6400"
+  ],
+  "score": {
+   "smart": 0.9805555555555555,
+   "s2": 0.325
+  },
+  "usd": {
+   "smart": 0.34404217933333336,
+   "s2": 0.367893298
+  },
+  "agent_wall_s": {
+   "smart": 593.2211404800415,
+   "s2": 471.7597628116608
+  },
+  "compaction_event_s_median": {
+   "smart_trim_request_upper_bound": 4.016868,
+   "s2_summary_call": 10.7302325
+  },
+  "cache_hit": {
+   "smart": 0.9480486210825155,
+   "s2": 0.934209407409256
+  }
  },
  "compact_bench": {
   "source": "compact-bench-openmem/results/full",

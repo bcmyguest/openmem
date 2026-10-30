@@ -94,6 +94,13 @@ def trial_record(bench: Path, results: str, state: str, arm: str, name: str, ctx
     return rec
 
 
+def cache_hit(trials: list[dict]) -> float | None:
+    """Prompt-cache hit rate over all requests of these trials: cache_read / (input + cache_read + cache_write)."""
+    cr = sum(t["cache_read"] for t in trials)
+    prompt = sum(t["input"] + t["cache_read"] + t["cache_write"] for t in trials)
+    return cr / prompt if prompt else None
+
+
 def cell_summary(trials: list[dict]) -> dict:
     out = {"n": len(trials), "seeds": sorted(t["seed"] for t in trials)}
     if not trials:
@@ -107,6 +114,7 @@ def cell_summary(trials: list[dict]) -> dict:
         "tokens": {k: _mean(t[k] for t in trials) for k in
                    ("input", "cache_read", "cache_write", "output", "total_tokens")},
         "usd": _mean(t["usd"] for t in trials),
+        "cache_hit": cache_hit(trials),
         "agent_wall_s": _mean(t["agent_wall_s"] for t in trials),
         "requests": _mean(t["requests"] for t in trials),
         "native_compactions": _mean(t["native_compactions"] for t in trials),
@@ -211,6 +219,22 @@ def main(argv: list[str]) -> int:
                                     for k in c}}
         for fam, sizes in SIZES.items()}
     data["headline"]["smart_peak_prompt_max_all"] = max(t["peak_prompt"] for t in all_trials["smart"])
+    # OpenMem against native compaction over the cells where native has a completed trial: each cell
+    # weighs the same (mean of cell means), so the settings' different seed counts do not tilt it.
+    matched = [(f, s) for f, sizes in SIZES.items() for s in sizes if c["s2"][f][s]["n"] and c["smart"][f][s]["n"]]
+    cm = lambda k, m: _mean(c[k][f][s][m] for f, s in matched)  # noqa: E731
+    data["vs_native"] = {
+        "cells": [f"{f} {s}" for f, s in matched],
+        "score": {"smart": cm("smart", "score"), "s2": cm("s2", "score")},
+        "usd": {"smart": cm("smart", "usd"), "s2": cm("s2", "usd")},
+        "agent_wall_s": {"smart": cm("smart", "agent_wall_s"), "s2": cm("s2", "agent_wall_s")},
+        "compaction_event_s_median": {
+            "smart_trim_request_upper_bound": data["timing"]["smart"]["smart_trim_request_latency_s"]["median"],
+            "s2_summary_call": data["timing"]["s2"]["native_summary_request_latency_s"]["median"]},
+        "cache_hit": {"smart": cm("smart", "cache_hit"), "s2": cm("s2", "cache_hit")},
+    }
+    for key, trials in all_trials.items():
+        data["timing"][key]["cache_hit_all_requests"] = cache_hit(trials)
     data["compact_bench"] = compact_bench(bench)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

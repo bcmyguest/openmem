@@ -7,14 +7,17 @@ OpenMem connects coding agents and a shared indexer to one active [memory provid
 Two paths. **A, memory:** sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. **B, context management:** the context proxy (OpenCode 2: a native plugin) keeps each session under `trim_at_tokens` by moving older turns to a local session store that the agent searches; no model call summarizes them. OpenMem parts are tinted.
 
 <div class="pm-overview">
-<div class="pm-diagram-duo">
-<img class="pm-diagram-light" src="/openmem/diagrams/overview-memory.svg" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks" />
-<img class="pm-diagram-dark" src="/openmem/diagrams/overview-memory-dark.svg" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks (dark theme)" />
-</div>
-<div class="pm-diagram-duo">
-<img class="pm-diagram-light" src="/openmem/diagrams/overview-context.svg" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin" />
-<img class="pm-diagram-dark" src="/openmem/diagrams/overview-context-dark.svg" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin (dark theme)" />
-</div>
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-memory-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-memory.png" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks" />
+</picture>
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-context-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-context.png" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin" />
+</picture>
+
 </div>
 
 The sections below show every runtime path and optional integration.

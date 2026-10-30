@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { firstHeading, mapProse, rewriteLinks, stripH1, withFrontmatter } from './lib/docs.mjs';
+import { firstHeading, mapProse, pictureToDuo, rewriteLinks, stripH1, withFrontmatter } from './lib/docs.mjs';
+
+test('pictureToDuo: site pictures become the theme duo with base-relative URLs', () => {
+  const md = [
+    'Before.',
+    '<picture>',
+    '<source media="(prefers-color-scheme: dark)" srcset="https://h.io/om/media/c-dark.png" />',
+    '<img src="https://h.io/om/media/c.png" alt="Chart" />',
+    '</picture>',
+    '<picture>',
+    '<source media="(prefers-color-scheme: dark)" srcset="https://other.io/x-dark.png" />',
+    '<img src="https://other.io/x.png" alt="Other" />',
+    '</picture>',
+  ].join('\n');
+  const out = pictureToDuo(md, { siteRoot: 'https://h.io/om/', basePath: '/om/' });
+  assert.match(out, /<img class="pm-diagram-light" src="\/om\/media\/c\.png" alt="Chart" \/>/);
+  assert.match(out, /<img class="pm-diagram-dark" src="\/om\/media\/c-dark\.png" alt="Chart" \/>/);
+  assert.match(out, /src="https:\/\/other\.io\/x\.png"/, 'foreign URLs stay absolute');
+  assert.doesNotMatch(out, /<picture>/);
+  assert.equal(pictureToDuo('plain text', { siteRoot: 'https://h.io/om/', basePath: '/' }), 'plain text');
+});
 
 const ctx = {
   sourcePath: 'docs/a.md',
