@@ -45,7 +45,7 @@ OpenCode 2 does not run OpenCode 1 plugins ([migration guide](https://opencode.a
 | --- | --- | --- |
 | Registration | `prompt` / `context` hooks, `session.created` event | Writes `sessions/<sid>.json` on the first hook call per session. In OpenCode 2.2.1 a location's plugins loaded after `opencode run` had created the session, so `session.created` never arrived |
 | Prompt recall | `ctx.session.hook("prompt")` | First prompt: `memory_reflect`; later prompts: `memory_recall` |
-| System context | `ctx.session.hook("context")` | Pushes `{ type: "text", text: "Personal memory for <bank>: …" }` onto `event.system` |
+| System context | `ctx.session.hook("context")` | Pushes the session banner onto `event.system`; puts `Personal memory for <bank>:` and the framed recall block in a leading text part of the user message the prompt belongs to, never in `event.system` |
 | Native trim | `ctx.session.hook("context")` | Replaces `event.messages` per [context proxy](context-proxy.md) rules (`cli/coding-agent/context-trim.mjs`) |
 | Native compaction | `ctx.session.hook("compaction")` | Sets `event.result.summary` to the pointer + recall; `[compaction] native = false` disables it |
 | `/smart-compact` | `prompt` hook; `ctx.command.transform` adds a `smart-compact` command | Writes `sessions/<sid>.force`; no recall for that prompt |
@@ -55,6 +55,8 @@ The access policy matches OpenCode 1: denied workspaces get no registration, rec
 
 Hindsight Stop hooks submit retains with `async: true` so model extraction runs after the hook returns. A successful queue response advances the transcript cursor; later extraction failures must be checked through Hindsight operations. MCP `memory_add` defaults to async; pass `async: false` to wait for extraction.
 SessionStart hooks use recall instead of reflect. Hindsight startup recall requests `budget: low` and `max_tokens: 1200`; all hook recall output is limited to eight hits and 8000 characters. Explicit `memory_reflect` remains available through the MCP.
+
+Every hook and plugin recall (SessionStart and prompt hooks for Claude Code, Codex and Cursor; the OpenCode 1 and 2 per-prompt recall) is framed as untrusted data with the trim pointer's frame ([format](context-store.md#proxy-inserted-text)): the fixed sentence, then the text in an `<openmem-recall untrusted="true">` block whose inner `openmem-recall` tags are escaped. The 8000-character cap includes the 147-character frame; the SessionStart banner and the OpenCode `Personal memory for <bank>:` label sit outside it. `hookRecallBlock` in `cli/coding-agent/session-facade.mjs` builds it from the shared `recallBlock` (`cli/coding-agent/recall-frame.mjs`). `[compaction] recall` does not affect hook recall.
 
 ## Session scopes
 
