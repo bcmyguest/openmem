@@ -21,6 +21,7 @@ const CONTEXT_TRIM_ENV_KEYS = [
   ["context_proxy", "compress_over_tokens", "CONTEXT_COMPRESS_OVER_TOKENS"],
   ["compaction", "max_chars", "CONTEXT_COMPACTION_MAX_CHARS"],
   ["context_store", "ttl_days", "CONTEXT_STORE_TTL_DAYS"],
+  ["context_store", "embedding_max_chars", "CONTEXT_EMBEDDING_MAX_CHARS"],
 ];
 /** String keys of `[context_store]` and their env names (session database vectors, docs/context-store.md). */
 const CONTEXT_STORE_STRING_KEYS = [
@@ -308,7 +309,8 @@ export function contextTrimFromPmConfig(cfg) {
  * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
  * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
  * CONTEXT_CHARS_PER_TOKEN, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
- * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL. Unset or invalid keys are left out, so the reader's defaults
+ * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL, `embedding_timeout_s` (positive number) →
+ * CONTEXT_EMBEDDING_TIMEOUT_S, `embedding_max_chars` → CONTEXT_EMBEDDING_MAX_CHARS. Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
  * @param {Record<string, unknown>} cfg
  * @returns {Record<string, string>}
@@ -324,6 +326,8 @@ export function contextTrimEnvFromPmConfig(cfg) {
   const ratio = tableOf(cfg, "context_proxy").chars_per_token;
   if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
   const store = tableOf(cfg, "context_store");
+  const timeout = store.embedding_timeout_s;
+  if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) out.CONTEXT_EMBEDDING_TIMEOUT_S = String(timeout);
   for (const [key, envName] of CONTEXT_STORE_STRING_KEYS) {
     if (typeof store[key] === "string") out[envName] = store[key].trim();
   }

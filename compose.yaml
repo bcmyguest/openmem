@@ -181,7 +181,7 @@ services:
       HINDSIGHT_URL: ${CONTEXT_PROXY_HINDSIGHT_URL:-http://hindsight:8888}
       CONTEXT_PROXY_ENABLED: ${CONTEXT_PROXY_ENABLED:-1}
       # From config.toml [context_proxy] trim_at_tokens / compress_over_tokens / standing_instruction / chars_per_token, [compaction] max_chars
-      # and [context_store] ttl_days / embedding_model,
+      # and [context_store] ttl_days / embedding_model / embedding_timeout_s / embedding_max_chars,
       # written into .env by scripts/setup.mjs and install-coding-agent; a shell export overrides .env.
       CONTEXT_TRIM_AT_TOKENS: ${CONTEXT_TRIM_AT_TOKENS:-120000}
       CONTEXT_COMPRESS_OVER_TOKENS: ${CONTEXT_COMPRESS_OVER_TOKENS:-4000}
@@ -194,6 +194,8 @@ services:
       CONTEXT_STORE_TTL_DAYS: ${CONTEXT_STORE_TTL_DAYS:-30}
       CONTEXT_EMBEDDING_MODEL: ${CONTEXT_EMBEDDING_MODEL:-}
       CONTEXT_EMBEDDING_URL: ${CONTEXT_PROXY_EMBEDDING_URL:-http://host.docker.internal:11434/v1}
+      CONTEXT_EMBEDDING_TIMEOUT_S: ${CONTEXT_EMBEDDING_TIMEOUT_S:-30}
+      CONTEXT_EMBEDDING_MAX_CHARS: ${CONTEXT_EMBEDDING_MAX_CHARS:-4000}
     volumes:
       - ./proxy:/app/proxy:ro
       # Create it first (mode 700, host-owned); compose would otherwise create a root-owned directory.

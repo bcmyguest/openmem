@@ -32,11 +32,15 @@ export const DB_SUFFIX = ".db";
 export const BUSY_TIMEOUT_MS = 1000;
 export const DEFAULT_TTL_DAYS = 30;
 export const DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1";
-/** Characters of a row's text sent for embedding (embed.py EMBED_MAX_CHARS). */
-export const EMBED_MAX_CHARS = 8000;
-const EMBED_BATCH = 32;
+/** Seconds per row of an embeddings call and characters of a row's head sent (settings.py DEFAULT_EMBEDDING_*). */
+export const DEFAULT_EMBEDDING_TIMEOUT_S = 30;
+export const DEFAULT_EMBEDDING_MAX_CHARS = 4000;
+/** Adaptive batches and row skipping (embed.py START_BATCH, MAX_BATCH, GROW_FRACTION, MAX_FAILURES). */
+export const EMBED_START_BATCH = 4;
+const EMBED_MAX_BATCH = 32;
+const EMBED_GROW_FRACTION = 0.25;
+export const EMBED_MAX_FAILURES = 3;
 const EMBED_RETRY_MS = 60_000;
-const EMBED_TIMEOUT_MS = 30_000;
 const MAX_OPEN = 16;
 const DAY_MS = 86_400_000;
 export const TTL_STAMP = ".ttl-stamp";
@@ -45,6 +49,8 @@ const SESSION_SUFFIXES = [".log.jsonl", ".trim.json", ".db-wal", ".db-shm", ".fo
 const BLOB_REF_RE = /^\[blob:([0-9a-f]{16})\]/;
 const open = new Map();
 const embedState = new Map();
+/** { batch, ok } per url + model (embed.py Embedder._endpoint). */
+const embedBatch = new Map();
 
 /** node:sqlite, loaded on first use. */
 export function sqlite() {
@@ -255,13 +261,14 @@ export function nearest(db, query, model, k, where = "", params = []) {
     .slice(0, k);
 }
 
-/** Vectors for texts from an OpenAI-compatible POST <url>/embeddings, in input order. */
-export async function fetchEmbeddings({ url, model, apiKey }, texts, fetchFn = globalThis.fetch) {
+/** Vectors for texts from an OpenAI-compatible POST <url>/embeddings, in input order; timeoutMs per call. */
+export async function fetchEmbeddings({ url, model, apiKey }, texts, fetchFn = globalThis.fetch,
+  timeoutMs = DEFAULT_EMBEDDING_TIMEOUT_S * 1000) {
   const response = await fetchFn(`${String(url).replace(/\/+$/, "")}/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
     body: JSON.stringify({ model, input: texts }),
-    signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`embeddings HTTP ${response.status}`);
   const payload = await response.json();
@@ -271,52 +278,137 @@ export async function fetchEmbeddings({ url, model, apiKey }, texts, fetchFn = g
   return vectors;
 }
 
-/** Embed every row of an open SessionDB that lacks a `model` vector (embed.py embed_pending); returns rows stored. */
-export async function embedPending(session, config, fetchFn) {
-  let stored = 0;
-  for (;;) {
-    const rows = session.db.prepare("SELECT m.seq AS seq, m.text AS text FROM messages m LEFT JOIN vectors v "
-      + "ON v.message_seq = m.seq AND v.model = ? WHERE v.message_seq IS NULL AND length(trim(m.text)) > 0 "
-      + "ORDER BY m.seq LIMIT ?").all(config.model, EMBED_BATCH);
-    if (!rows.length) return stored;
-    const vectors = await fetchEmbeddings(config, rows.map((r) => Array.from(r.text).slice(0, EMBED_MAX_CHARS).join("")), fetchFn);
-    const insert = session.db.prepare("INSERT OR IGNORE INTO vectors (message_seq, model, dim, blob) VALUES (?, ?, ?, ?)");
-    session.db.exec("BEGIN IMMEDIATE");
-    try {
-      rows.forEach((r, i) => insert.run(r.seq, config.model, vectors[i].length, packVector(vectors[i])));
-      session.db.exec("COMMIT");
-    } catch (error) {
-      session.db.exec("ROLLBACK");
-      throw error;
-    }
-    stored += rows.length;
+/** Rows without a `model` vector, trimmed first, then newest first; seqs in exclude are left out (embed.py pending_rows). */
+export function pendingRows(db, model, limit, exclude = []) {
+  const skip = exclude.length ? ` AND m.seq NOT IN (${exclude.map(() => "?").join(",")})` : "";
+  return db.prepare("SELECT m.seq AS seq, m.text AS text FROM messages m LEFT JOIN vectors v "
+    + `ON v.message_seq = m.seq AND v.model = ? WHERE v.message_seq IS NULL AND length(trim(m.text)) > 0${skip} `
+    + "ORDER BY m.in_context, m.seq DESC LIMIT ?").all(model, ...[...exclude].sort((a, b) => a - b), limit);
+}
+
+/** { filled, pending, skipped } row counts for `model`; skipped rows carry a dim-0 vector. */
+export function vectorCounts(db, model) {
+  const v = db.prepare("SELECT coalesce(sum(dim > 0), 0) AS filled, coalesce(sum(dim = 0), 0) AS skipped FROM vectors WHERE model = ?").get(model);
+  const pending = db.prepare("SELECT count(*) AS n FROM messages m LEFT JOIN vectors v ON v.message_seq = m.seq AND v.model = ? "
+    + "WHERE v.message_seq IS NULL AND length(trim(m.text)) > 0").get(model).n;
+  return { filled: Number(v.filled), pending: Number(pending), skipped: Number(v.skipped) };
+}
+
+function insertVectors(db, model, rows) {
+  const insert = db.prepare("INSERT OR IGNORE INTO vectors (message_seq, model, dim, blob) VALUES (?, ?, ?, ?)");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const [seq, vec] of rows) insert.run(seq, model, vec.length, packVector(vec));
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }
 
+const errorName = (error) => error?.name || typeof error;
+
+/**
+ * Embed every row of an open SessionDB that lacks a `model` vector (embed.py embed_pending); returns rows stored.
+ * config: { model, url, apiKey, timeoutS, maxChars }. state carries `batch`, `ok` (the endpoint's last call
+ * succeeded) and `failures` (Map seq → single-row failures) between runs. A failed size caps growth for the run. Rethrows the last error once MAX_FAILURES single-row calls fail in a row with nothing
+ * stored this run.
+ */
+export async function embedPending(session, config, fetchFn, { state = {}, log = () => {} } = {}) {
+  const timeoutS = config.timeoutS > 0 ? config.timeoutS : DEFAULT_EMBEDDING_TIMEOUT_S;
+  const maxChars = config.maxChars > 0 ? config.maxChars : DEFAULT_EMBEDDING_MAX_CHARS;
+  state.batch ??= EMBED_START_BATCH;
+  state.ok ??= false;
+  state.failures ??= new Map();
+  const { failures } = state;
+  const tried = new Set();
+  let stored = 0;
+  let streak = 0;
+  let ceiling = EMBED_MAX_BATCH;
+  for (;;) {
+    const batch = state.batch;
+    // Rows that never failed first; earlier failures get another try once those are done.
+    let rows = pendingRows(session.db, config.model, batch, [...new Set([...tried, ...failures.keys()])]);
+    if (!rows.length) rows = pendingRows(session.db, config.model, batch, [...tried]);
+    if (!rows.length) return stored;
+    const timeoutMs = timeoutS * 1000 * rows.length;
+    const start = performance.now();
+    let vectors;
+    try {
+      vectors = await fetchEmbeddings(config, rows.map((r) => Array.from(r.text).slice(0, maxChars).join("")), fetchFn, timeoutMs);
+    } catch (error) {
+      const seconds = ((performance.now() - start) / 1000).toFixed(1);
+      if (rows.length > 1) {
+        ceiling = Math.max(1, Math.floor(rows.length / 2));
+        state.batch = Math.max(1, Math.floor(rows.length / 2));
+        log(`embedding batch failed ${errorName(error)} rows=${rows.length} seconds=${seconds} batch=${state.batch}`);
+        continue;
+      }
+      const seq = rows[0].seq;
+      tried.add(seq);
+      failures.set(seq, (failures.get(seq) || 0) + 1);
+      streak++;
+      log(`embedding row failed ${errorName(error)} seq=${seq} failures=${failures.get(seq)} seconds=${seconds} batch=1`);
+      // Blame the row only while the endpoint works for other rows.
+      if (failures.get(seq) >= EMBED_MAX_FAILURES && (stored || state.ok)) {
+        insertVectors(session.db, config.model, [[seq, []]]);
+        failures.delete(seq);
+        log(`embedding skipped seq=${seq} after ${EMBED_MAX_FAILURES} failures`);
+      }
+      // The endpoint looks down: scheduleEmbedding retries the database after EMBED_RETRY_MS.
+      if (streak >= EMBED_MAX_FAILURES && !stored) {
+        state.ok = false;
+        throw error;
+      }
+      continue;
+    }
+    const ms = performance.now() - start;
+    insertVectors(session.db, config.model, rows.map((r, i) => [r.seq, vectors[i]]));
+    for (const r of rows) failures.delete(r.seq);
+    stored += rows.length;
+    streak = 0;
+    state.ok = true;
+    if (rows.length === batch && ms < EMBED_GROW_FRACTION * timeoutMs) state.batch = Math.min(ceiling, batch * 2);
+    log(`embedded rows=${rows.length} seconds=${(ms / 1000).toFixed(1)} batch=${state.batch}`);
+  }
+}
+
+/** Next batch size for an embeddings endpoint and model. */
+export function embeddingBatchSize(url, model) {
+  return embedBatch.get(`${url}\u0000${model}`)?.batch ?? EMBED_START_BATCH;
+}
+
+const stderrLog = (message) => process.stderr.write(`openmem-context: ${message}\n`);
+
 /**
  * Embed a session's new rows in the background: at most one run per database at a time, retried no sooner
- * than a minute after a failure. Returns the run's promise (resolves to rows stored, or 0); never rejects.
+ * than a minute after a failing run. Returns the run's promise (resolves to rows stored, or 0); never rejects.
+ * One log line per batch goes to `log` (default: stderr).
  */
-export function scheduleEmbedding(file, config, { fetchFn, onError } = {}) {
+export function scheduleEmbedding(file, config, { fetchFn, onError, log = stderrLog } = {}) {
   if (!config?.model || !config?.url) return Promise.resolve(0);
-  const state = embedState.get(file) || { running: null, again: false, retryAt: 0 };
+  const state = embedState.get(file) || { running: null, again: false, retryAt: 0, failures: new Map() };
   embedState.set(file, state);
   if (Date.now() < state.retryAt) return Promise.resolve(0);
   if (state.running) {
     state.again = true;
     return state.running;
   }
+  const batchKey = `${config.url}\u0000${config.model}`;
   state.running = (async () => {
     let total = 0;
+    const endpoint = embedBatch.get(batchKey) || { batch: EMBED_START_BATCH, ok: false };
+    const run = { ...endpoint, failures: state.failures };
     try {
       do {
         state.again = false;
-        total += await embedPending(openSession(file), config, fetchFn);
+        total += await embedPending(openSession(file), config, fetchFn, { state: run, log });
       } while (state.again);
     } catch (error) {
       state.retryAt = Date.now() + EMBED_RETRY_MS;
       onError?.(error);
     } finally {
+      embedBatch.set(batchKey, { batch: run.batch, ok: run.ok });
       state.running = null;
     }
     return total;
@@ -378,9 +470,21 @@ export function maybeSweepContextStore(root, ttlDays, now = Date.now()) {
   return sweepContextStore(root, ttlDays, now);
 }
 
+function positiveNumber(raw, fallback) {
+  const text = String(raw ?? "").trim();
+  const n = text ? Number(text) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function positiveInt(raw, fallback) {
+  const text = String(raw ?? "").trim();
+  return /^[+-]?\d+$/.test(text) && Number.parseInt(text, 10) > 0 ? Number.parseInt(text, 10) : fallback;
+}
+
 /**
  * Store settings from the environment (the proxy's Settings): CONTEXT_STORE_TTL_DAYS (default 30, 0 keeps
- * everything), CONTEXT_EMBEDDING_MODEL (empty turns vectors off), CONTEXT_EMBEDDING_URL, CONTEXT_EMBEDDING_API_KEY.
+ * everything), CONTEXT_EMBEDDING_MODEL (empty turns vectors off), CONTEXT_EMBEDDING_URL, CONTEXT_EMBEDDING_API_KEY,
+ * CONTEXT_EMBEDDING_TIMEOUT_S (seconds per row of a call, default 30) and CONTEXT_EMBEDDING_MAX_CHARS (default 4000).
  */
 export function storeSettings(env = process.env) {
   const ttl = String(env.CONTEXT_STORE_TTL_DAYS ?? "").trim();
@@ -389,5 +493,7 @@ export function storeSettings(env = process.env) {
     embeddingModel: String(env.CONTEXT_EMBEDDING_MODEL ?? "").trim(),
     embeddingUrl: (String(env.CONTEXT_EMBEDDING_URL ?? "").trim() || DEFAULT_EMBEDDING_URL).replace(/\/+$/, ""),
     embeddingApiKey: String(env.CONTEXT_EMBEDDING_API_KEY ?? "").trim(),
+    embeddingTimeoutS: positiveNumber(env.CONTEXT_EMBEDDING_TIMEOUT_S, DEFAULT_EMBEDDING_TIMEOUT_S),
+    embeddingMaxChars: positiveInt(env.CONTEXT_EMBEDDING_MAX_CHARS, DEFAULT_EMBEDDING_MAX_CHARS),
   };
 }
