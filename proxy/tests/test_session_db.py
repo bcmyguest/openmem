@@ -109,10 +109,12 @@ class StoreEveryMessageTests(DbBase):
         rows = self.query("SELECT seq, text, in_context, trimmed_at_seq FROM messages ORDER BY seq")
         cut_seq = next(seq for seq, text, _, _ in rows if text.startswith("question 2"))
         out = [r for r in rows if r[2] == 0]
-        # Everything before the cut leaves context except the pinned first user turn (seq 1).
-        self.assertEqual([r[0] for r in out], list(range(2, cut_seq)))
+        # Everything before the cut leaves context except the pinned first user turn (seq 1) and the reply
+        # just before the cut turn.
+        self.assertEqual([r[0] for r in out], list(range(2, cut_seq - 1)))
         self.assertTrue(all(r[3] == cut_seq for r in out))
         self.assertEqual(rows[0][2], 1)
+        self.assertEqual(rows[cut_seq - 2][1:3], ("ok", 1))
         self.assertTrue(all(r[2] == 1 and r[3] is None for r in rows if r[0] >= cut_seq))
 
     def test_cut_reset_brings_rows_back(self):
@@ -159,13 +161,14 @@ class StoreEveryMessageTests(DbBase):
 
 class EventTests(DbBase):
     def test_trim_records_tokens_before_and_after(self):
-        self.run_req(history(3), trim_at_tokens=1)
+        # Six turns, so the dropped rows outweigh the pointer note that replaces them.
+        self.run_req(history(6), trim_at_tokens=1)
         rows = self.query("SELECT kind, version, tokens_before, tokens_after, dropped, error FROM events")
         self.assertEqual(len(rows), 1)
         kind, version, before, after, dropped, error = rows[0]
         self.assertEqual((kind, version, error), ("trim", core.VERSION, None))
         self.assertGreater(before, after)
-        self.assertEqual(dropped, 7)
+        self.assertEqual(dropped, 18)
 
     def test_request_without_trim_records_nothing(self):
         self.run_req(history(3))
@@ -194,7 +197,7 @@ class FailOpenTests(DbBase):
         err = io.StringIO()
         with redirect_stderr(err):
             out = self.run_req(history(3), trim_at_tokens=1)
-        self.assertTrue(out["messages"][1]["content"][0]["text"].startswith("[openmem: continuing session"))
+        self.assertTrue(out["messages"][2]["content"][0]["text"].startswith("[openmem: continuing session"))
         self.assertEqual(err.getvalue().count("openmem-context: fail-open"), 1)
         self.assertNotIn("question", err.getvalue())
 

@@ -27,6 +27,9 @@ MAX_THREADS = 32
 # Requests awaiting their usage report, by litellm_call_id: (sid, thread root, request chars).
 MAX_PENDING = 256
 RECALL_QUERY_MAX_CHARS = 2000
+# Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under half the
+# trim threshold.
+MIN_TAIL_STEPS = 3
 # Added to the system prompt of every request while trimming is on, before any trim; constant, so the cached
 # prefix never changes. Same text as STANDING_INSTRUCTION in cli/coding-agent/context-trim.mjs.
 STANDING_INSTRUCTION = (
@@ -128,50 +131,87 @@ def first_user_index(adapter, items):
     return None
 
 
-def _droppable(adapter, items, stop, first):
-    return [x for j, x in enumerate(items[:stop]) if j != first and not adapter.is_pinned(x)]
+def prev_reply_index(adapter, items, cut, first):
+    """Index of the agent reply just before the cut turn (kept with it, so the turn reads in context), or None."""
+    j = cut - 1
+    if j < 0 or j == first or adapter.is_pinned(items[j]) or not adapter.is_reply(items[j]):
+        return None
+    return j
+
+
+def kept_indices(adapter, items, cut, gap=None, first=None):
+    """Indices the view keeps: pinned items, the first user turn, the reply before the cut turn, the cut turn, and
+    every later item except the in-turn gap [cut + 1, gap). Everything when cut is None."""
+    if cut is None:
+        return set(range(len(items)))
+    head = {first, prev_reply_index(adapter, items, cut, first), cut}
+    return {j for j, x in enumerate(items)
+            if j in head or adapter.is_pinned(x) or (j > cut and (gap is None or j >= gap))}
+
+
+def _droppable(adapter, items, cut, gap, first):
+    keep = kept_indices(adapter, items, cut, gap, first)
+    return [x for j, x in enumerate(items) if j not in keep]
+
+
+def _pairs_intact(adapter, items, keep):
+    """Whether the kept and dropped items share no call/result pair."""
+    def ids(fn, inside):
+        return set().union(*(fn(x) for j, x in enumerate(items) if (j in keep) == inside)) - {None}
+    return not (ids(adapter.call_ids, False) & ids(adapter.result_ids, True)
+                or ids(adapter.call_ids, True) & ids(adapter.result_ids, False))
 
 
 def choose_cut(adapter, items, after, first=None):
-    """Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part.
-
-    The kept part is the suffix from the cut plus the pinned first user turn.
-    """
+    """Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part."""
     for i in range(len(items) - 1, after, -1):
-        item = items[i]
-        if not adapter.is_turn_start(item):
+        if not adapter.is_turn_start(items[i]):
             continue
-        dropped = _droppable(adapter, items, i, first)
-        if not dropped:
+        keep = kept_indices(adapter, items, i, None, first)
+        if len(keep) == len(items):
             return None
-        kept = items[i:] + ([items[first]] if first is not None and first < i else [])
-        d_calls = set().union(*(adapter.call_ids(x) for x in dropped)) - {None}
-        d_results = set().union(*(adapter.result_ids(x) for x in dropped)) - {None}
-        k_calls = set().union(*(adapter.call_ids(x) for x in kept)) - {None}
-        k_results = set().union(*(adapter.result_ids(x) for x in kept)) - {None}
-        if d_calls & k_results or k_calls & d_results:
-            continue
-        return i
+        if _pairs_intact(adapter, items, keep):
+            return i
     return None
 
 
-def render(adapter, items, cut, note, first=None):
-    """Pinned items and the first user turn before the cut (in order), then the noted cut turn and the rest."""
-    if not cut:
+def last_turn_index(adapter, items):
+    return next((i for i in range(len(items) - 1, -1, -1) if adapter.is_turn_start(items[i])), None)
+
+
+def choose_gap(adapter, items, cut, after, first, fits):
+    """Start of the kept tail for a cut inside the turn at `cut`, > after; None when no gap is possible.
+
+    The tail keeps the newest MIN_TAIL_STEPS tool exchanges, then older ones while fits(gap) holds (the request
+    stays under half the trim threshold). An exchange is never split: the tail starts at an adapter step start.
+    """
+    starts = [j for j in range(cut + 2, len(items)) if adapter.is_step_start(items, j)]
+    best = None
+    for n, g in enumerate(reversed(starts), 1):
+        if g <= after:
+            break
+        if n < MIN_TAIL_STEPS:
+            continue
+        if n > MIN_TAIL_STEPS and not fits(g):
+            break
+        if _pairs_intact(adapter, items, kept_indices(adapter, items, cut, g, first)):
+            best = g
+    return best
+
+
+def render(adapter, items, cut, note, first=None, gap=None):
+    """The kept items (kept_indices) in order, the cut turn carrying the note."""
+    if cut is None:
         return items
-    head = [x for j, x in enumerate(items[:cut]) if j == first or adapter.is_pinned(x)]
-    return [*head, adapter.prepend_note(items[cut], note), *items[cut + 1:]]
+    keep = kept_indices(adapter, items, cut, gap, first)
+    return [adapter.prepend_note(x, note) if j == cut else x for j, x in enumerate(items) if j in keep]
 
 
-def _locate_cut(items, thread):
-    idx = thread.get("cut")
-    want = thread.get("cut_fp")
-    if isinstance(idx, int) and 0 < idx < len(items) and fingerprint(items[idx]) == want:
+def _locate(items, idx, want, lo=0):
+    """Index of the item with fingerprint `want` (idx when it still matches), searching from lo; None if absent."""
+    if isinstance(idx, int) and lo <= idx < len(items) and fingerprint(items[idx]) == want:
         return idx
-    for i in range(1, len(items)):
-        if fingerprint(items[i]) == want:
-            return i
-    return 0
+    return next((i for i in range(lo, len(items)) if fingerprint(items[i]) == want), None)
 
 
 def _registered_bank(store, sid):
@@ -205,35 +245,36 @@ def _build_note(adapter, items, cut, sid, dropped, store, settings, http):
     return "\n".join(parts)
 
 
-def stored_rows(adapter, original, items, names, cut, first):
+def stored_rows(adapter, original, items, names, cut, first, gap=None):
     """Database rows for every non-pinned message of the request, chained (sessiondb.chain).
 
     Text comes from the original messages, so a compressed tool result is stored in full with its blob_id. keep
-    is False for messages the view drops (before the cut, except the pinned first user turn). Returns (rows,
-    cut_row), cut_row being the index of the cut turn's first row or None.
+    is False for messages the view drops (kept_indices). Returns (rows, cut_row), cut_row being the index of the
+    cut turn's first row or None.
     """
     rows = []
     cut_row = None
+    kept = kept_indices(adapter, items, cut, gap, first)
     for j, item in enumerate(original):
         if adapter.is_pinned(item):
             continue
         base = adapter.rows(item, names)
         shown = base if items[j] is item else adapter.rows(items[j], names)
-        if cut and j == cut and base:
+        if j == cut and base:
             cut_row = len(rows)
-        keep = not (j < cut and j != first)
+        keep = j in kept
         for k, (role, kind, name, text) in enumerate(base):
             blob = sessiondb.blob_ref(shown[k][3]) if shown is not base and k < len(shown) else None
             rows.append({"role": role, "kind": kind, "name": name, "text": text, "blob_id": blob, "keep": keep})
     return (sessiondb.chain(rows) if rows else rows), cut_row
 
 
-def _store_messages(store, sid, adapter, original, items, cut, first, settings):
+def _store_messages(store, sid, adapter, original, items, cut, gap, first, settings):
     """Write the request's messages to sessions/<sid>.db. Never raises: a database error is logged and the
     request goes on."""
     path = store.db_path(sid)
     try:
-        rows, cut_row = stored_rows(adapter, original, items, adapter.tool_names(items), cut, first)
+        rows, cut_row = stored_rows(adapter, original, items, adapter.tool_names(items), cut, first, gap)
         if not rows:
             return
         store.ensure_sessions()
@@ -285,38 +326,58 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
         state = store.load_trim(sid)
         threads = state["threads"]
         thread = threads.get(root)
-        cut, note = 0, None
+        cut, gap, note = None, None, None
         if thread:
-            cut = _locate_cut(items, thread)
-            note = thread.get("note") if cut else None
-            if not cut:
+            cut = _locate(items, thread.get("cut"), thread.get("cut_fp"))
+            if cut is None:
                 threads.pop(root, None)
-        view = render(adapter, items, cut, note, first)
+            else:
+                note = thread.get("note")
+                if thread.get("gap_fp"):
+                    gap = _locate(items, thread.get("gap"), thread["gap_fp"], cut + 2)
+        view = render(adapter, items, cut, note, first, gap)
         force = store.force_requested(sid)
         ratio = settings.chars_per_token if settings.chars_per_token > 0 else DEFAULT_CHARS_PER_TOKEN
-        tokens = estimate_prompt_tokens(request_chars(*context, view), state.get("usage"), root, ratio)
+        base_chars = request_chars(*context)
+        tokens = estimate_prompt_tokens(base_chars + request_chars(view), state.get("usage"), root, ratio)
         if force or tokens >= settings.trim_at_tokens:
-            new_cut = choose_cut(adapter, items, cut, first)
+            new_cut = choose_cut(adapter, items, -1 if cut is None else cut, first)
+            if new_cut is None:
+                new_cut = cut if cut is not None else last_turn_index(adapter, items)
+            new_gap = None
             if new_cut is not None:
-                dropped = len(_droppable(adapter, items, new_cut, first))
+                sizes = [request_chars(x) for x in items]
+
+                def fits(g):
+                    chars = base_chars + sum(sizes[j] for j in kept_indices(adapter, items, new_cut, g, first))
+                    return estimate_prompt_tokens(chars, state.get("usage"), root, ratio) < settings.trim_at_tokens / 2
+
+                after = gap if new_cut == cut and gap is not None else new_cut + 1
+                new_gap = choose_gap(adapter, items, new_cut, after, first, fits)
+                if new_gap is None and new_cut == cut:
+                    new_gap = gap
+            dropped = len(_droppable(adapter, items, new_cut, new_gap, first)) if new_cut is not None else 0
+            if dropped and (new_cut, new_gap) != (cut, gap):
                 note = _build_note(adapter, items, new_cut, sid, dropped, store, settings, http)
                 threads.pop(root, None)
                 threads[root] = {"cut": new_cut, "cut_fp": fingerprint(items[new_cut]), "note": note,
                                  "format": adapter.name, "updated": _utc_now()}
+                if new_gap is not None:
+                    threads[root].update(gap=new_gap, gap_fp=fingerprint(items[new_gap]))
                 while len(threads) > MAX_THREADS:
                     threads.pop(next(iter(threads)))
                 store.save_trim(sid, state)
                 if force:
                     store.clear_force(sid)
-                view = render(adapter, items, new_cut, note, first)
-                cut = new_cut
-                after = estimate_prompt_tokens(request_chars(*context, view), state.get("usage"), root, ratio)
+                view = render(adapter, items, new_cut, note, first, new_gap)
+                cut, gap = new_cut, new_gap
+                after = estimate_prompt_tokens(base_chars + request_chars(view), state.get("usage"), root, ratio)
                 trim = {"tokens_before": tokens, "tokens_after": after, "dropped": dropped}
-            elif thread and not cut:
+            elif thread and cut is None:
                 store.save_trim(sid, state)
-        elif thread and not cut:
+        elif thread and cut is None:
             store.save_trim(sid, state)
-        _store_messages(store, sid, adapter, original, items, cut, first, settings)
+        _store_messages(store, sid, adapter, original, items, cut, gap, first, settings)
         if trim:
             _record_event(store, sid, "trim", **trim)
 
