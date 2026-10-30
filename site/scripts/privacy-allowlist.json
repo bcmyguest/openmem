@@ -15,5 +15,11 @@
       "dist/llms-full.txt"
     ],
     "reason": "Documented Docker host alias for mem0 indexer URL rewrite, Cognee+Ollama endpoints, and host-resident LLM; generic compose term, not an operator path."
+  },
+  {
+    "rule": "docker-host",
+    "match": "host.docker.internal",
+    "files": ["docs/context-proxy.md", "dist/docs/context-proxy", "dist/llms-full.txt"],
+    "reason": "Docker's standard host alias in a documented default; not a private address."
   }
 ]
