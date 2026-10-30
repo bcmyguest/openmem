@@ -43,11 +43,17 @@ A trim keeps, in their original order:
 
 - pinned messages before the cut (Chat and Responses `system` / `developer` messages, OpenCode 2 `system` messages; Anthropic keeps `system` outside the message list);
 - the **first real user turn**, verbatim: Anthropic, the first `user` message that is not only `tool_result` blocks; Chat, the first `user` message; Responses, the first user `message` item; OpenCode 2, the first `user` message that is not only `tool-result` parts. It usually states the task, so every trim keeps it ahead of the pointer;
-- the cut turn, with the pointer block prepended, and everything after it.
+- the **reply before the cut**: the agent message just before the cut turn, when it is a final reply (an assistant message with no tool calls; Responses, a `message` item), so the cut turn reads as an answer to it;
+- the cut turn, with the pointer block prepended;
+- everything after the cut turn except the **in-turn gap**.
 
 A trim runs when the `.force` flag exists or the request's estimated prompt tokens reach the threshold. The estimate is calibrated from the provider's reported usage, with `CONTEXT_CHARS_PER_TOKEN` (default 2.5) as the fallback ratio ([context-proxy.md](context-proxy.md#token-estimate)); it never moves an existing cut.
 
-The cut is the last real user turn after the previous cut whose kept part (the suffix plus the pinned first turn) shares no tool call/result pair with the dropped part. No cut exists, and the request passes unchanged, when nothing but pinned messages and the first user turn precede it; in particular, nothing changes while the first user turn is still the in-flight turn. A trim keeps the pinned first turn's rows `in_context = 1`, and the pointer's `<n>` excludes it. An OpenCode 2 compaction drops every message, the first turn included, so it marks all of the request's rows `in_context = 0`.
+The cut is the last real user turn after the previous cut whose kept part shares no tool call/result pair with the dropped part. When no such turn drops anything (for example, while the first user turn is still in flight), the cut is the existing cut, else the last real user turn.
+
+The in-turn gap drops the oldest tool exchanges of the cut turn's own agent loop, so one long prompt can still be trimmed. A step is one tool exchange: Anthropic, Chat and OpenCode 2, an assistant message and the results after it; Responses, a `reasoning` item, or a call or reply not preceded by reasoning or a call, and what follows it. The tail after the gap keeps the newest 3 steps, then older steps while the request stays under half the trim threshold; the step right after the cut turn is never kept in the tail, and a step is never split. A turn with 3 steps or fewer has no gap. Later trims of the same cut only move the gap forward; a new cut starts a new gap. The cut and gap are stored with fingerprints, so later requests render the same bytes until the next trim.
+
+A trim keeps the pinned first turn's and the reply's rows `in_context = 1`, and the pointer's `<n>` counts only dropped messages. No trim happens, and the request passes unchanged, when nothing would drop. An OpenCode 2 compaction drops every message, the first turn included, so it marks all of the request's rows `in_context = 0`.
 
 ## Session database
 

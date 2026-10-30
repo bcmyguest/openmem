@@ -97,7 +97,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("compressed text is not recompressed", compressText(compressText("y".repeat(30000), 4000).compressed + "y".repeat(30000), 4000) === null);
 }
 
-// Below the threshold nothing changes; above it, the in-flight turn is kept and earlier messages drop.
+// Below the threshold nothing changes; above it, messages before the last user turn drop.
 {
   const sid = "ses_basic";
   const messages = [user("first question"), call("c1", "bash", { command: "ls" }), result("c1", "bash", "a\nb"), assistant("done"), sys, user("second question")];
