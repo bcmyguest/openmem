@@ -44,6 +44,10 @@
 .pm-overview .pm-diagram-duo {
   margin: 0;
 }
+/* Benchmark charts are drawn 480 px wide; keep them near that size instead of the full column. */
+.pm-diagram-duo img[src*='/media/contextbench-'] {
+  max-width: 26rem;
+}
 .pm-diagram-duo img {
   display: block;
   width: 100%;
