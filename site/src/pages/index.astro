@@ -2,6 +2,7 @@
 import Landing from '../layouts/Landing.astro';
 import ArchitectureFigure from '../components/landing/ArchitectureFigure.astro';
 import SmartCompactionFigure from '../components/landing/SmartCompactionFigure.astro';
+import BenchRace from '../components/landing/BenchRace.astro';
 import Button from '../components/ui/Button.astro';
 import Card from '../components/ui/Card.astro';
 import Badge from '../components/ui/Badge.astro';
@@ -126,21 +127,8 @@ npx ${site.npm.package} switch mem0 --yes`;
         </ul>
         <p class="mt-3 text-xs leading-relaxed text-muted">OpenMem against Claude Code's native compaction on <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> (synthetic tasks), mean over the {vs.cells.length} task sizes where native compaction completed a trial; Claude Haiku 5.5, {seedRange}. {wallTimeSentence(vs)} <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
 
-        <div class="mt-8 grid gap-6 md:grid-cols-2">
-          <figure class="min-w-0">
-            <div class="overflow-hidden rounded-xl border border-line">
-              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-quality-compact.svg')} alt="ContextBench score by task size: OpenMem holds as tasks grow while native compaction and keep everything fall" width="480" loading="lazy" />
-              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-quality-compact-dark.svg')} alt="ContextBench score by task size: OpenMem holds as tasks grow while native compaction and keep everything fall (dark theme)" width="480" loading="lazy" />
-            </div>
-            <figcaption class="mt-2 text-xs text-muted">Score by task size, all three settings. <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a>, synthetic.</figcaption>
-          </figure>
-          <figure class="min-w-0">
-            <div class="overflow-hidden rounded-xl border border-line">
-              <img class="block h-auto w-full dark:hidden" src={withBase('charts/contextbench-compaction.svg')} alt="ContextBench: time per compaction event, native summary call against the OpenMem request that carried a trim" width="480" loading="lazy" />
-              <img class="hidden h-auto w-full dark:block" src={withBase('charts/contextbench-compaction-dark.svg')} alt="ContextBench: time per compaction event, native summary call against the OpenMem request that carried a trim (dark theme)" width="480" loading="lazy" />
-            </div>
-            <figcaption class="mt-2 text-xs text-muted">Time per compaction event. <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a>, synthetic.</figcaption>
-          </figure>
+        <div class="mt-8">
+          <BenchRace />
         </div>
       </div>
     </section>

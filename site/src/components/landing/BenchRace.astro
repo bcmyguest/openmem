@@ -1,0 +1,384 @@
+---
+// ContextBench as a race: the wait for one compaction event (median), native summary call against
+// the OpenMem request that carried a trim, then the score per task size. Data from contextbench.json.
+// Plays once when scrolled into view; Replay restarts it. Without JavaScript or with
+// prefers-reduced-motion the figure shows its final frame.
+import bench from '../../data/contextbench.json';
+
+const T = bench.timing;
+const vs = bench.vs_native;
+const SIZES = [
+  ['kv', 'R1000', 'kv-store R1000'],
+  ['kv', 'R4000', 'kv-store R4000'],
+  ['kv', 'R16000', 'kv-store R16000'],
+  ['log', 'L1600', 'log-triage L1600'],
+  ['log', 'L6400', 'log-triage L6400'],
+].filter(([fam, size]) => vs.cells.includes(`${fam} ${size}`));
+const LANES = [
+  { key: 'smart', label: 'OpenMem', what: 'request that carried a trim, an upper bound', stat: T.smart.smart_trim_request_latency_s },
+  { key: 's2', label: 'Native compaction', what: 'LLM summary call', stat: T.s2.native_summary_request_latency_s },
+];
+const MS_PER_S = 250;
+const START_MS = 300;
+
+const X0 = 160;
+const X1 = 630;
+const VAL_X = 644;
+const MAX_S = Math.ceil(Math.max(...LANES.map((l) => l.stat.median)) / 4) * 4;
+const xOf = (s: number) => X0 + ((X1 - X0) * s) / MAX_S;
+const LANE_Y = [72, 120];
+const LANE_H = 24;
+const TICKS = Array.from({ length: MAX_S / 4 + 1 }, (_, i) => i * 4);
+const RACE_END_MS = START_MS + Math.max(...LANES.map((l) => l.stat.median)) * MS_PER_S;
+
+const BASE = 352;
+const BAR_MAX = 120;
+const GROUP_W = 86;
+const BAR_W = 26;
+const GX0 = 172;
+const SCORE_MS = RACE_END_MS + 300;
+const score = (key: string, fam: string, size: string) => (bench.cells as any)[key][fam][size];
+const f2 = (v: number) => v.toFixed(2);
+const seeds = (n: number) => `${n} seed${n === 1 ? '' : 's'}`;
+const groups = SIZES.map(([fam, size, label], i) => {
+  const smart = score('smart', fam, size);
+  const native = score('s2', fam, size);
+  return {
+    label,
+    short: `${fam} ${size}`,
+    x: GX0 + i * GROUP_W,
+    delay: SCORE_MS + i * 120,
+    bars: [
+      { cls: 'br-smart', v: smart.score, dx: 0 },
+      { cls: 'br-native', v: native.score, dx: BAR_W + 4 },
+    ],
+    tip: `${label}: OpenMem ${f2(smart.score)} (${seeds(smart.n)}), native ${f2(native.score)} (${seeds(native.n)})`,
+  };
+});
+const laneTip = (l: (typeof LANES)[number]) =>
+  `${l.label}, ${l.what}: median ${l.stat.median.toFixed(1)} s, p10 ${l.stat.p10.toFixed(1)} s, p90 ${l.stat.p90.toFixed(1)} s over ${l.stat.n} events`;
+const ms = (v: number) => `${Math.round(v)}ms`;
+---
+<figure class="br not-prose" aria-labelledby="br-caption" data-bench-race>
+  <div class="br-surface relative overflow-hidden rounded-xl border border-line">
+    <button type="button" class="br-replay" data-replay hidden>Replay</button>
+    <svg class="br-svg" viewBox="0 0 720 390" role="img" aria-labelledby="br-title br-desc">
+      <title id="br-title">ContextBench: OpenMem against native compaction</title>
+      <desc id="br-desc">
+        Median wait per compaction event: OpenMem {LANES[0].stat.median.toFixed(1)} seconds, native compaction
+        {LANES[1].stat.median.toFixed(1)} seconds. Mean score over {groups.length} task sizes: OpenMem {f2(vs.score.smart)},
+        native compaction {f2(vs.score.s2)}.
+      </desc>
+
+      <text class="br-h" x="24" y="30">1 · Wait per compaction event</text>
+      <text class="br-sub" x="24" y="46">median seconds; hover a lane for the spread</text>
+      {TICKS.map((t) => (
+        <g>
+          <line class="br-grid" x1={xOf(t)} x2={xOf(t)} y1="60" y2="152" />
+          <text class="br-tick" x={xOf(t)} y="166" text-anchor="middle">{`${t} s`}</text>
+        </g>
+      ))}
+      {LANES.map((l, i) => {
+        const dur = l.stat.median * MS_PER_S;
+        const y = LANE_Y[i];
+        return (
+          <g class="br-lane" tabindex="0" role="img" aria-label={laneTip(l)} data-tip={laneTip(l)}>
+            <text class="br-lane-t" x="24" y={y + 11}>{l.label}</text>
+            <text class="br-sub" x="24" y={y + 24}>{l.what.split(',')[0]}</text>
+            <rect class="br-track" x={X0} y={y} width={X1 - X0} height={LANE_H} rx="6" />
+            <rect
+              class={`br-run ${l.key === 'smart' ? 'br-smart' : 'br-native'}`}
+              x={X0}
+              y={y}
+              width={xOf(l.stat.median) - X0}
+              height={LANE_H}
+              rx="6"
+              style={`--d:${ms(dur)};--delay:${ms(START_MS)}`}
+            />
+            <text
+              class="br-val"
+              x={VAL_X}
+              y={y + 16}
+              data-count={l.stat.median}
+              data-digits="1"
+              data-suffix=" s"
+              data-d={Math.round(dur)}
+              data-delay={START_MS}
+            >{`${l.stat.median.toFixed(1)} s`}</text>
+            {l.key === 'smart' && (
+              <text class="br-done" x={xOf(l.stat.median) + 10} y={y + 16} style={`--delay:${ms(START_MS + dur)}`}>back to work</text>
+            )}
+          </g>
+        );
+      })}
+
+      <text class="br-h" x="24" y="210">2 · Score by task size</text>
+      <text class="br-sub" x="24" y="226">ContextBench, tag-insensitive, 0 to 1</text>
+      <rect class="br-key br-smart" x="24" y="244" width="10" height="10" rx="2" />
+      <text class="br-key-t" x="40" y="253">OpenMem</text>
+      <text class="br-mean br-mean-smart" x="24" y="290" data-count={vs.score.smart} data-digits="2" data-d="900" data-delay={SCORE_MS}>{f2(vs.score.smart)}</text>
+      <rect class="br-key br-native" x="24" y="306" width="10" height="10" rx="2" />
+      <text class="br-key-t" x="40" y="315">Native compaction</text>
+      <text class="br-mean" x="24" y="352" data-count={vs.score.s2} data-digits="2" data-d="900" data-delay={SCORE_MS}>{f2(vs.score.s2)}</text>
+      <line class="br-axis" x1={GX0 - 10} x2={GX0 + groups.length * GROUP_W - 20} y1={BASE} y2={BASE} />
+      {groups.map((g) => (
+        <g class="br-group" tabindex="0" role="img" aria-label={g.tip} data-tip={g.tip}>
+          <rect class="br-hit" x={g.x - 6} y={BASE - BAR_MAX - 8} width={BAR_W * 2 + 16} height={BAR_MAX + 36} />
+          {g.bars.map((b) => (
+            <rect
+              class={`br-bar ${b.cls}`}
+              x={g.x + b.dx}
+              y={BASE - Math.max(b.v * BAR_MAX, 2)}
+              width={BAR_W}
+              height={Math.max(b.v * BAR_MAX, 2)}
+              rx="3"
+              style={`--d:700ms;--delay:${ms(g.delay)}`}
+            />
+          ))}
+          <text class="br-tick" x={g.x + BAR_W + 2} y={BASE + 16} text-anchor="middle">{g.short}</text>
+        </g>
+      ))}
+    </svg>
+    <div class="br-tip" role="tooltip" hidden></div>
+  </div>
+  <figcaption id="br-caption" class="mt-2 text-xs leading-relaxed text-muted">
+    Medians from ContextBench (synthetic), Claude Haiku 5.5; scores over the {groups.length} task sizes where native
+    compaction completed a trial. The OpenMem time is the whole request that carried the trim, so it is an upper bound on
+    the trim itself. A shorter wait per event does not mean a shorter trial; see the note above.
+  </figcaption>
+</figure>
+
+<style>
+  .br-surface {
+    background-color: var(--c-map-canvas);
+    background-image:
+      linear-gradient(var(--c-map-dot) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-map-dot) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+  }
+  .br-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    font-family: inherit;
+  }
+  .br-h {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    fill: var(--c-muted);
+  }
+  .br-sub,
+  .br-tick {
+    font-size: 10px;
+    fill: var(--c-muted);
+  }
+  .br-lane-t,
+  .br-key-t {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--c-ink);
+  }
+  .br-key-t {
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .br-grid {
+    stroke: var(--c-line);
+    stroke-dasharray: 2 4;
+  }
+  .br-axis {
+    stroke: var(--c-line);
+  }
+  .br-track {
+    fill: var(--c-panel);
+    stroke: var(--c-line);
+  }
+  .br-smart {
+    fill: var(--c-brand);
+  }
+  .br-native {
+    fill: var(--c-inferred);
+  }
+  .br-val {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--c-ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .br-done {
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--c-ok);
+  }
+  .br-mean {
+    font-size: 28px;
+    font-weight: 800;
+    fill: var(--c-inferred);
+    font-variant-numeric: tabular-nums;
+  }
+  .br-mean-smart {
+    fill: var(--c-source);
+  }
+  .br-hit {
+    fill: transparent;
+  }
+  .br-lane,
+  .br-group {
+    cursor: default;
+    outline: none;
+  }
+  .br-lane:focus-visible .br-track,
+  .br-group:focus-visible .br-hit {
+    stroke: var(--c-brand);
+    stroke-width: 2;
+  }
+  .br-run {
+    transform-box: fill-box;
+    transform-origin: left center;
+  }
+  .br-bar {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+  }
+  .br-replay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    border: 1px solid var(--c-line);
+    border-radius: 6px;
+    background: var(--c-panel);
+    color: var(--c-ink);
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .br-replay:hover {
+    background: var(--c-hover);
+  }
+  .br-tip {
+    position: absolute;
+    z-index: 2;
+    max-width: 18rem;
+    pointer-events: none;
+    border: 1px solid var(--c-line);
+    border-radius: 6px;
+    background: var(--c-panel-raised);
+    color: var(--c-ink);
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  }
+
+  /* Armed by the script: start frame, paused until the figure scrolls into view. */
+  .is-armed .br-run {
+    animation: br-run var(--d) linear var(--delay) both paused;
+  }
+  .is-armed .br-bar {
+    animation: br-bar var(--d) cubic-bezier(0.2, 0.8, 0.2, 1) var(--delay) both paused;
+  }
+  .is-armed .br-done {
+    animation: br-fade 300ms ease-out var(--delay) both paused;
+  }
+  .is-playing .br-run,
+  .is-playing .br-bar,
+  .is-playing .br-done {
+    animation-play-state: running;
+  }
+  @keyframes br-run {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  @keyframes br-bar {
+    from { transform: scaleY(0); }
+    to { transform: scaleY(1); }
+  }
+  @keyframes br-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+</style>
+
+<script>
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function countUp(el: SVGTextElement) {
+    const to = Number(el.dataset.count);
+    const digits = Number(el.dataset.digits);
+    const suffix = el.dataset.suffix ?? '';
+    const d = Number(el.dataset.d);
+    const delay = Number(el.dataset.delay);
+    const start = performance.now() + delay;
+    el.textContent = `${(0).toFixed(digits)}${suffix}`;
+    const step = (now: number) => {
+      const t = Math.min(Math.max((now - start) / d, 0), 1);
+      el.textContent = `${(to * t).toFixed(digits)}${suffix}`;
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function play(fig: HTMLElement) {
+    fig.classList.remove('is-playing');
+    void fig.offsetWidth;
+    fig.classList.add('is-playing');
+    fig.querySelectorAll<SVGTextElement>('[data-count]').forEach(countUp);
+  }
+
+  function restart(fig: HTMLElement) {
+    fig.classList.remove('is-armed', 'is-playing');
+    void fig.offsetWidth;
+    fig.classList.add('is-armed');
+    play(fig);
+  }
+
+  function tooltips(fig: HTMLElement) {
+    const tip = fig.querySelector<HTMLElement>('.br-tip')!;
+    const box = fig.querySelector<HTMLElement>('.br-surface')!;
+    const show = (el: SVGGraphicsElement) => {
+      tip.textContent = el.dataset.tip ?? '';
+      tip.hidden = false;
+      const r = el.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      const left = Math.min(Math.max(r.left - b.left + r.width / 2 - tip.offsetWidth / 2, 8), b.width - tip.offsetWidth - 8);
+      const top = r.top - b.top - tip.offsetHeight - 6;
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top < 4 ? r.bottom - b.top + 6 : top}px`;
+    };
+    const hide = () => {
+      tip.hidden = true;
+    };
+    fig.querySelectorAll<SVGGraphicsElement>('[data-tip]').forEach((el) => {
+      el.addEventListener('pointerenter', () => show(el));
+      el.addEventListener('pointerleave', hide);
+      el.addEventListener('focus', () => show(el));
+      el.addEventListener('blur', hide);
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-bench-race]').forEach((fig) => {
+    tooltips(fig);
+    if (reduce.matches || !('IntersectionObserver' in window)) return;
+    const replay = fig.querySelector<HTMLButtonElement>('[data-replay]')!;
+    replay.hidden = false;
+    replay.addEventListener('click', () => restart(fig));
+    fig.classList.add('is-armed');
+    fig.querySelectorAll<SVGTextElement>('[data-count]').forEach((el) => {
+      el.textContent = `${(0).toFixed(Number(el.dataset.digits))}${el.dataset.suffix ?? ''}`;
+    });
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          play(fig);
+        }
+      },
+      { threshold: 0.4 },
+    );
+    io.observe(fig);
+  });
+</script>

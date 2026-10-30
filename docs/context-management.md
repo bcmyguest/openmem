@@ -2,6 +2,11 @@
 
 Context management (smart compaction) keeps long coding-agent sessions under a token limit without an LLM summary. Every message goes into a local SQLite session store; older turns leave the context and a pointer takes their place; the agent searches the store when it needs a detail back.
 
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/smart-compaction-dark.gif" />
+<img src="https://bcmyguest.github.io/openmem/media/smart-compaction.gif" alt="Smart compaction: older turns move to a local store, a pointer takes their place, and the agent pulls a detail back with smart_compact_search" width="720" />
+</picture>
+
 ```mermaid
 sequenceDiagram
   participant A as Agent
