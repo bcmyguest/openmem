@@ -59,6 +59,8 @@ class Settings:
     # Characters per token for the trim estimate until the session reports usage (CONTEXT_CHARS_PER_TOKEN).
     chars_per_token: float = DEFAULT_CHARS_PER_TOKEN
     compaction_max_chars: int = DEFAULT_COMPACTION_MAX_CHARS
+    # Bounded provider recall in the trim pointer (CONTEXT_COMPACTION_RECALL=0 turns it off).
+    compaction_recall: bool = True
     recall_timeout_s: float = DEFAULT_RECALL_TIMEOUT_S
     hindsight_url: str = DEFAULT_HINDSIGHT_URL
     context_dir: Path = Path.home() / ".local" / "share" / "openmem" / "context"
@@ -81,6 +83,7 @@ class Settings:
             compress_over_tokens=_int(env, "CONTEXT_COMPRESS_OVER_TOKENS", DEFAULT_COMPRESS_OVER_TOKENS),
             chars_per_token=_positive_float(env, "CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN),
             compaction_max_chars=_int(env, "CONTEXT_COMPACTION_MAX_CHARS", DEFAULT_COMPACTION_MAX_CHARS),
+            compaction_recall=_flag(env, "CONTEXT_COMPACTION_RECALL"),
             recall_timeout_s=_float(env, "CONTEXT_RECALL_TIMEOUT_S", DEFAULT_RECALL_TIMEOUT_S),
             hindsight_url=(str(env.get("HINDSIGHT_URL", "")).strip() or DEFAULT_HINDSIGHT_URL).rstrip("/"),
             context_dir=root / "context",
