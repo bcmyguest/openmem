@@ -991,9 +991,12 @@ class StandingInstructionTests(Base):
                          "[openmem: continuing session s1; 3 earlier messages are NOT in your context. They "
                          "were delivered to you and later removed to fit your context window, so a gap in what you "
                          "see (missing batches, lines, keys) is in them. "
+                         "The tools smart_compact_search and smart_compact_sql are available to you in this "
+                         "request. "
                          'You MUST call smart_compact_search(session_id="s1", query=... or pattern=...) before '
-                         'answering anything that depends on them, and never answer "not found" or "never '
-                         'received" without searching; every message of this session is stored and '
+                         'answering anything that depends on them, and never answer "not found", "never '
+                         'received" or "no search tool" without calling it; every message of this session is '
+                         'stored and '
                          'queryable with smart_compact_search and smart_compact_sql(session_id="s1", sql=...).]')
 
     def test_anthropic_first_request_appends_one_block(self):
