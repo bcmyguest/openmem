@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CHARS_PER_TOKEN, estimatePromptTokens, fingerprint, promptTokensFromOpenCode, recordPromptUsage, recordUsage,
-  requestChars, trimContext, trimSettings,
+  recordStepUsage, requestChars, TRIM_KEPT, TRIM_NEW, TRIM_NONE, trimContext, trimSettings, usageCountsFromOpenCode,
 } from "../../cli/coding-agent/context-trim.mjs";
 import { contextTrimEnvFromPmConfig } from "../../wizard/lib/pm-config.mjs";
 
@@ -162,6 +162,21 @@ try {
     check("disabled trim records nothing", !(await recordPromptUsage(settingsFor({ enabled: false }), "ses_off", seen, 10)) && !fs.existsSync(trimFile("ses_off")));
   }
 
+  // Usage event counts from OpenCode's TokenUsage; trim state passed through measured.
+  {
+    check("usage counts map input, cache read/write, output", JSON.stringify(usageCountsFromOpenCode({ input: 5, output: 7, reasoning: 2,
+      cache: { read: 100, write: 0 } })) === JSON.stringify({ input_tokens: 5, cache_read_tokens: 100, cache_creation_tokens: 0, output_tokens: 7 }));
+    check("usage counts leave missing fields null", JSON.stringify(usageCountsFromOpenCode({ input: 5 }))
+      === JSON.stringify({ input_tokens: 5, cache_read_tokens: null, cache_creation_tokens: null, output_tokens: null }));
+    const marks = [];
+    const msgs = history(4);
+    await run("ses_tr", msgs, { trimAtTokens: 1 }, { measured: (m) => marks.push(m.trimmed) });
+    await run("ses_tr", msgs, { trimAtTokens: 10 ** 9 }, { measured: (m) => marks.push(m.trimmed) });
+    await run("ses_tr2", msgs, { trimAtTokens: 10 ** 9 }, { measured: (m) => marks.push(m.trimmed) });
+    check("measured carries new cut, kept cut, none", JSON.stringify(marks) === JSON.stringify([TRIM_NEW, TRIM_KEPT, TRIM_NONE]), JSON.stringify(marks));
+    check("recordStepUsage needs a measured request", !recordStepUsage(settingsFor(), "ses_tr", null, {}));
+  }
+
   // OpenCode 2 plugin: session.step.ended usage calibrates the session it belongs to.
   {
     const { default: plugin } = await import("../../cli/coding-agent/opencode2-plugin/index.js");
@@ -219,6 +234,14 @@ try {
       emit({ type: "session.step.ended", data: { sessionID: "ses_oc", tokens: tokens(1, 1, 1) } });
       await settle();
       check("a step with no measured request records nothing", readTrim("ses_oc").usage.last.tokens === 1000);
+      const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
+      const db = new DatabaseSync(path.join(state, "context", "sessions", "ses_oc.db"), { readOnly: true });
+      const rows = db.prepare("SELECT kind, model, thread_root, trimmed, input_tokens, cache_read_tokens, cache_creation_tokens, "
+        + "output_tokens, breakpoints, breakpoint_at FROM events").all().map((r) => ({ ...r }));
+      db.close();
+      check("step usage is recorded as one usage event", JSON.stringify(rows) === JSON.stringify([{ kind: "usage", model: "anthropic/claude",
+        thread_root: root, trimmed: TRIM_NONE, input_tokens: 10, cache_read_tokens: 900, cache_creation_tokens: 90, output_tokens: 50,
+        breakpoints: null, breakpoint_at: null }]), JSON.stringify(rows));
       cleanup();
       await settle();
     } finally {
