@@ -14,13 +14,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sanitizeSessionId } from "../../cli/coding-agent/context-store.mjs";
 import { proxyCodeVersion } from "../../cli/coding-agent/session-db.mjs";
-import { STANDING_INSTRUCTION, addStandingInstruction, isSignedReasoning, pointerText, recallBlock, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
+import { STANDING_INSTRUCTION, addStandingInstruction, isSignedReasoning, pointerText, recallBlock, trimAtFor, trimContext, trimSettings } from "../../cli/coding-agent/context-trim.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "scripts/tests/fixtures/context-parity.json"), "utf8"));
 const BIG = 10 ** 9;
 const DEFAULT_MAX_CHARS = 12000;
 const TS = "2026-01-01T00:00:00Z";
+// Model ids and CONTEXT_TRIM_AT_TOKENS values whose trim threshold must match on both sides.
+const THRESHOLD_MODELS = ["anthropic/claude-haiku-5-5", "claude-HAIKU", "anthropic/claude-sonnet-5", "gpt-6-sol", null];
+const THRESHOLD_ENVS = [{}, { CONTEXT_TRIM_AT_TOKENS: "120000" }, { CONTEXT_TRIM_AT_TOKENS: " 50 " }, { CONTEXT_TRIM_AT_TOKENS: "x" }];
 // Runs each case's requests through process_request; prints the rewritten Chat messages per request.
 const PY_DRIVER = `
 import json, sys
@@ -41,7 +44,8 @@ def recall_http(text):
 ptr = job["pointer"]
 rec = job["recall"]
 out = {"standing": STANDING_INSTRUCTION, "pointer": pointer_text(ptr["sid"], ptr["dropped"]),
-       "recall": [recall_block(rec["text"], c["max_chars"]) for c in rec["cases"]], "views": []}
+       "recall": [recall_block(rec["text"], c["max_chars"]) for c in rec["cases"]], "views": [],
+       "trim_at": [[Settings.from_env(env).trim_at_for(m) for m in job["threshold_models"]] for env in job["threshold_envs"]]}
 for case in job["cases"]:
     views = []
     http = no_http
@@ -168,6 +172,8 @@ try {
     state: pyState,
     pointer: FIXTURE.pointer,
     recall: FIXTURE.recall,
+    threshold_models: THRESHOLD_MODELS,
+    threshold_envs: THRESHOLD_ENVS,
     cases: cases.map((c) => ({ sid: c.sid, compress: c.compress, bank: c.bank, recall: c.recall, requests: c.requests.map((r) => ({ force: Boolean(r.force), trim_at: r.trim_at, messages: r.history.map(toChat) })) })),
   };
   const py = spawnSync("python3", ["-c", PY_DRIVER, path.join(ROOT, "proxy")], {
@@ -177,6 +183,9 @@ try {
   const pyOut = py.status === 0 ? JSON.parse(py.stdout) : { views: [] };
   const { sid: psid, dropped, text: pointerGolden } = FIXTURE.pointer;
   check("golden standing instruction on both sides", pyOut.standing === FIXTURE.standing_instruction && STANDING_INSTRUCTION === FIXTURE.standing_instruction);
+  const jsTrimAt = THRESHOLD_ENVS.map((env) => THRESHOLD_MODELS.map((m) => trimAtFor(trimSettings(env, pyState), m)));
+  check("same trim threshold per model and CONTEXT_TRIM_AT_TOKENS", JSON.stringify(pyOut.trim_at) === JSON.stringify(jsTrimAt),
+    `\n  js: ${JSON.stringify(jsTrimAt)}\n  py: ${JSON.stringify(pyOut.trim_at)}`);
   check("golden pointer text on both sides", pyOut.pointer === pointerGolden && pointerText(psid, dropped) === pointerGolden);
   for (const [i, { max_chars: maxChars, block }] of FIXTURE.recall.cases.entries()) {
     check(`golden recall block at ${maxChars} chars on both sides`, pyOut.recall?.[i] === block && recallBlock(FIXTURE.recall.text, maxChars) === block,

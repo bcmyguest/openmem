@@ -377,14 +377,15 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
         ratio = settings.chars_per_token if settings.chars_per_token > 0 else DEFAULT_CHARS_PER_TOKEN
         base_chars = request_chars(*context)
         tokens = estimate_prompt_tokens(base_chars + request_chars(view), state.get("usage"), root, ratio)
-        if force or tokens >= settings.trim_at_tokens:
+        trim_at = settings.trim_at_for(request["model"])
+        if force or tokens >= trim_at:
             new_cut = choose_cut(adapter, items, -1 if cut is None else cut, first)
             if new_cut is None:
                 new_cut = cut if cut is not None else last_turn_index(adapter, items)
             new_gap = None
             if new_cut is not None:
                 sizes = [request_chars(x) for x in items]
-                target = settings.trim_at_tokens * settings.trim_to_fraction
+                target = trim_at * settings.trim_to_fraction
 
                 def fits(g):
                     chars = base_chars + sum(sizes[j] for j in kept_indices(adapter, items, new_cut, g, first))
