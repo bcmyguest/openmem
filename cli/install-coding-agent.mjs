@@ -59,7 +59,7 @@ The choice is saved as [agents] integration in ~/.config/personal-memory/config.
 --hindsight-plugin was renamed to --provider-plugin.
 
 rtk on PATH: runs rtk init for each supported agent (skip with --no-rtk).
-Context proxy: without a flag, [context_proxy.agents] claude-code / opencode1 (missing keys follow
+Context proxy: without a flag, [context_proxy.agents] claude-code / opencode1 / codex (missing keys follow
 [context_proxy] enabled) choose which agents go through the local context proxy. With a stack root,
 the installer starts the context-proxy service when one of them is on and stops it when none is.
 --context-proxy / --no-context-proxy override every agent for this run and save [context_proxy] enabled.
@@ -168,7 +168,7 @@ export async function runInstallCodingAgent(opts) {
   const project = env.PM_PROJECT || String(cfg.stack?.project || "") || "openmem";
   const startCommand = contextProxyStartCommand({ stackRoot: opts.stackRoot, project });
   // OpenCode 2 never uses the proxy; its plugin reads [context_proxy.agents] opencode2 itself.
-  const agentEnabled = { "claude-code": contextAgents["claude-code"], opencode: contextAgents.opencode1 };
+  const agentEnabled = { "claude-code": contextAgents["claude-code"], opencode: contextAgents.opencode1, codex: contextAgents.codex };
   const serviceOn = proxyServiceNeeded(contextAgents);
   const service = (dryRun) => ensureContextProxyService({
     home, stackRoot: opts.stackRoot, project, on: serviceOn, dry: dryRun, env, spawn: opts.docker, log,
@@ -230,7 +230,7 @@ export async function runInstallCodingAgent(opts) {
   if (serviceOn) service(false);
   const proxyOut = installContextProxy({ home, agents: flags.agents, enabled: proxy.enabled, agentEnabled, port: proxy.port, h: log, opencodeMajor });
   if (!serviceOn) service(false);
-  const proxyUsed = flags.agents.some((id) => (id === "claude-code" || id === "opencode") && agentEnabled[id] && !proxyOut.pluginTrimmed.includes(id));
+  const proxyUsed = flags.agents.some((id) => id in agentEnabled && agentEnabled[id] && !proxyOut.pluginTrimmed.includes(id));
   if (proxyUsed) {
     syncProxyStackEnv({ stackRoot: opts.stackRoot, cfg, log });
     await warnIfProxyDown({ port: proxy.port, startCommand, log, fetch: opts.fetch });

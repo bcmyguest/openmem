@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import {
-  CONTEXT_AGENT_ROUTE,
   CONTEXT_PROXY_SERVICE,
   contextProxyRunning,
   prepareContextProxyFiles,
@@ -21,11 +20,12 @@ import { CONTEXT_AGENT_KEYS, contextAgentsFromPmConfig, updatePmConfigContextAge
  */
 
 export const CONTEXT_STEP_TITLE = "Context management (smart compaction)";
-/** Agents the step offers. Codex is left out until it is routed (CONTEXT_AGENT_ROUTE.codex). */
-const SELECTABLE = ["claude-code", "opencode1", "opencode2"];
+/** Agents the step offers. */
+const SELECTABLE = ["claude-code", "opencode1", "codex", "opencode2"];
 const LABELS = {
   "claude-code": "Claude Code (context-proxy service)",
   opencode1: "OpenCode 1 (context-proxy service)",
+  codex: "Codex (context-proxy service, ChatGPT login)",
   opencode2: "OpenCode 2 (native plugin, no service)",
 };
 
@@ -72,11 +72,10 @@ function withProxyProfile(ctx) {
 export async function chooseContextManagement(ctx, number, installed) {
   step(`${number}. ${CONTEXT_STEP_TITLE}`);
   info("Stores every session message in a local SQLite store and trims long sessions; agents query the trimmed turns with smart_compact_search and smart_compact_sql.");
-  info("Claude Code and OpenCode 1 go through the local context-proxy compose service; OpenCode 2 uses its native plugin.");
+  info("Claude Code, OpenCode 1 and Codex go through the local context-proxy compose service; OpenCode 2 uses its native plugin.");
   const cfg = ctx.pmMerged || {};
   const { agents: current, saved } = contextAgentsFromPmConfig(cfg);
   const defaults = contextAgentDefaults(cfg);
-  if (installed.includes("codex")) info(`codex: ${CONTEXT_AGENT_ROUTE.codex}; not offered`);
   const offered = SELECTABLE.filter((k) => installed.includes(k));
   let values;
   if (!offered.length) {

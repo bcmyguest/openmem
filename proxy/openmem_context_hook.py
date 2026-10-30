@@ -16,8 +16,11 @@ from openmem_context import process_request, process_usage, startup  # noqa: E40
 
 class OpenMemContextHook(CustomLogger):
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
-        # File and Hindsight I/O run off the event loop; process_request never raises.
-        return await asyncio.to_thread(process_request, data, call_type)
+        # File and Hindsight I/O run off the event loop; process_request never raises. A pass-through call (the
+        # Codex subscription route) is told apart by its route, and its call id lives on the logging object.
+        route = getattr(user_api_key_dict, "request_route", None)
+        call_id = getattr(data.get("litellm_logging_obj"), "litellm_call_id", None) if isinstance(data, dict) else None
+        return await asyncio.to_thread(process_request, data, call_type, route=route, call_id=call_id)
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         # Streams arrive here once, with the assembled response. kwargs carries the litellm_call_id that

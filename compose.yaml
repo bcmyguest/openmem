@@ -162,7 +162,11 @@ services:
   # service and outside the hindsight profile, so Hindsight's own model traffic never passes through it.
   context-proxy:
     profiles: ["context-proxy"]
-    image: ghcr.io/berriai/litellm:v1.106.6
+    # Dev build on purpose: v1.109.0-dev.1 is the only LiteLLM release with PR #41522, the ChatGPT/Codex
+    # subscription pass-through (/backend-api/codex/{endpoint}) that routes Codex here; stable releases
+    # (v1.106.6, v1.108.0-rc.1) lack it. The litellm service above stays on stable. Move to the first stable
+    # release that contains #41522, then rerun proxy/tests/image/run.py.
+    image: ghcr.io/berriai/litellm:v1.109.0-dev.1
     command: ["--config", "/app/proxy/config.yaml", "--port", "4000"]
     # LITELLM_MASTER_KEY (and any provider keys for extra routes). Written by install-coding-agent.
     env_file: ${CONTEXT_PROXY_ENV_FILE:-${HOME}/.config/personal-memory/context-proxy.env}
