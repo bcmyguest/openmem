@@ -71,6 +71,8 @@ Smart compaction makes no model call: the proxy cuts the history in its pre-call
 | Native compaction | 6 | 8.1 min | 729 | 0.86 s | 93% |
 | Keep everything | 9 | 9.7 min | 1077 | 0.59 s | 99% |
 
+Wall time per trial is longer with OpenMem (593 s vs 472 s for native compaction); OpenMem also makes more requests per trial (130 vs 117), which include its store searches.
+
 Source: [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks, Claude Haiku 5.5.
 
 Wall time and request latency come from different runs: the baselines (run B) and smart compaction (run D) used different LiteLLM builds, ran at different times under different API load, and only run D had the OpenMem hook. Treat the comparison as rough.

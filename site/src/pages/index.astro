@@ -9,6 +9,7 @@ import CodeBlock from '../components/ui/CodeBlock.astro';
 import { features, next, providers, security, site, STATUS_LABEL, steps, works } from '../lib/content';
 import { withBase } from '../lib/url';
 import bench from '../data/contextbench.json';
+import { wallTimeSentence } from '../lib/bench-text.mjs';
 
 const supportedNames = providers.filter((p) => p.status === 'supported').map((p) => p.label).join(', ');
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
@@ -123,7 +124,7 @@ npx ${site.npm.package} switch mem0 --yes`;
             </li>
           ))}
         </ul>
-        <p class="mt-3 text-xs leading-relaxed text-muted">OpenMem against Claude Code's native compaction on <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> (synthetic tasks), mean over the {vs.cells.length} task sizes where native compaction completed a trial; Claude Haiku 5.5, {seedRange}. <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
+        <p class="mt-3 text-xs leading-relaxed text-muted">OpenMem against Claude Code's native compaction on <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> (synthetic tasks), mean over the {vs.cells.length} task sizes where native compaction completed a trial; Claude Haiku 5.5, {seedRange}. {wallTimeSentence(vs)} <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
 
         <div class="mt-8 grid gap-6 md:grid-cols-2">
           <figure class="min-w-0">

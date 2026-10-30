@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { site } from '../../src/site.config.mjs';
+import { wallTimeSentence } from '../../src/lib/bench-text.mjs';
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(SITE, 'src', 'data', 'contextbench.json');
@@ -349,6 +350,8 @@ function benchmarkMarkdown(d) {
     chartHtml('contextbench-time', 'Agent wall time per trial by task size'),
     '',
     ...time,
+    '',
+    wallTimeSentence(d.vs_native),
     '',
     `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks, Claude Haiku 5.5.`,
     '',
