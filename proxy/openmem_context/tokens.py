@@ -29,7 +29,7 @@ def _chars(value):
     if isinstance(value, str):
         return len(value)
     if isinstance(value, dict):
-        if value.get("type") in BINARY_BLOCK_TYPES:
+        if isinstance(value.get("type"), str) and value["type"] in BINARY_BLOCK_TYPES:
             return BINARY_BLOCK_CHARS
         return sum(len(str(k)) + _chars(v) for k, v in value.items())
     if isinstance(value, (list, tuple)):
