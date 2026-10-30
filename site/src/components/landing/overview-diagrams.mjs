@@ -6,7 +6,7 @@
 //   providers     providers/*/manifest.json status "supported"; default hindsight (wizard/lib/parse-args.mjs)
 //   MCP tools     cli/mcp/*.mjs tool names
 //   proxy         docs/context-proxy.md (Anthropic for Claude Code and OpenCode 1, ChatGPT Codex backend
-//                 for Codex), trim_at_tokens default 120,000; OpenCode 2 trims in its own plugin
+//                 for Codex), trim_at_tokens default 125,000 (Haiku 95,000, proxy/openmem_context/settings.py); OpenCode 2 trims in its own plugin
 
 /** Palette that follows the site theme (inline SVG on the landing page). */
 export const CSS_PALETTE = {
@@ -156,7 +156,7 @@ export function memoryDiagram(p, layout = 'wide', id = 'ovm') {
 }
 
 const CONTEXT_DESC =
-  'Coding agents (Claude Code, Codex, OpenCode 1) send requests through the OpenMem context proxy, a LiteLLM hook that trims at 120k tokens without an LLM call and forwards to the model API (Anthropic, or ChatGPT for Codex). The proxy writes every turn verbatim to a SQLite session store, which the agent reads back with the smart_compact_search and smart_compact_sql MCP tools. OpenCode 2 trims in a native plugin with no proxy and writes the same store. Native compaction replaces history with an LLM summary, where exact values can be lost; OpenMem keeps every turn verbatim and searchable.';
+  'Coding agents (Claude Code, Codex, OpenCode 1) send requests through the OpenMem context proxy, a LiteLLM hook that trims at 125k tokens (95k for Haiku) without an LLM call and forwards to the model API (Anthropic, or ChatGPT for Codex). The proxy writes every turn verbatim to a SQLite session store, which the agent reads back with the smart_compact_search and smart_compact_sql MCP tools. OpenCode 2 trims in a native plugin with no proxy and writes the same store. Native compaction replaces history with an LLM summary, where exact values can be lost; OpenMem keeps every turn verbatim and searchable.';
 
 function contrast(p, x, y, w) {
   const row = (yy, ok, head, text) =>
@@ -179,7 +179,7 @@ export function contextDiagram(p, layout = 'wide', id = 'ovc') {
       `<text x="24" y="32" font-size="15" font-weight="700" fill="${p.ink}">B · Context management</text>`,
       `<text x="232" y="32" font-size="13" fill="${p.muted}">long sessions stay under the limit; nothing is summarized away</text>`,
       card(p, { ...A, title: 'Coding agent', rows: ['Claude Code', 'Codex', 'OpenCode 1'], chips: true }),
-      card(p, { ...P, title: 'Context proxy', sub: 'LiteLLM pre-call hook', rows: [{ t: 'trims at 120k tokens', strong: true }, 'no LLM call · cache-stable cut'], accent: true }),
+      card(p, { ...P, title: 'Context proxy', sub: 'LiteLLM pre-call hook', rows: [{ t: 'trims at 125k tokens (Haiku 95k)', strong: true }, 'no LLM call · cache-stable cut'], accent: true }),
       card(p, { ...M, title: 'Model API', rows: ['Anthropic', 'ChatGPT (Codex)'], chips: true }),
       card(p, { ...S, title: 'Session store', sub: 'SQLite · every turn, verbatim', rows: [{ t: 'smart_compact_search', mono: true }, { t: 'smart_compact_sql', mono: true }], accent: true }),
       card(p, { ...O, title: 'OpenCode 2', sub: 'native plugin, no proxy', rows: ['same trim, same store'] }),
@@ -201,7 +201,7 @@ export function contextDiagram(p, layout = 'wide', id = 'ovc') {
   parts.push(arrow(p, [[W / 2 - 50, y + 4], [W / 2 - 50, y + 30]], { label: 'requests', lx: W / 2 - 38, ly: y + 21, anchor: 'start' }));
   parts.push(arrow(p, [[W / 2 + 70, y + 30], [W / 2 + 70, y + 4]], { label: 'MCP reads', lx: W / 2 + 82, ly: y + 21, anchor: 'start' }));
   y += 34;
-  parts.push(card(p, { x: X, y, w: CW, h: 88, title: 'Context proxy', sub: 'LiteLLM pre-call hook', rows: [{ t: 'trims at 120k tokens · no LLM call', strong: true }], accent: true }));
+  parts.push(card(p, { x: X, y, w: CW, h: 88, title: 'Context proxy', sub: 'LiteLLM pre-call hook', rows: [{ t: 'trims at 125k (Haiku 95k) · no LLM call', strong: true }], accent: true }));
   y += 88;
   const half = (CW - 12) / 2;
   parts.push(arrow(p, [[X + half / 2, y + 4], [X + half / 2, y + 30]], {}));

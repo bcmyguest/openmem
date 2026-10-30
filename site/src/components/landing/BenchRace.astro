@@ -20,41 +20,46 @@ const LANES = [
 ];
 const MS_PER_S = 250;
 const START_MS = 300;
-
-const X0 = 160;
-const X1 = 630;
-const VAL_X = 644;
-const MAX_S = Math.ceil(Math.max(...LANES.map((l) => l.stat.median)) / 4) * 4;
-const xOf = (s: number) => X0 + ((X1 - X0) * s) / MAX_S;
-const LANE_Y = [72, 120];
-const LANE_H = 24;
+const MAX_MEDIAN = Math.max(...LANES.map((l) => l.stat.median));
+const MAX_S = Math.ceil(MAX_MEDIAN / 4) * 4;
 const TICKS = Array.from({ length: MAX_S / 4 + 1 }, (_, i) => i * 4);
-const RACE_END_MS = START_MS + Math.max(...LANES.map((l) => l.stat.median)) * MS_PER_S;
-
-const BASE = 352;
-const BAR_MAX = 120;
-const GROUP_W = 86;
-const BAR_W = 26;
-const GX0 = 172;
+const RACE_END_MS = START_MS + MAX_MEDIAN * MS_PER_S;
 const SCORE_MS = RACE_END_MS + 300;
 const score = (key: string, fam: string, size: string) => (bench.cells as any)[key][fam][size];
 const f2 = (v: number) => v.toFixed(2);
 const seeds = (n: number) => `${n} seed${n === 1 ? '' : 's'}`;
-const groups = SIZES.map(([fam, size, label], i) => {
-  const smart = score('smart', fam, size);
-  const native = score('s2', fam, size);
-  return {
-    label,
-    short: `${fam} ${size}`,
-    x: GX0 + i * GROUP_W,
-    delay: SCORE_MS + i * 120,
-    bars: [
-      { cls: 'br-smart', v: smart.score, dx: 0 },
-      { cls: 'br-native', v: native.score, dx: BAR_W + 4 },
-    ],
-    tip: `${label}: OpenMem ${f2(smart.score)} (${seeds(smart.n)}), native ${f2(native.score)} (${seeds(native.n)})`,
-  };
-});
+const nSeeds = [...new Set(SIZES.map(([fam, size]) => score('smart', fam, size).n))].join('–');
+
+// Two layouts from one geometry: wide (labels beside the lanes, means beside the bars) and narrow (labels above the
+// lanes, means in a row), switched by a container query so text stays near 10-12 px on a phone.
+function geom(v: 'w' | 'n') {
+  const wide = v === 'w';
+  const g = wide
+    ? { W: 720, H: 390, PAD: 24, X0: 160, X1: 630, VAL_X: 644, LANE_Y: [72, 120], LABEL_DY: 11, WHAT_DY: 24, TICK_Y: 166, GRID: [60, 152],
+        S2_H: 210, BASE: 352, BAR_MAX: 120, GROUP_W: 86, BAR_W: 26, GX0: 172 }
+    : { W: 360, H: 466, PAD: 16, X0: 16, X1: 300, VAL_X: 308, LANE_Y: [84, 142], LABEL_DY: -8, WHAT_DY: -8, TICK_Y: 184, GRID: [78, 172],
+        S2_H: 222, BASE: 432, BAR_MAX: 108, GROUP_W: 68, BAR_W: 22, GX0: 22 };
+  const xOf = (s: number) => g.X0 + ((g.X1 - g.X0) * s) / MAX_S;
+  const means = wide
+    ? [{ kx: 24, ky: 244, nx: 24, ny: 290 }, { kx: 24, ky: 306, nx: 24, ny: 352 }]
+    : [{ kx: 16, ky: 258, nx: 16, ny: 290 }, { kx: 184, ky: 258, nx: 184, ny: 290 }];
+  const groups = SIZES.map(([fam, size, label], i) => {
+    const smart = score('smart', fam, size);
+    const native = score('s2', fam, size);
+    return {
+      short: `${fam} ${size}`,
+      x: g.GX0 + i * g.GROUP_W,
+      delay: SCORE_MS + i * 120,
+      bars: [
+        { cls: 'br-smart', v: smart.score, dx: 0 },
+        { cls: 'br-native', v: native.score, dx: g.BAR_W + 4 },
+      ],
+      tip: `${label}: OpenMem ${f2(smart.score)} (${seeds(smart.n)}), native ${f2(native.score)} (${seeds(native.n)})`,
+    };
+  });
+  return { ...g, wide, xOf, means, groups };
+}
+const views = (['w', 'n'] as const).map((v) => ({ v, g: geom(v) }));
 const laneTip = (l: (typeof LANES)[number]) =>
   `${l.label}, ${l.what}: median ${l.stat.median.toFixed(1)} s, p10 ${l.stat.p10.toFixed(1)} s, p90 ${l.stat.p90.toFixed(1)} s over ${l.stat.n} events`;
 const ms = (v: number) => `${Math.round(v)}ms`;
@@ -62,89 +67,87 @@ const ms = (v: number) => `${Math.round(v)}ms`;
 <figure class="br not-prose" aria-labelledby="br-caption" data-bench-race>
   <div class="br-surface relative overflow-hidden rounded-xl border border-line">
     <button type="button" class="br-replay" data-replay hidden>Replay</button>
-    <svg class="br-svg" viewBox="0 0 720 390" role="img" aria-labelledby="br-title br-desc">
-      <title id="br-title">ContextBench: OpenMem against native compaction</title>
-      <desc id="br-desc">
-        Median wait per compaction event: OpenMem {LANES[0].stat.median.toFixed(1)} seconds, native compaction
-        {LANES[1].stat.median.toFixed(1)} seconds. Mean score over {groups.length} task sizes: OpenMem {f2(vs.score.smart)},
-        native compaction {f2(vs.score.s2)}.
-      </desc>
+    {views.map(({ v, g }) => (
+      <svg class={`br-svg br-${v}`} viewBox={`0 0 ${g.W} ${g.H}`} role="img" aria-labelledby={`br-title-${v} br-desc-${v}`}>
+        <title id={`br-title-${v}`}>ContextBench: OpenMem against native compaction</title>
+        <desc id={`br-desc-${v}`}>
+          Median wait per compaction event: OpenMem {LANES[0].stat.median.toFixed(1)} seconds over {LANES[0].stat.n} trims (the
+          whole request that carried the trim), native compaction {LANES[1].stat.median.toFixed(1)} seconds over
+          {LANES[1].stat.n} summary calls. Mean score over {g.groups.length} task sizes: OpenMem {f2(vs.score.smart)}, native
+          compaction {f2(vs.score.s2)}. Synthetic tasks, one model (Claude Haiku 5.5), {nSeeds} seeds per size.
+        </desc>
 
-      <text class="br-h" x="24" y="30">1 · Wait per compaction event</text>
-      <text class="br-sub" x="24" y="46">median seconds; hover a lane for the spread</text>
-      {TICKS.map((t) => (
-        <g>
-          <line class="br-grid" x1={xOf(t)} x2={xOf(t)} y1="60" y2="152" />
-          <text class="br-tick" x={xOf(t)} y="166" text-anchor="middle">{`${t} s`}</text>
-        </g>
-      ))}
-      {LANES.map((l, i) => {
-        const dur = l.stat.median * MS_PER_S;
-        const y = LANE_Y[i];
-        return (
-          <g class="br-lane" tabindex="0" role="img" aria-label={laneTip(l)} data-tip={laneTip(l)}>
-            <text class="br-lane-t" x="24" y={y + 11}>{l.label}</text>
-            <text class="br-sub" x="24" y={y + 24}>{l.what.split(',')[0]}</text>
-            <rect class="br-track" x={X0} y={y} width={X1 - X0} height={LANE_H} rx="6" />
-            <rect
-              class={`br-run ${l.key === 'smart' ? 'br-smart' : 'br-native'}`}
-              x={X0}
-              y={y}
-              width={xOf(l.stat.median) - X0}
-              height={LANE_H}
-              rx="6"
-              style={`--d:${ms(dur)};--delay:${ms(START_MS)}`}
-            />
-            <text
-              class="br-val"
-              x={VAL_X}
-              y={y + 16}
-              data-count={l.stat.median}
-              data-digits="1"
-              data-suffix=" s"
-              data-d={Math.round(dur)}
-              data-delay={START_MS}
-            >{`${l.stat.median.toFixed(1)} s`}</text>
-            {l.key === 'smart' && (
-              <text class="br-done" x={xOf(l.stat.median) + 10} y={y + 16} style={`--delay:${ms(START_MS + dur)}`}>back to work</text>
-            )}
+        <text class="br-h" x={g.PAD} y="30">1 · Wait per compaction event</text>
+        <text class="br-sub" x={g.PAD} y="46">median seconds; hover or focus a lane for the spread</text>
+        {TICKS.map((t) => (
+          <g>
+            <line class="br-grid" x1={g.xOf(t)} x2={g.xOf(t)} y1={g.GRID[0]} y2={g.GRID[1]} />
+            <text class="br-tick" x={g.xOf(t)} y={g.TICK_Y} text-anchor={g.wide || t ? 'middle' : 'start'}>{`${t} s`}</text>
           </g>
-        );
-      })}
+        ))}
+        {LANES.map((l, i) => {
+          const dur = l.stat.median * MS_PER_S;
+          const y = g.LANE_Y[i];
+          return (
+            <g class="br-lane" tabindex="0" role="img" aria-label={laneTip(l)} data-tip={laneTip(l)}>
+              <text class="br-lane-t" x={g.PAD} y={y + g.LABEL_DY}>{l.label}</text>
+              <text class="br-sub" x={g.wide ? g.PAD : g.PAD + (l.key === 'smart' ? 70 : 126)} y={y + g.WHAT_DY}>{l.what.split(',')[0]}</text>
+              <rect class="br-track" x={g.X0} y={y} width={g.X1 - g.X0} height="24" rx="6" />
+              <rect
+                class={`br-run ${l.key === 'smart' ? 'br-smart' : 'br-native'}`}
+                x={g.X0}
+                y={y}
+                width={g.xOf(l.stat.median) - g.X0}
+                height="24"
+                rx="6"
+                style={`--d:${ms(dur)};--delay:${ms(START_MS)}`}
+              />
+              <text class="br-val" x={g.VAL_X} y={y + 16} data-count={l.stat.median} data-digits="1" data-suffix=" s"
+                data-d={Math.round(dur)} data-delay={START_MS}>{`${l.stat.median.toFixed(1)} s`}</text>
+              {l.key === 'smart' && (
+                <text class="br-done" x={g.xOf(l.stat.median) + 10} y={y + 16} style={`--delay:${ms(START_MS + dur)}`}>back to work</text>
+              )}
+            </g>
+          );
+        })}
 
-      <text class="br-h" x="24" y="210">2 · Score by task size</text>
-      <text class="br-sub" x="24" y="226">ContextBench, tag-insensitive, 0 to 1</text>
-      <rect class="br-key br-smart" x="24" y="244" width="10" height="10" rx="2" />
-      <text class="br-key-t" x="40" y="253">OpenMem</text>
-      <text class="br-mean br-mean-smart" x="24" y="290" data-count={vs.score.smart} data-digits="2" data-d="900" data-delay={SCORE_MS}>{f2(vs.score.smart)}</text>
-      <rect class="br-key br-native" x="24" y="306" width="10" height="10" rx="2" />
-      <text class="br-key-t" x="40" y="315">Native compaction</text>
-      <text class="br-mean" x="24" y="352" data-count={vs.score.s2} data-digits="2" data-d="900" data-delay={SCORE_MS}>{f2(vs.score.s2)}</text>
-      <line class="br-axis" x1={GX0 - 10} x2={GX0 + groups.length * GROUP_W - 20} y1={BASE} y2={BASE} />
-      {groups.map((g) => (
-        <g class="br-group" tabindex="0" role="img" aria-label={g.tip} data-tip={g.tip}>
-          <rect class="br-hit" x={g.x - 6} y={BASE - BAR_MAX - 8} width={BAR_W * 2 + 16} height={BAR_MAX + 36} />
-          {g.bars.map((b) => (
-            <rect
-              class={`br-bar ${b.cls}`}
-              x={g.x + b.dx}
-              y={BASE - Math.max(b.v * BAR_MAX, 2)}
-              width={BAR_W}
-              height={Math.max(b.v * BAR_MAX, 2)}
-              rx="3"
-              style={`--d:700ms;--delay:${ms(g.delay)}`}
-            />
-          ))}
-          <text class="br-tick" x={g.x + BAR_W + 2} y={BASE + 16} text-anchor="middle">{g.short}</text>
-        </g>
-      ))}
-    </svg>
+        <text class="br-h" x={g.PAD} y={g.S2_H}>2 · Score by task size</text>
+        <text class="br-sub" x={g.PAD} y={g.S2_H + 16}>ContextBench, tag-insensitive, 0 to 1; mean of {nSeeds} seeds</text>
+        {[{ cls: 'br-smart', t: 'OpenMem', val: vs.score.smart, mcls: 'br-mean br-mean-smart' }, { cls: 'br-native', t: 'Native compaction', val: vs.score.s2, mcls: 'br-mean' }].map((m, i) => (
+          <g>
+            <rect class={`br-key ${m.cls}`} x={g.means[i].kx} y={g.means[i].ky - 9} width="10" height="10" rx="2" />
+            <text class="br-key-t" x={g.means[i].kx + 16} y={g.means[i].ky}>{m.t}</text>
+            <text class={m.mcls} x={g.means[i].nx} y={g.means[i].ny} data-count={m.val} data-digits="2" data-d="900" data-delay={SCORE_MS}>{f2(m.val)}</text>
+          </g>
+        ))}
+        {!g.wide && <text class="br-sub" x={g.PAD} y="308">mean over {g.groups.length} task sizes</text>}
+        <line class="br-axis" x1={g.GX0 - 10} x2={g.GX0 + g.groups.length * g.GROUP_W - 20} y1={g.BASE} y2={g.BASE} />
+        {g.groups.map((gr) => (
+          <g class="br-group" tabindex="0" role="img" aria-label={gr.tip} data-tip={gr.tip}>
+            <rect class="br-hit" x={gr.x - 6} y={g.BASE - g.BAR_MAX - 8} width={g.BAR_W * 2 + 16} height={g.BAR_MAX + 36} />
+            {gr.bars.map((b) => (
+              <rect
+                class={`br-bar ${b.cls}`}
+                x={gr.x + b.dx}
+                y={g.BASE - Math.max(b.v * g.BAR_MAX, 2)}
+                width={g.BAR_W}
+                height={Math.max(b.v * g.BAR_MAX, 2)}
+                rx="3"
+                style={`--d:700ms;--delay:${ms(gr.delay)}`}
+              />
+            ))}
+            <text class="br-tick" x={gr.x + g.BAR_W + 2} y={g.BASE + 16} text-anchor="middle">{gr.short}</text>
+          </g>
+        ))}
+      </svg>
+    ))}
     <div class="br-tip" role="tooltip" hidden></div>
   </div>
   <figcaption id="br-caption" class="mt-2 text-xs leading-relaxed text-muted">
-    Medians from ContextBench (synthetic), Claude Haiku 5.5; scores over the {groups.length} task sizes where native
-    compaction completed a trial. The OpenMem time is the whole request that carried the trim, so it is an upper bound on
-    the trim itself. A shorter wait per event does not mean a shorter trial; see the note above.
+    Medians from ContextBench (synthetic tasks), one model (Claude Haiku 5.5), {nSeeds} seeds per task size; scores over the{' '}
+    {views[0].g.groups.length} task sizes where native compaction completed a trial. The OpenMem time is the whole request that
+    carried the trim (n = {LANES[0].stat.n}), so it is an upper bound on the trim itself; native is the summary call
+    (n = {LANES[1].stat.n}). A shorter wait per event does not mean a shorter trial; see the note above.
   </figcaption>
 </figure>
 
@@ -156,6 +159,20 @@ const ms = (v: number) => `${Math.round(v)}ms`;
       linear-gradient(90deg, var(--c-map-dot) 1px, transparent 1px);
     background-size: 24px 24px;
     background-position: -1px -1px;
+  }
+  .br {
+    container-type: inline-size;
+  }
+  .br-n {
+    display: none !important;
+  }
+  @container (max-width: 34rem) {
+    .br-w {
+      display: none !important;
+    }
+    .br-n {
+      display: block !important;
+    }
   }
   .br-svg {
     display: block;
