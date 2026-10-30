@@ -384,7 +384,7 @@ function benchmarkMarkdown(d) {
 function compactBenchMarkdown(d) {
   const cb = d.compact_bench;
   if (cb.status !== 'complete') {
-    return `Compact-Bench results pending. The run is in progress; partial numbers are not published. Methods: ${cb.methods.map((m) => m.label).join(', ')}.`;
+    return `Compact-Bench results pending. No run has completed yet. Methods: ${cb.methods.map((m) => m.label).join(', ')}.`;
   }
   const rows = cb.methods.map((m) =>
     m.key === 'full'
