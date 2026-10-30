@@ -176,6 +176,8 @@ OpenCode 2 differs in two ways:
 - The plugin trims in-process, so its `opencode2` key needs no service.
 - With `[compaction] native = true` (the default), the plugin also replaces OpenCode's own compaction summary with the pointer plus recall. No other agent has this.
 
+Claude Code keeps its own auto-compact on as a safety net: if the proxy is down, nothing else bounds the session. The two overlap. Claude Code counts tokens over its full local transcript, not the trimmed request the proxy sends, so `/context` reads higher than the API's reported usage and Claude Code can compact a session the proxy has already trimmed. Each such compaction starts a new thread in the trim state, and the proxy trims it afresh.
+
 ## Tools agents use
 
 All four tools are part of the unified `memory_*` MCP server, read local files only, and work with every memory provider.
