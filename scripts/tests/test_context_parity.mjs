@@ -248,9 +248,10 @@ try {
     && JSON.stringify(recallViews[1].slice(0, recallViews[0].length)) === JSON.stringify(recallViews[0]));
   const thinkingViews = pyOut.views[cases.findIndex((c) => c.sid === "ses_thinking")] || [];
   const signed = (view) => view.filter((m) => m.thinking_blocks).map((m) => m.thinking_blocks[0].signature);
-  // Only the latest assistant message keeps its signature; the redacted-only reply before the cut is dropped.
-  check("thinking case: only the latest assistant message keeps signed thinking, on the sticky re-render too",
-    JSON.stringify(thinkingViews.map(signed)) === '[["SIG3"],["SIG4"]]'
+  // Signed thinking from before the trim goes, except the then-latest message; later thinking stays until the next
+  // trim. The redacted-only reply before the cut is dropped.
+  check("thinking case: thinking before the trim is stripped, the latest at trim time and later thinking stay",
+    JSON.stringify(thinkingViews.map(signed)) === '[["SIG3"],["SIG3","SIG4"]]'
     && !thinkingViews.flat().some((m) => m.thinking_blocks?.[0]?.type === "redacted_thinking"), JSON.stringify(thinkingViews.map(signed)));
   const basic = storeSnapshot(jsState, "ses_basic").log;
   check("fixture exercised a compressed result, trimmed rows and a pinned first turn",

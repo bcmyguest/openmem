@@ -711,8 +711,8 @@ class InTurnGapTests(Base):
         first = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         msgs += anth_loop(1, start=5)
         quiet = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=BIG)["messages"]
-        # The former latest assistant message is no longer the latest, so its thinking goes too.
-        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(strip_thinking(first + msgs[-2:])[:len(first)]))
+        # The latest assistant message at trim time keeps its thinking until the next trim: the prefix is unchanged.
+        self.assertEqual(json.dumps(quiet[:len(first)]), json.dumps(first))
         self.assertEqual(quiet[len(first):], msgs[-2:])
         # Over the threshold again with no newer user turn: the gap moves forward, the cut stays.
         grown = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]

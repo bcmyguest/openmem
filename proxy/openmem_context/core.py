@@ -208,33 +208,43 @@ def choose_gap(adapter, items, cut, after, first, fits):
     return best
 
 
-def render(adapter, items, cut, note, first=None, gap=None):
-    """The kept items (kept_indices) in order, the cut turn carrying the note, with signed reasoning stripped
-    (strip_reasoning)."""
+def render(adapter, items, cut, note, first=None, gap=None, strip=None):
+    """The kept items (kept_indices) in order, the cut turn carrying the note, with signed reasoning stripped from
+    kept assistant items before `strip` (default: the latest assistant run; see strip_reasoning)."""
     if cut is None:
         return items
     keep = kept_indices(adapter, items, cut, gap, first)
-    return strip_reasoning(adapter, [adapter.prepend_note(x, note) if j == cut else x
-                                     for j, x in enumerate(items) if j in keep])
+    run = latest_run_start(adapter, items)
+    return strip_reasoning(adapter, items, keep, run if strip is None else min(strip, run), cut, note)
 
 
-def strip_reasoning(adapter, view):
-    """Remove signed reasoning from every assistant message of a trimmed view except the latest one.
-
-    A thinking block is signed against everything before it; a trim edits that prefix, so kept blocks would no
-    longer verify. The latest assistant message (the trailing run of assistant items ending at the last one) goes
-    out unchanged, as the API requires. Every trimmed request is rendered here, so the stripped prefix stays the
-    same from one request to the next. A message left empty is dropped (adapter.without_reasoning).
-    """
-    last = next((j for j in range(len(view) - 1, -1, -1) if adapter.is_assistant(view[j])), None)
+def latest_run_start(adapter, items):
+    """Index where the trailing run of assistant items ending at the last one starts; len(items) if none."""
+    last = next((j for j in range(len(items) - 1, -1, -1) if adapter.is_assistant(items[j])), None)
     if last is None:
-        return view
-    start = last
-    while start > 0 and adapter.is_assistant(view[start - 1]):
-        start -= 1
+        return len(items)
+    while last > 0 and adapter.is_assistant(items[last - 1]):
+        last -= 1
+    return last
+
+
+def strip_reasoning(adapter, items, keep, bound, cut, note):
+    """The kept items, the cut turn carrying the note, with signed reasoning removed from assistant items before
+    `bound`.
+
+    A thinking block is signed against everything before it; a trim edits that prefix, so blocks kept from before
+    the trim would no longer verify. The trim records `bound` as the start of the latest assistant run at that
+    moment, which goes out unchanged, as the API requires; reasoning produced after the trim was generated on the
+    trimmed view and stays. The stripped set is fixed until the next trim, so the prefix stays byte-identical for
+    the cache. A message left empty is dropped (adapter.without_reasoning).
+    """
     out = []
-    for j, x in enumerate(view):
-        if j < start and adapter.is_assistant(x):
+    for j, x in enumerate(items):
+        if j not in keep:
+            continue
+        if j == cut:
+            x = adapter.prepend_note(x, note)
+        elif j < bound and adapter.is_assistant(x):
             x = adapter.without_reasoning(x)
             if x is None:
                 continue
@@ -365,7 +375,7 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
         state = store.load_trim(sid)
         threads = state["threads"]
         thread = threads.get(root)
-        cut, gap, note = None, None, None
+        cut, gap, strip, note = None, None, None, None
         if thread:
             cut = _locate(items, thread.get("cut"), thread.get("cut_fp"))
             if cut is None:
@@ -374,7 +384,9 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
                 note = thread.get("note")
                 if thread.get("gap_fp"):
                     gap = _locate(items, thread.get("gap"), thread["gap_fp"], cut + 2)
-        view = render(adapter, items, cut, note, first, gap)
+                if thread.get("strip_fp"):
+                    strip = _locate(items, thread.get("strip"), thread["strip_fp"], cut)
+        view = render(adapter, items, cut, note, first, gap, strip)
         force = store.force_requested(sid)
         ratio = settings.chars_per_token if settings.chars_per_token > 0 else DEFAULT_CHARS_PER_TOKEN
         base_chars = request_chars(*context)
@@ -405,12 +417,15 @@ def _rewrite_session(data, adapter, original, items, sid, store, settings, http,
                                  "format": adapter.name, "updated": _utc_now()}
                 if new_gap is not None:
                     threads[root].update(gap=new_gap, gap_fp=fingerprint(items[new_gap]))
+                strip = latest_run_start(adapter, items)
+                if strip < len(items):
+                    threads[root].update(strip=strip, strip_fp=fingerprint(items[strip]))
                 while len(threads) > MAX_THREADS:
                     threads.pop(next(iter(threads)))
                 store.save_trim(sid, state)
                 if force:
                     store.clear_force(sid)
-                view = render(adapter, items, new_cut, note, first, new_gap)
+                view = render(adapter, items, new_cut, note, first, new_gap, strip)
                 cut, gap = new_cut, new_gap
                 after = estimate_prompt_tokens(base_chars + request_chars(view), state.get("usage"), root, ratio)
                 trim = {"tokens_before": tokens, "tokens_after": after, "dropped": dropped}
