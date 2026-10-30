@@ -5,7 +5,7 @@ checkout. The package name lives in one place, the `name` field of `package.json
 command stays `openmem` if you switch to a scoped name such as
 `openmem`; older installs may still see `openmem`).
 
-Requirements: Node ≥ 20.12 (the floor of `@clack/prompts`), Docker with the compose v2
+Requirements: Node ≥ 22.16 (`node:sqlite` with FTS5, for the session context store), Docker with the compose v2
 plugin (`docker compose version`), `curl`. Linux and macOS are supported; there is no
 bash dependency in the CLI (macOS ships bash 3.2).
 

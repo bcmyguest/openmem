@@ -32,7 +32,7 @@ npm install && npm run setup
 
 Other commands from a checkout: `node cli/openmem.mjs <command>`.
 
-**Needs:** Docker Compose v2, Node ≥ 20.12, and an LLM route if you use Hindsight (lemond, Ollama, OpenAI-compatible, or a Claude subscription through Meridian — set in the wizard).
+**Needs:** Docker Compose v2, Node ≥ 22.16 (built-in `node:sqlite` with FTS5), and an LLM route if you use Hindsight (lemond, Ollama, OpenAI-compatible, or a Claude subscription through Meridian — set in the wizard).
 
 Later: `npx @bcmyguest/openmem up` / `down` / `switch <provider> --yes` / `doctor`.
 

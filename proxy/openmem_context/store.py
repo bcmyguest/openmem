@@ -85,8 +85,12 @@ class Store:
             raise RegistrationNotFound(sid)
         return value
 
-    def log_path(self, sid):
-        return self._session_path(sid, ".log.jsonl")
+    def db_path(self, sid):
+        """Session database (sessiondb.py)."""
+        return self._session_path(sid, ".db")
+
+    def ensure_sessions(self):
+        _ensure_dir(self.sessions)
 
     # Force flag (written by the prompt hook)
     def force_requested(self, sid):
@@ -115,45 +119,6 @@ class Store:
         _ensure_dir(self.sessions)
         data = json.dumps(state, ensure_ascii=False, sort_keys=True).encode("utf-8")
         _write_atomic(self._session_path(sid, ".trim.json"), data)
-
-    # Handoff log
-    def next_seq(self, sid):
-        path = self.log_path(sid)
-        try:
-            with open(path, "rb") as fh:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                chunk = 65536
-                while True:
-                    start = max(0, size - chunk)
-                    fh.seek(start)
-                    lines = [ln for ln in fh.read().split(b"\n") if ln.strip()]
-                    complete = lines if start == 0 else lines[1:]
-                    for line in reversed(complete):
-                        try:
-                            return int(json.loads(line)["seq"]) + 1
-                        except (ValueError, KeyError, TypeError):
-                            continue
-                    if start == 0:
-                        return 0
-                    chunk *= 4
-        except FileNotFoundError:
-            return 0
-
-    def append_log(self, sid, rows):
-        """Append rows (without seq); assigns seq and returns the number written."""
-        if not rows:
-            return 0
-        _ensure_dir(self.sessions)
-        seq = self.next_seq(sid)
-        out = []
-        for row in rows:
-            out.append(json.dumps({"seq": seq, **row}, ensure_ascii=False, separators=(", ", ": ")))
-            seq += 1
-        fd = os.open(self.log_path(sid), os.O_WRONLY | os.O_APPEND | os.O_CREAT, FILE_MODE)
-        with os.fdopen(fd, "ab") as fh:
-            fh.write(("\n".join(out) + "\n").encode("utf-8"))
-        return len(out)
 
     # Blobs
     def write_blob(self, bid, text):
