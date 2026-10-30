@@ -251,6 +251,10 @@ export function firstUserIndex(items) {
 }
 const callIds = (message) => new Set(parts(message).filter((p) => p?.type === "tool-call").map((p) => p.id).filter((id) => id != null));
 const resultIds = (message) => new Set(parts(message).filter((p) => p?.type === "tool-result").map((p) => p.id).filter((id) => id != null));
+/** An agent message with no tool call: the reply that closes a turn. */
+const isReply = (message) => message?.role === "assistant" && !callIds(message).size;
+/** Where a tool exchange begins; a cut inside a turn never splits one. */
+const isStepStart = (message) => message?.role === "assistant";
 
 export function userText(message) {
   return parts(message).map((p) => (p?.type === "text" ? String(p.text ?? "") : `[${p?.type || "part"}]`)).join("\n");
@@ -326,19 +330,20 @@ function toolNames(items) {
 /**
  * Database rows for every non-pinned message, chained (session-db chain); the proxy's stored_rows. Text comes
  * from the original messages, so a compressed tool result is stored in full with its blob_id. keep is false
- * for messages the view drops (before the cut, except the pinned first user turn; every message when
- * `dropAll`). Returns { rows, cutRow }, cutRow being the index of the cut turn's first row or null.
+ * for messages the view drops (keptIndices; every message when `dropAll`). Returns { rows, cutRow }, cutRow
+ * being the index of the cut turn's first row or null.
  */
-export function storedRows(original, items, cut, first, dropAll = false) {
+export function storedRows(original, items, cut, first, gap = null, dropAll = false) {
   const names = toolNames(items);
+  const kept = keptIndices(items, cut, gap, first);
   const rows = [];
   let cutRow = null;
   original.forEach((item, j) => {
     if (isPinned(item)) return;
     const base = logRows(item, names);
     const shown = items[j] === item ? base : logRows(items[j], names);
-    if (cut && j === cut && base.length) cutRow = rows.length;
-    const keep = !dropAll && !(j < cut && j !== first);
+    if (cut !== null && j === cut && base.length) cutRow = rows.length;
+    const keep = !dropAll && kept.has(j);
     base.forEach(([role, kind, name, text], k) => {
       const blob = shown !== base && k < shown.length ? blobRef(shown[k][3]) : null;
       rows.push({ role, kind, name, text, blob_id: blob, keep });
@@ -348,11 +353,11 @@ export function storedRows(original, items, cut, first, dropAll = false) {
 }
 
 /** Write the request's messages to sessions/<sid>.db; never throws (a database error is logged). */
-function storeMessages(store, sid, settings, original, items, cut, first, ts, deps, dropAll = false) {
+function storeMessages(store, sid, settings, original, items, cut, gap, first, ts, deps, dropAll = false) {
   let file = null;
   try {
     file = store.dbPath(sid);
-    const { rows, cutRow } = storedRows(original, items, cut, first, dropAll);
+    const { rows, cutRow } = storedRows(original, items, cut, first, gap, dropAll);
     if (!rows.length) return;
     const added = openSession(file).sync(rows, cutRow, ts);
     if (added && settings.embeddingModel) {
@@ -366,45 +371,97 @@ function storeMessages(store, sid, settings, original, items, cut, first, ts, de
   }
 }
 
-const droppable = (items, stop, first) => items.slice(0, stop).filter((x, j) => j !== first && !isPinned(x));
+// Tool exchanges a cut inside the in-flight turn always keeps; older ones stay while the request fits under half the
+// trim threshold.
+const MIN_TAIL_STEPS = 3;
+
+/** Index of the agent reply just before the cut turn (kept with it, so the turn reads in context), or null. */
+function prevReplyIndex(items, cut, first) {
+  const j = cut - 1;
+  return j < 0 || j === first || isPinned(items[j]) || !isReply(items[j]) ? null : j;
+}
 
 /**
- * Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part.
- * The kept part is the suffix from the cut plus the pinned first user turn.
+ * Indices the view keeps: pinned messages, the first user turn, the reply before the cut turn, the cut turn,
+ * and every later message except the in-turn gap [cut + 1, gap). Everything when cut is null.
  */
+export function keptIndices(items, cut, gap = null, first = null) {
+  if (cut === null) return new Set(items.keys());
+  const head = new Set([first, prevReplyIndex(items, cut, first), cut]);
+  const keep = new Set();
+  items.forEach((x, j) => {
+    if (head.has(j) || isPinned(x) || (j > cut && (gap === null || j >= gap))) keep.add(j);
+  });
+  return keep;
+}
+
+const droppable = (items, cut, gap, first) => {
+  const keep = keptIndices(items, cut, gap, first);
+  return items.filter((_, j) => !keep.has(j));
+};
+
+/** Whether the kept and dropped messages share no call/result pair. */
+function pairsIntact(items, keep) {
+  const ids = (fn, inside) => new Set(items.flatMap((x, j) => (keep.has(j) === inside ? [...fn(x)] : [])));
+  const [dCalls, dResults] = [ids(callIds, false), ids(resultIds, false)];
+  const [kCalls, kResults] = [ids(callIds, true), ids(resultIds, true)];
+  return ![...dCalls].some((id) => kResults.has(id)) && ![...kCalls].some((id) => dResults.has(id));
+}
+
+/** Index of the last real user turn > after whose kept part shares no call/result pair with the dropped part. */
 export function chooseCut(items, after, first = null) {
-  const union = (list, fn) => new Set(list.flatMap((x) => [...fn(x)]));
   for (let i = items.length - 1; i > after; i--) {
     if (!isTurnStart(items[i])) continue;
-    const dropped = droppable(items, i, first);
-    if (!dropped.length) return null;
-    const kept = first !== null && first < i ? [...items.slice(i), items[first]] : items.slice(i);
-    const dCalls = union(dropped, callIds);
-    const dResults = union(dropped, resultIds);
-    const kCalls = union(kept, callIds);
-    const kResults = union(kept, resultIds);
-    if ([...dCalls].some((id) => kResults.has(id)) || [...kCalls].some((id) => dResults.has(id))) continue;
-    return i;
+    const keep = keptIndices(items, i, null, first);
+    if (keep.size === items.length) return null;
+    if (pairsIntact(items, keep)) return i;
   }
   return null;
 }
 
-/**
- * Pinned messages and the first user turn before the cut (in order), then the noted cut turn and the rest.
- * `decorate(message)` adds per-message parts at render time only; trimming, fingerprints and log rows
- * always see the undecorated messages.
- */
-export function render(items, cut, note, first = null, decorate = (m) => m) {
-  if (!cut) return items.map(decorate);
-  const head = items.slice(0, cut).filter((x, j) => j === first || isPinned(x));
-  return [...head.map(decorate), prependNote(decorate(items[cut]), note), ...items.slice(cut + 1).map(decorate)];
+function lastTurnIndex(items) {
+  for (let i = items.length - 1; i >= 0; i--) if (isTurnStart(items[i])) return i;
+  return null;
 }
 
-function locateCut(items, thread) {
-  const { cut, cut_fp: want } = thread;
-  if (Number.isInteger(cut) && cut > 0 && cut < items.length && fingerprint(items[cut]) === want) return cut;
-  for (let i = 1; i < items.length; i++) if (fingerprint(items[i]) === want) return i;
-  return 0;
+/**
+ * Start of the kept tail for a cut inside the turn at `cut`, > after; null when no gap is possible. The tail
+ * keeps the newest MIN_TAIL_STEPS tool exchanges, then older ones while fits(gap) holds (the request stays
+ * under half the trim threshold). An exchange is never split: the tail starts at a step start.
+ */
+export function chooseGap(items, cut, after, first, fits) {
+  const starts = [];
+  for (let j = cut + 2; j < items.length; j++) if (isStepStart(items[j])) starts.push(j);
+  let best = null;
+  let n = 0;
+  for (const g of starts.reverse()) {
+    n += 1;
+    if (g <= after) break;
+    if (n < MIN_TAIL_STEPS) continue;
+    if (n > MIN_TAIL_STEPS && !fits(g)) break;
+    if (pairsIntact(items, keptIndices(items, cut, g, first))) best = g;
+  }
+  return best;
+}
+
+/**
+ * The kept messages (keptIndices) in order, the cut turn carrying the note. `decorate(message)` adds
+ * per-message parts at render time only; trimming, fingerprints and log rows always see the undecorated messages.
+ */
+export function render(items, cut, note, first = null, gap = null, decorate = (m) => m) {
+  if (cut === null) return items.map(decorate);
+  const keep = keptIndices(items, cut, gap, first);
+  return items.flatMap((x, j) => {
+    if (!keep.has(j)) return [];
+    return [j === cut ? prependNote(decorate(x), note) : decorate(x)];
+  });
+}
+
+/** Index of the message with fingerprint `want` (idx when it still matches), searching from lo; null if absent. */
+function locate(items, idx, want, lo = 0) {
+  if (Number.isInteger(idx) && idx >= lo && idx < items.length && fingerprint(items[idx]) === want) return idx;
+  for (let i = lo; i < items.length; i++) if (fingerprint(items[i]) === want) return i;
+  return null;
 }
 
 export function pointerText(sid, dropped) {
@@ -622,35 +679,57 @@ async function trimSession(request, settings, deps, { original, sid, store, item
     const state = store.loadTrim(sid);
     const { threads } = state;
     const thread = threads.get(root);
-    let cut = 0;
+    let cut = null;
+    let gap = null;
     let note = null;
     if (thread) {
-      cut = locateCut(items, thread);
-      note = cut ? thread.note : null;
-      if (!cut) threads.delete(root);
+      cut = locate(items, thread.cut, thread.cut_fp);
+      if (cut === null) threads.delete(root);
+      else {
+        note = thread.note;
+        if (thread.gap_fp) gap = locate(items, thread.gap, thread.gap_fp, cut + 2);
+      }
     }
-    let rendered = render(items, cut, note, first, decorate);
+    let rendered = render(items, cut, note, first, gap, decorate);
     const force = store.forceRequested(sid);
     const ratio = settings.charsPerToken > 0 ? settings.charsPerToken : DEFAULT_CHARS_PER_TOKEN;
-    const tokens = estimatePromptTokens(requestChars(request.system, request.tools, rendered), state.usage, root, ratio);
+    const baseChars = requestChars(request.system, request.tools);
+    const tokens = estimatePromptTokens(baseChars + requestChars(rendered), state.usage, root, ratio);
     if (force || tokens >= settings.trimAtTokens) {
-      const next = chooseCut(items, cut, first);
+      let next = chooseCut(items, cut === null ? -1 : cut, first);
+      if (next === null) next = cut !== null ? cut : lastTurnIndex(items);
+      let nextGap = null;
       if (next !== null) {
+        const sizes = items.map((x) => requestChars(x));
+        const fits = (g) => {
+          let chars = baseChars;
+          for (const j of keptIndices(items, next, g, first)) chars += sizes[j];
+          return estimatePromptTokens(chars, state.usage, root, ratio) < settings.trimAtTokens / 2;
+        };
+        const after = next === cut && gap !== null ? gap : next + 1;
+        nextGap = chooseGap(items, next, after, first, fits);
+        if (nextGap === null && next === cut) nextGap = gap;
+      }
+      const dropped = next !== null ? droppable(items, next, nextGap, first).length : 0;
+      if (dropped && (next !== cut || nextGap !== gap)) {
         const ts = utcNow(deps.now?.());
-        note = await buildNote(items, next, sid, droppable(items, next, first).length, store, settings, deps);
+        note = await buildNote(items, next, sid, dropped, store, settings, deps);
         threads.delete(root);
-        threads.set(root, { cut: next, cut_fp: fingerprint(items[next]), note, format: FORMAT, updated: ts });
+        const entry = { cut: next, cut_fp: fingerprint(items[next]), note, format: FORMAT, updated: ts };
+        if (nextGap !== null) Object.assign(entry, { gap: nextGap, gap_fp: fingerprint(items[nextGap]) });
+        threads.set(root, entry);
         while (threads.size > MAX_THREADS) threads.delete(threads.keys().next().value);
         store.saveTrim(sid, state);
         if (force) store.clearForce(sid);
-        rendered = render(items, next, note, first, decorate);
+        rendered = render(items, next, note, first, nextGap, decorate);
         cut = next;
-        const after = estimatePromptTokens(requestChars(request.system, request.tools, rendered), state.usage, root, ratio);
-        trim = { tokens_before: tokens, tokens_after: after, dropped: droppable(items, next, first).length };
-      } else if (thread && !cut) store.saveTrim(sid, state);
-    } else if (thread && !cut) store.saveTrim(sid, state);
+        gap = nextGap;
+        const after = estimatePromptTokens(baseChars + requestChars(rendered), state.usage, root, ratio);
+        trim = { tokens_before: tokens, tokens_after: after, dropped };
+      } else if (thread && cut === null) store.saveTrim(sid, state);
+    } else if (thread && cut === null) store.saveTrim(sid, state);
     const ts = utcNow(deps.now?.());
-    storeMessages(store, sid, settings, original, items, cut, first, ts, deps);
+    storeMessages(store, sid, settings, original, items, cut, gap, first, ts, deps);
     if (trim) recordEvent(store, sid, "trim", trim, ts);
     return rendered;
   });
@@ -695,10 +774,9 @@ export async function compactionSummary(request, settings, deps = {}) {
     const state = store.loadTrim(sid);
     const thread = state.threads.get(root);
     // Compaction drops every message, the pinned first user turn included; no cut turn, so trimmed_at_seq is NULL.
-    storeMessages(store, sid, settings, original, items, 0, first, utcNow(deps.now?.()), deps, true);
-    let last = -1;
-    for (let i = items.length - 1; i >= 0; i--) if (isTurnStart(items[i])) { last = i; break; }
-    const note = last >= 0
+    storeMessages(store, sid, settings, original, items, null, null, first, utcNow(deps.now?.()), deps, true);
+    const last = lastTurnIndex(items);
+    const note = last !== null
       ? await buildNote(items, last, sid, roots.length, store, settings, deps)
       : pointerText(sid, roots.length);
     if (thread) {

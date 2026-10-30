@@ -36,6 +36,8 @@ delete process.env.CONTEXT_STANDING_INSTRUCTION;
 
 const sessions = path.join(home, ".local", "share", "openmem", "context", "sessions");
 const ptr = (sid, dropped) => pointerText(sid, dropped);
+/** Two earlier exchanges and a new prompt: a trim drops the first reply and the second prompt. */
+const fiveTurns = () => [user("a"), assistant("b"), user("c"), assistant("d"), user("e")];
 const calls = [];
 let pendingOps = 0;
 globalThis.fetch = async (url, init = {}) => {
@@ -191,13 +193,14 @@ try {
 
   // Forced trim through the context hook: pointer + Hindsight recall + ingest note; MCP tools read the session database.
   pendingOps = 2;
-  const history = [user("earlier question"), assistant("earlier answer"), user("current question")];
+  const history = [user("earlier question"), assistant("earlier answer"), user("middle question"), assistant("middle answer"), user("current question")];
   const forced = contextEvent("ses_one", history);
   await oc.hooks.context(forced);
-  const note = forced.messages[1]?.content?.[0]?.text || "";
-  check("forced trim keeps the first user turn and the in-flight turn", forced.messages.length === 2 && forced.messages[0] === history[0]
-    && forced.messages[1].content[1].text === "current question", JSON.stringify(forced.messages));
-  check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 1)) && note.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: current question\n${RECALL_CLOSE}`) && note.includes("memory ingest is still running"), note);
+  const note = forced.messages[2]?.content?.[0]?.text || "";
+  check("forced trim keeps the first user turn, the reply before the cut and the in-flight turn", forced.messages.length === 3
+    && forced.messages[0] === history[0] && forced.messages[1] === history[3]
+    && forced.messages[2].content[1].text === "current question", JSON.stringify(forced.messages));
+  check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 2)) && note.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: current question\n${RECALL_CLOSE}`) && note.includes("memory ingest is still running"), note);
   check(".force consumed", !fs.existsSync(path.join(sessions, "ses_one.force")));
   // The trimmed turn is an assistant reply: role "all" includes it; in_context: false keeps only trimmed rows.
   const found = await callContextStoreTool("smart_compact_search", { query: "earlier answer", session_id: "ses_one", role: "all", in_context: false }, { env: process.env, cwd: project });
@@ -206,7 +209,7 @@ try {
 
   const repeat = contextEvent("ses_one", [...history, assistant("current answer")]);
   await oc.hooks.context(repeat);
-  check("later request renders the same pointer turn", JSON.stringify(repeat.messages.slice(0, 2)) === JSON.stringify(forced.messages));
+  check("later request renders the same pointer turn", JSON.stringify(repeat.messages.slice(0, 3)) === JSON.stringify(forced.messages));
 
   // Tool-result compression reaches the model request and smart_compact_get returns the full text.
   const big = Array.from({ length: 200 }, (_, i) => `out ${i} ${"v".repeat(100)}`).join("\n");
@@ -225,7 +228,7 @@ try {
   // Native compaction: summary replaces the model call.
   const compaction = contextEvent("ses_one", [...history, assistant("current answer"), user("compact now")]);
   await oc.hooks.compaction(compaction);
-  check("compaction hook sets the result", compaction.result?.summary?.startsWith(ptr("ses_one", 5)) && compaction.result.summary.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: compact now\n${RECALL_CLOSE}`), JSON.stringify(compaction.result));
+  check("compaction hook sets the result", compaction.result?.summary?.startsWith(ptr("ses_one", 7)) && compaction.result.summary.includes(`${RECALL_PREFACE}\n${RECALL_OPEN}\nrecalled: compact now\n${RECALL_CLOSE}`), JSON.stringify(compaction.result));
 
   // Fail open: malformed input changes nothing and never throws.
   const bad = { sessionID: "ses_bad", system: [], messages: [null, 3], options: {}, tools: {} };
@@ -252,16 +255,16 @@ try {
   fs.writeFileSync(path.join(cfgDir, "config.toml"), "[context_proxy]\ntrim_at_tokens = 1\n");
   const cfgTrim = fakeContext(project);
   const cfgTrimCleanup = await plugin.setup(cfgTrim.ctx);
-  const byConfig = contextEvent("ses_cfg", [user("a"), assistant("b"), user("c")]);
+  const byConfig = contextEvent("ses_cfg", fiveTurns());
   await cfgTrim.hooks.context(byConfig);
-  check("config.toml trim_at_tokens trims", byConfig.messages.length === 2 && byConfig.messages[1].content[0].text.startsWith(ptr("ses_cfg", 1)));
+  check("config.toml trim_at_tokens trims", byConfig.messages.length === 3 && byConfig.messages[2].content[0].text.startsWith(ptr("ses_cfg", 2)));
   cfgTrimCleanup();
   process.env.CONTEXT_TRIM_AT_TOKENS = "1000000";
   const envWins = fakeContext(project);
   const envWinsCleanup = await plugin.setup(envWins.ctx);
-  const byEnv = contextEvent("ses_cfg_env", [user("a"), assistant("b"), user("c")]);
+  const byEnv = contextEvent("ses_cfg_env", fiveTurns());
   await envWins.hooks.context(byEnv);
-  check("CONTEXT_TRIM_AT_TOKENS overrides config.toml", byEnv.messages.length === 3);
+  check("CONTEXT_TRIM_AT_TOKENS overrides config.toml", byEnv.messages.length === 5);
   envWinsCleanup();
   delete process.env.CONTEXT_TRIM_AT_TOKENS;
   fs.rmSync(path.join(cfgDir, "config.toml"));
@@ -274,10 +277,10 @@ try {
     else fs.writeFileSync(path.join(cfgDir, "config.toml"), `[context_proxy]\ntrim_at_tokens = 1\n${toml}`);
     const g = fakeContext(project);
     const gCleanup = await plugin.setup(g.ctx);
-    const event = contextEvent(sid, [user("a"), assistant("b"), user("c")]);
+    const event = contextEvent(sid, fiveTurns());
     await g.hooks.context(event);
     gCleanup();
-    return event.messages.length === 2;
+    return event.messages.length === 3;
   };
   check("per-agent: opencode2 = true trims although enabled = false", await trimsWith("enabled = false\n[context_proxy.agents]\nopencode2 = true\n", "ses_g1"));
   check("per-agent: opencode2 = false does not trim although enabled = true", !(await trimsWith("enabled = true\n[context_proxy.agents]\nopencode2 = false\n", "ses_g2")));
@@ -311,9 +314,9 @@ try {
     && deniedContext.system[1].text === STANDING_INSTRUCTION);
   await denied.hooks.prompt({ sessionID: "ses_denied", messageID: "m2", prompt: { text: "/smart-compact" }, delivery: "steer" });
   check("denied: /smart-compact still writes .force", fs.existsSync(path.join(sessions, "ses_denied.force")));
-  const deniedTrim = contextEvent("ses_denied", [user("a"), assistant("b"), user("c")]);
+  const deniedTrim = contextEvent("ses_denied", fiveTurns());
   await denied.hooks.context(deniedTrim);
-  check("denied: trim has the pointer and no recall", deniedTrim.messages.length === 2 && deniedTrim.messages[1].content[0].text === `${ptr("ses_denied", 1)}\n\n` && calls.length === deniedCalls);
+  check("denied: trim has the pointer and no recall", deniedTrim.messages.length === 3 && deniedTrim.messages[2].content[0].text === `${ptr("ses_denied", 2)}\n\n` && calls.length === deniedCalls);
   deniedCleanup();
 
   // Standing instruction: not duplicated when present; CONTEXT_STANDING_INSTRUCTION=0 leaves it out.

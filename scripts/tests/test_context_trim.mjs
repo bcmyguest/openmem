@@ -133,11 +133,12 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
 {
   const sid = "ses_pairs";
   const messages = [
-    user("zero"), assistant("a0"), user("one"),
+    user("zero"), assistant("a0"), user("half"), assistant("a1"), user("one"),
     call("c1", "read", { path: "x" }), user("two (steer)"), result("c1", "read", "content"),
   ];
   const view = await trimContext({ sessionID: sid, messages }, settingsFor({ trimAtTokens: 1 }));
-  check("cut skips a turn that would split c1", view.length === 5 && view[0] === messages[0] && view[1].content.at(-1).text === "one", JSON.stringify(view.map((m) => m.role)));
+  check("cut skips a turn that would split c1", view.length === 6 && view[0] === messages[0] && view[1] === messages[3]
+    && view[2].content.at(-1).text === "one", JSON.stringify(view.map((m) => m.role)));
   check("call and result both kept", view.some((m) => m.content.some((p) => p.type === "tool-call" && p.id === "c1")) && view.some((m) => m.content.some((p) => p.type === "tool-result" && p.id === "c1")));
   const single = [user("only"), assistant("reply")];
   check("no earlier turn means no trim", (await trimContext({ sessionID: "ses_single", messages: single }, settingsFor({ trimAtTokens: 1 }))) === single);
@@ -153,15 +154,15 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
     recall: async (bank, query, maxChars) => { recalls.push({ bank, query, maxChars }); return `memory about ${query} ${"m".repeat(50)}`; },
     pending: async (bank) => bank === "bank-a",
   };
-  const history = [user("u1"), assistant("a1"), user("<system-reminder>noise</system-reminder>u2 question")];
+  const history = [user("u1"), assistant("a0"), user("u1b"), assistant("a1"), user("<system-reminder>noise</system-reminder>u2 question")];
   const frame = `${RECALL_PREFACE}\n${RECALL_OPEN}\n\n${RECALL_CLOSE}`.length;
   const settings = settingsFor({ trimAtTokens: 1, compactionMaxChars: frame + 40 });
   const first = await trimContext({ sessionID: sid, messages: history }, settings, deps);
-  check("first user turn pinned before the pointer", first.length === 2 && first[0] === history[0]);
-  const note = first[1].content[0].text.replace(/\n\n$/, "");
+  check("first user turn and the reply before the cut kept around the pointer", first.length === 3 && first[0] === history[0] && first[1] === history[3]);
+  const note = first[2].content[0].text.replace(/\n\n$/, "");
   check("recall query strips reminders", recalls.length === 1 && recalls[0].query === "u2 question" && recalls[0].bank === "bank-a" && recalls[0].maxChars === frame + 40);
   check("note: pointer, recall capped at max chars, pending line",
-    note === `${ptr(sid, 1)}\n${RECALL_PREFACE}\n${RECALL_OPEN}\n${"memory about u2 question mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm".slice(0, 40)}\n${RECALL_CLOSE}\n${pendingText(sid)}`, note);
+    note === `${ptr(sid, 2)}\n${RECALL_PREFACE}\n${RECALL_OPEN}\n${"memory about u2 question mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm".slice(0, 40)}\n${RECALL_CLOSE}\n${pendingText(sid)}`, note);
 
   const later = [...history, call("c9", "bash", { command: "pwd" }), result("c9", "bash", "/tmp")];
   const second = await trimContext({ sessionID: sid, messages: later }, settings, deps);
@@ -169,15 +170,15 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("recall runs once per cut", recalls.length === 1);
   const relaxed = await trimContext({ sessionID: sid, messages: later }, settingsFor({ trimAtTokens: 10 ** 9 }), deps);
   check("sticky cut applies below the threshold too", JSON.stringify(relaxed) === JSON.stringify(second));
-  check("sticky render logs nothing new", logLines(sid).length === 1);
+  check("sticky render logs nothing new", logLines(sid).length === 2);
 
   const moved = [...later, user("u3")];
   const third = await trimContext({ sessionID: sid, messages: moved }, settings, deps);
   const rows = logLines(sid).map((l) => JSON.parse(l));
-  check("next crossing moves the cut forward, first turn still pinned", third.length === 2 && third[0] === moved[0] && third[1].content[0].text.startsWith(ptr(sid, 4)));
-  // seq counts every stored row: u1 is 1 (pinned, in context), a1..the c9 result are 2..6, u3 is 7.
-  check("seq continues across trims", rows.map((r) => r.seq).join(",") === "2,3,4,5,6", rows.map((r) => r.seq).join(","));
-  check("dropped turn logged without the pointer", rows[1].text.includes("u2 question") && !rows.some((r) => r.text.includes("[openmem: continuing")));
+  check("next crossing moves the cut forward, first turn still pinned", third.length === 2 && third[0] === moved[0] && third[1].content[0].text.startsWith(ptr(sid, 6)));
+  // seq counts every stored row: u1 is 1 (pinned, in context), a0..the c9 result are 2..8, u3 is 9.
+  check("seq continues across trims", rows.map((r) => r.seq).join(",") === "2,3,4,5,6,7,8", rows.map((r) => r.seq).join(","));
+  check("dropped turn logged without the pointer", rows[3].text.includes("u2 question") && !rows.some((r) => r.text.includes("[openmem: continuing")));
   check("first user turn never logged", !rows.some((r) => r.text === "u1"));
   check("recall for the new cut", recalls.length === 2 && recalls[1].query === "u3");
 
@@ -189,19 +190,19 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
   let view;
   try { view = await trimContext({ sessionID: sid2, messages: history }, settings, failing); } finally { process.stderr.write = err; }
-  check("recall failure keeps the pointer only", view[1].content[0].text === `${ptr(sid2, 1)}\n\n`);
+  check("recall failure keeps the pointer only", view[2].content[0].text === `${ptr(sid2, 2)}\n\n`);
   check("failure logs type and location, not content", lines.length === 2 && lines.every((l) => /^openmem-context: fail-open Error at \S+:\d+\n$/.test(l) && !l.includes("down")), lines.join(""));
 }
 
 // `.force` trims below the threshold once, then the flag is gone.
 {
   const sid = "ses_force";
-  const messages = [user("a"), assistant("b"), user("c")];
+  const messages = [user("a"), assistant("b"), user("c"), assistant("d"), user("e")];
   check("no force, no trim", (await trimContext({ sessionID: sid, messages }, settingsFor())) === messages);
   const flag = path.join(sessions, `${sid}.force`);
   fs.writeFileSync(flag, "");
   const view = await trimContext({ sessionID: sid, messages }, settingsFor());
-  check(".force trims", view.length === 2 && view[1].content[0].text.startsWith("[openmem: continuing session ses_force; 1 earlier"));
+  check(".force trims", view.length === 3 && view[2].content[0].text.startsWith("[openmem: continuing session ses_force; 2 earlier"));
   check(".force is cleared after the trim", !fs.existsSync(flag));
   fs.writeFileSync(flag, "");
   const single = [user("only")];
@@ -235,16 +236,19 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const sid = "ses_compact";
   fs.writeFileSync(path.join(sessions, `${sid}.json`), JSON.stringify({ session_id: sid, bank: "bank-c" }));
   const deps = { recall: async (_bank, query) => `recall for ${query}`, pending: async () => false };
-  const history = [user("one"), assistant("two"), user("three"), assistant("four")];
+  const history = [user("one"), assistant("two"), user("three"), assistant("four"), user("five"), assistant("six")];
   await trimContext({ sessionID: sid, messages: history }, settingsFor({ trimAtTokens: 1 }), deps);
-  check("trim logged the first turn except the pinned task", logLines(sid).length === 1);
-  const summary = await compactionSummary({ sessionID: sid, messages: [...history, user("five")] }, settingsFor(), deps);
+  check("trim logged the earlier turns except the pinned task and the reply before the cut", logLines(sid).length === 2);
+  const summary = await compactionSummary({ sessionID: sid, messages: [...history, user("seven")] }, settingsFor(), deps);
   const rows = logLines(sid).map((l) => JSON.parse(l));
-  check("compaction takes every message out of context, the pinned task included", rows.map((r) => r.text).join("|") === "one|two|three|four|five"
-    // "two" left at the earlier trim and keeps that cut's seq; the compaction has no cut turn.
-    && rows[1].trimmed_at_seq === rows[2].seq && rows.filter((r) => r.text !== "two").every((r) => r.trimmed_at_seq === null),
+  const early = new Set(["two", "three"]);
+  check("compaction takes every message out of context, the pinned task included",
+    rows.map((r) => r.text).join("|") === "one|two|three|four|five|six|seven"
+    // "two" and "three" left at the earlier trim and keep that cut's seq; the compaction has no cut turn.
+    && rows.filter((r) => early.has(r.text)).every((r) => r.trimmed_at_seq === rows[4].seq)
+    && rows.filter((r) => !early.has(r.text)).every((r) => r.trimmed_at_seq === null),
   rows.map((r) => `${r.text}:${r.trimmed_at_seq}`).join("|"));
-  check("compaction summary is pointer + recall", summary === `${ptr(sid, 5)}\n${RECALL_PREFACE}\n${RECALL_OPEN}\nrecall for five\n${RECALL_CLOSE}`, summary);
+  check("compaction summary is pointer + recall", summary === `${ptr(sid, 7)}\n${RECALL_PREFACE}\n${RECALL_OPEN}\nrecall for seven\n${RECALL_CLOSE}`, summary);
   const trim = JSON.parse(read(path.join(sessions, `${sid}.trim.json`)));
   check("compaction clears the thread", Object.keys(trim.threads).length === 0 && trim.version === 1);
   check("nothing to compact returns null", (await compactionSummary({ sessionID: sid, messages: [sys] }, settingsFor(), deps)) === null);
@@ -276,9 +280,9 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const recalls = [];
   const deps = { recall: async (_bank, query) => { recalls.push(query); return "never shown"; }, pending: async () => true };
   const off = settingsFor({ trimAtTokens: 1, compactionRecall: false });
-  const view = await trimContext({ sessionID: sid, messages: [user("one"), assistant("two"), user("three")] }, off, deps);
-  const note = view[1].content[0].text.replace(/\n\n$/, "");
-  check("recall off: no recall call, no block, ingest note kept", recalls.length === 0 && note === `${ptr(sid, 1)}\n${pendingText(sid)}`, note);
+  const view = await trimContext({ sessionID: sid, messages: [user("one"), assistant("two"), user("three"), assistant("four"), user("five")] }, off, deps);
+  const note = view[2].content[0].text.replace(/\n\n$/, "");
+  check("recall off: no recall call, no block, ingest note kept", recalls.length === 0 && note === `${ptr(sid, 2)}\n${pendingText(sid)}`, note);
   const summary = await compactionSummary({ sessionID: sid, messages: [user("one"), assistant("two"), user("four")] }, off, deps);
   check("recall off: compaction summary has no recall", recalls.length === 0 && !summary.includes(RECALL_OPEN), summary);
 }
@@ -289,8 +293,8 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const task = user("TASK: port the parser");
   const history = [sys, task, call("p1", "bash", { command: "ls" }), result("p1", "bash", "x"), assistant("a1"), user("u2")];
   const first = await trimContext({ sessionID: sid, messages: history }, settingsFor({ trimAtTokens: 1 }));
-  check("T1: pinned task sits before the pointer turn", first.length === 3 && first[0] === sys && first[1] === task
-    && first[2].content[0].text === `${ptr(sid, 3)}\n\n`, JSON.stringify(first.map((m) => m.role)));
+  check("T1: pinned task sits before the reply and the pointer turn", first.length === 4 && first[0] === sys && first[1] === task
+    && first[2] === history[4] && first[3].content[0].text === `${ptr(sid, 2)}\n\n`, JSON.stringify(first.map((m) => m.role)));
   check("T1: task never logged", !logLines(sid).some((l) => l.includes("TASK")));
   const later = [...history, call("p2", "bash", { command: "pwd" }), result("p2", "bash", "/")];
   const second = await trimContext({ sessionID: sid, messages: later }, settingsFor({ trimAtTokens: 10 ** 9 }));
@@ -305,22 +309,22 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const onlyTask = [task, user("more")];
   check("T1: nothing droppable besides the task means no trim",
     (await trimContext({ sessionID: "ses_pin_none", messages: onlyTask }, settingsFor({ trimAtTokens: 1 }))) === onlyTask);
-  const wedge = [task, assistant("a"), user("next"), call("w1", "read", {}), user("steer"), result("w1", "read", "r")];
+  const wedge = [task, assistant("a"), user("mid"), assistant("b"), user("next"), call("w1", "read", {}), user("steer"), result("w1", "read", "r")];
   const safe = await trimContext({ sessionID: "ses_pin_pairs", messages: wedge }, settingsFor({ trimAtTokens: 1 }));
-  check("T1: cut never splits a pair", safe.length === 5 && safe[0] === task && safe[1].content[1].text === "next");
+  check("T1: cut never splits a pair", safe.length === 6 && safe[0] === task && safe[1] === wedge[3] && safe[2].content[1].text === "next");
 }
 
 // Render-only decoration: not fingerprinted, not logged, applied to every kept message.
 {
   const sid = "ses_decorate";
   const tag = (m) => (m.role === "user" ? { ...m, content: [...m.content, { type: "text", text: "[deco]" }] } : m);
-  const history = [user("t"), assistant("a"), user("u")];
+  const history = [user("t"), assistant("a"), user("m"), assistant("b"), user("u")];
   const view = await trimContext({ sessionID: sid, messages: history }, settingsFor({ trimAtTokens: 1 }), { decorate: tag });
-  check("decorate: pinned and cut turns decorated, pointer first", view[0].content.at(-1).text === "[deco]"
-    && view[1].content[0].text.startsWith("[openmem: continuing") && view[1].content.at(-1).text === "[deco]");
+  check("decorate: pinned and cut turns decorated, pointer first", view.length === 3 && view[0].content.at(-1).text === "[deco]"
+    && view[2].content[0].text.startsWith("[openmem: continuing") && view[2].content.at(-1).text === "[deco]");
   check("decorate: rows carry no decoration", !logLines(sid).some((l) => l.includes("[deco]")));
   const plain = await trimContext({ sessionID: sid, messages: history }, settingsFor());
-  check("decorate: sticky cut found without decoration", plain.length === 2 && !JSON.stringify(plain).includes("[deco]"));
+  check("decorate: sticky cut found without decoration", plain.length === 3 && !JSON.stringify(plain).includes("[deco]"));
   const none = [user("x")];
   check("decorate: untrimmed request is decorated", (await trimContext({ sessionID: "ses_decorate2", messages: none }, settingsFor(), { decorate: tag }))[0].content.at(-1).text === "[deco]");
 }
@@ -328,15 +332,15 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
 // P9: compaction after the stored cut message vanished does not store earlier rows twice.
 {
   const sid = "ses_p9";
-  const history = [user("one"), assistant("two"), user("three"), assistant("four")];
+  const history = [user("one"), assistant("two"), user("two b"), assistant("two c"), user("three"), assistant("four")];
   await trimContext({ sessionID: sid, messages: history }, settingsFor({ trimAtTokens: 1 }));
   const before = logLines(sid).map((l) => JSON.parse(l).text);
-  const rewritten = [user("one"), assistant("two"), user("three (edited)"), assistant("four"), user("five")];
+  const rewritten = [user("one"), assistant("two"), user("two b"), assistant("two c"), user("three (edited)"), assistant("four"), user("five")];
   await compactionSummary({ sessionID: sid, messages: rewritten }, settingsFor());
   const texts = logLines(sid).map((l) => JSON.parse(l).text);
   check("P9: earlier rows logged once", texts.filter((t) => t === "two").length === 1, texts.join("|"));
   // The rewritten history diverges at "three (edited)", so it and every later message are new rows.
-  check("P9: rows from the rewrite on are stored", before.join("|") === "two" && texts.join("|") === "one|two|three (edited)|four|five", texts.join("|"));
+  check("P9: rows from the rewrite on are stored", before.join("|") === "two|two b" && texts.join("|") === "one|two|two b|two c|three (edited)|four|five", texts.join("|"));
 }
 
 // Session ids are sanitized; disabled trimming is a no-op.
@@ -367,8 +371,8 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const a = await trimContext({ sessionID: "ses_si_a", system, messages: history }, settingsFor({ trimAtTokens: 1 }));
   const b = await trimContext({ sessionID: "ses_si_a", system: [{ type: "text", text: "sys" }], messages: history },
     settingsFor({ trimAtTokens: 1, contextDir: path.join(state, "si-off") }));
-  check("standing instruction does not move the cut", a.length === b.length && a.length === 2 && a[1].content[1].text === "now"
-    && b[1].content[1].text === "now");
+  check("standing instruction does not move the cut", a.length === b.length && a.length === 3 && a[2].content[1].text === "now"
+    && b[2].content[1].text === "now");
 }
 
 {
@@ -382,7 +386,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   await trimContext({ sessionID: "ses_ev_trim", messages: history }, settingsFor({ trimAtTokens: 1 }));
   const [trim, ...rest] = events("ses_ev_trim");
   check("trim event recorded", rest.length === 0 && trim.kind === "trim" && /^opencode:/.test(trim.version)
-    && trim.tokens_before > trim.tokens_after && trim.dropped === 3 && trim.error === null, JSON.stringify(trim));
+    && trim.tokens_before > trim.tokens_after && trim.dropped === 2 && trim.error === null, JSON.stringify(trim));
   await trimContext({ sessionID: "ses_ev_none", messages: history }, settingsFor());
   check("no trim, no event", events("ses_ev_none").length === 0);
   const broken = { decorate: () => { throw new TypeError("task must not leak"); } };
@@ -391,6 +395,29 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   const [fail] = events("ses_ev_fail");
   check("fail-open event recorded and rethrown", threw && fail?.kind === "fail_open" && fail.error === "TypeError"
     && /^test_context_trim\.mjs:\d+(:\d+)?$/.test(fail.location) && !JSON.stringify(fail).includes("task"), JSON.stringify(fail));
+}
+
+// In-turn gap: a long tool loop under one prompt keeps the noted task and at least the last three exchanges.
+{
+  const sid = "ses_gap";
+  const loop = (from, to) => Array.from({ length: to - from }, (_, k) => [call(`g${from + k}`, "bash", { n: from + k }), result(`g${from + k}`, "bash", `out ${from + k}`)]).flat();
+  const task = user("only task");
+  const history = [task, ...loop(1, 6)];
+  const first = await trimContext({ sessionID: sid, messages: history }, settingsFor({ trimAtTokens: 1 }));
+  check("gap: single prompt is the cut, middle of the loop dropped", first.length === 7
+    && first[0].content[0].text === `${ptr(sid, 4)}\n\n` && first[0].content[1].text === "only task"
+    && first.slice(1).every((m, k) => m === history[5 + k]), JSON.stringify(first.map((m) => m.role)));
+  const rows = logLines(sid).map((l) => JSON.parse(l));
+  check("gap: dropped calls and results stored", rows.filter((r) => r.kind === "tool_use").length === 2 && rows.filter((r) => r.kind === "tool_result").length === 2);
+  const later = [...history, ...loop(6, 7)];
+  const sticky = await trimContext({ sessionID: sid, messages: later }, settingsFor({ trimAtTokens: 10 ** 9 }));
+  check("gap: sticky below the threshold", sticky.length === 9 && JSON.stringify(sticky.slice(0, 7)) === JSON.stringify(first));
+  const grown = await trimContext({ sessionID: sid, messages: later }, settingsFor({ trimAtTokens: 1 }));
+  check("gap: grows by one exchange on the next crossing", grown.length === 7
+    && grown[0].content[0].text === `${ptr(sid, 6)}\n\n` && grown.slice(1).every((m, k) => m === later[7 + k]));
+  const short = [task, ...loop(1, 4)];
+  check("gap: three exchanges or fewer leave a single prompt untrimmed",
+    (await trimContext({ sessionID: "ses_gap_short", messages: short }, settingsFor({ trimAtTokens: 1 }))) === short);
 }
 
 fs.rmSync(state, { recursive: true, force: true });

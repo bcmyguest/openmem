@@ -222,6 +222,10 @@ try {
   const sidCase = cases.find((c) => c.name.startsWith("session id"));
   check("sanitized id used for files on both sides", fs.existsSync(path.join(pyState, "context", "sessions", "ses___x_.db"))
     && fs.existsSync(path.join(sessions, "ses___x_.db")) && sanitizeSessionId(sidCase.sid) === "ses___x_");
+  const gapViews = pyViews[cases.findIndex((c) => c.sid === "ses_gap")] || [];
+  // Noted task + the last three exchanges (seven messages), sticky, then the gap moves forward by one exchange.
+  check("gap case: cut inside the turn keeps three exchanges, then the gap grows",
+    JSON.stringify(gapViews.map((v) => v.length)) === "[8,10,8]", JSON.stringify(gapViews.map((v) => v.length)));
   const recallCase = cases.find((c) => c.bank);
   const recallViews = pyOut.views[cases.indexOf(recallCase)] || [];
   const framed = recallBlock(recallCase.recall, DEFAULT_MAX_CHARS);
