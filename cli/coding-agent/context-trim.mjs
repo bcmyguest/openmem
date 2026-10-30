@@ -16,7 +16,7 @@ import { blobRef, chain, dropSession, openSession, scheduleEmbedding, storeSetti
 
 export { RECALL_CLOSE, RECALL_OPEN, RECALL_PREFACE, recallBlock } from "./recall-frame.mjs";
 
-export const DEFAULT_TRIM_AT_TOKENS = 120000;
+export const DEFAULT_TRIM_AT_TOKENS = 125000;
 /**
  * Trim thresholds by model family (a substring of the lowercased model id), used while CONTEXT_TRIM_AT_TOKENS is
  * unset; same table as MODEL_TRIM_AT_TOKENS in proxy/openmem_context/settings.py.

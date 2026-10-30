@@ -932,7 +932,7 @@ class SafetyTests(Base):
         self.assertEqual(s.trim_at_for("anthropic/claude-haiku-5-5"), 95000)
         self.assertEqual(s.trim_at_for("Claude-HAIKU"), 95000)
         for model in ("claude-sonnet-5", "anthropic/claude-opus-5-5", None, 7):
-            self.assertEqual(s.trim_at_for(model), 120000, model)
+            self.assertEqual(s.trim_at_for(model), 125000, model)
         for raw in ("120000", " 50 "):
             s = Settings.from_env({"CONTEXT_TRIM_AT_TOKENS": raw})
             self.assertEqual(s.trim_at_for("claude-haiku-5-5"), int(raw), raw)
@@ -956,7 +956,7 @@ class SafetyTests(Base):
         self.assertFalse(Settings.from_env({"CONTEXT_PROXY_ENABLED": "0"}).enabled)
         s = Settings.from_env({"OPENMEM_STATE_DIR": "/state"})
         self.assertEqual(s.context_dir, Path("/state/context"))
-        self.assertEqual((s.trim_at_tokens, s.compress_over_tokens, s.compaction_max_chars), (120000, 4000, 12000))
+        self.assertEqual((s.trim_at_tokens, s.compress_over_tokens, s.compaction_max_chars), (125000, 4000, 12000))
 
     def test_fail_open_on_error_returns_unmodified(self):
         blocker = Path(self.tmp.name) / "file"

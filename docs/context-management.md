@@ -124,7 +124,7 @@ Source: [ContextBench](https://github.com/RulinShao/ContextBench) synthetic task
 
 The charts and tables above are run D. Three changes since, measured on one task (log-triage L1600 seed 44):
 
-1. **Haiku trims at 95k** instead of about 120k, so every request stays under the 100k line where list prices rise 5× per token.
+1. **Haiku trims at 95k** instead of 125k, so every request stays under the 100k line where list prices rise 5× per token.
 2. **The trim note names the search tools.** Without it the model never searched its trimmed history on this task and answered 16 of 24 questions UNKNOWN. With it, every trial searched and answered every question.
 3. **Trims keep the prompt cache intact.** A trim now drops the model's thinking from before the cut and keeps the thinking after it. The start of the prompt stays identical from one request to the next, so the cache keeps hitting.
 
@@ -150,7 +150,7 @@ Compact-Bench results pending. The run is in progress; partial numbers are not p
 
 | Turn it on when | Leave it off when |
 | --- | --- |
-| Sessions grow past `trim_at_tokens` (default 120,000 estimated tokens, 95,000 for Haiku) | Sessions stay under that limit |
+| Sessions grow past `trim_at_tokens` (default 125,000 estimated tokens, 95,000 for Haiku) | Sessions stay under that limit |
 | You want trimmed turns searchable instead of summarized away | You cannot run the `context-proxy` container (Claude Code, OpenCode 1 and Codex send every request to it and fail while it is down) |
 | You use Claude Code, Codex or OpenCode (OpenCode 2 needs no container) | You use only Cursor CLI (not routed through the proxy) |
 
@@ -232,7 +232,7 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 | `[context_proxy] enabled` | unset | none | Master switch: the value of every agent key that is not set. Unset: `opencode2` on, the others off |
 | `[context_proxy.agents] claude-code`, `opencode1`, `codex`, `opencode2` | follow `enabled`; with it unset, `opencode2` on and the others off | `CONTEXT_PROXY_ENABLED` for `opencode2` (in OpenCode's environment) | Per-agent on/off; see [Turn it on or off](#turn-it-on-or-off) |
 | `[context_proxy] port` | `4100` | none (copied to the stack `.env` as `CONTEXT_PROXY_PORT`) | Host port, bound to 127.0.0.1 |
-| `[context_proxy] trim_at_tokens` | `95000` for Haiku, `120000` otherwise | `CONTEXT_TRIM_AT_TOKENS` | Estimated prompt tokens that trigger a trim; unset, the threshold follows the request's model ([settings](context-proxy.md)), and a set value applies to every model; the estimate is calibrated from the provider's reported usage ([token estimate](context-proxy.md#token-estimate)) |
+| `[context_proxy] trim_at_tokens` | `95000` for Haiku, `125000` otherwise | `CONTEXT_TRIM_AT_TOKENS` | Estimated prompt tokens that trigger a trim; unset, the threshold follows the request's model ([settings](context-proxy.md)), and a set value applies to every model; the estimate is calibrated from the provider's reported usage ([token estimate](context-proxy.md#token-estimate)) |
 | `[context_proxy] trim_to_fraction` | `0.3` | `CONTEXT_TRIM_TO_FRACTION` | How deep a trim cuts a long in-flight turn: older tool exchanges stay only while the request is under this fraction of `trim_at_tokens`. Between 0 and 1; another value falls back to 0.3 |
 | `[context_proxy] chars_per_token` | `2.5` | `CONTEXT_CHARS_PER_TOKEN` | Characters per token before a session reports usage |
 | `[context_proxy] compress_over_tokens` | `4000` | `CONTEXT_COMPRESS_OVER_TOKENS` | Tool results above this are compressed; `0` disables compression |

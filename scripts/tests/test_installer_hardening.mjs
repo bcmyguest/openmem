@@ -242,7 +242,7 @@ other = { command = "x" }
 // --- P2 readers and S3 ----------------------------------------------------------------------------
 {
   const cfg = { context_proxy: { trim_at_tokens: 50000, compress_over_tokens: -1, port: 4200 }, compaction: { max_chars: 900, native: false } };
-  check("trim reader defaults", JSON.stringify(contextTrimFromPmConfig({})) === JSON.stringify({ trimAtTokens: 120000, compressOverTokens: 4000, compactionMaxChars: 12000, compactionNative: true, standingInstruction: true }));
+  check("trim reader defaults", JSON.stringify(contextTrimFromPmConfig({})) === JSON.stringify({ trimAtTokens: 125000, compressOverTokens: 4000, compactionMaxChars: 12000, compactionNative: true, standingInstruction: true }));
   const t = contextTrimFromPmConfig(cfg);
   check("trim reader reads keys; invalid falls back", t.trimAtTokens === 50000 && t.compressOverTokens === 4000 && t.compactionMaxChars === 900 && t.compactionNative === false);
   check("trim env has only set, valid keys", JSON.stringify(contextTrimEnvFromPmConfig(cfg)) === JSON.stringify({ CONTEXT_TRIM_AT_TOKENS: "50000", CONTEXT_COMPACTION_MAX_CHARS: "900" }));
