@@ -27,7 +27,7 @@
 </picture>
 </p>
 
-**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks) on [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks (Claude Haiku 5.5). Compact-Bench real-coding results are in progress.
+**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks) on [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks (Claude Haiku 5.5). Compact-Bench real-coding results are pending.
 
 <p align="center">
 <picture>
