@@ -16,6 +16,8 @@
           "messages": [
             { "role": "user", "text": "TASK: ship it" },
             { "role": "assistant", "text": "ok" },
+            { "role": "user", "text": "tests green?" },
+            { "role": "assistant", "text": "yes" },
             { "role": "user", "text": "deploy now?" }
           ]
         },
@@ -70,6 +72,8 @@
           "messages": [
             { "role": "user", "text": "task" },
             { "role": "assistant", "text": "a" },
+            { "role": "user", "text": "more" },
+            { "role": "assistant", "text": "b" },
             { "role": "user", "text": "next" },
             { "role": "assistant", "calls": [{ "id": "w1", "name": "read", "input": {} }] },
             { "role": "user", "text": "steer" },
@@ -91,6 +95,38 @@
             { "role": "tool", "result": { "id": "q1", "name": "bash", "text": "ok" } }
           ]
         }
+      ]
+    },
+    {
+      "name": "cut inside the in-flight turn, gap grows",
+      "sid": "ses_gap",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "user", "text": "only task" },
+            { "role": "assistant", "reasoning": "plan", "calls": [{ "id": "s1", "name": "bash", "input": { "command": "ls" } }] },
+            { "role": "tool", "result": { "id": "s1", "name": "bash", "text": "a" } },
+            { "role": "assistant", "calls": [{ "id": "s2", "name": "read", "input": { "path": "a" } }] },
+            { "role": "tool", "result": { "id": "s2", "name": "read", "text": "b" } },
+            { "role": "assistant", "calls": [{ "id": "s3", "name": "bash", "input": { "command": "make" } }] },
+            { "role": "tool", "result": { "id": "s3", "name": "bash", "text": "c" } },
+            { "role": "assistant", "calls": [{ "id": "s4", "name": "read", "input": { "path": "d" } }, { "id": "s5", "name": "read", "input": { "path": "e" } }] },
+            { "role": "tool", "result": { "id": "s4", "name": "read", "text": "d" } },
+            { "role": "tool", "result": { "id": "s5", "name": "read", "text": "e" } },
+            { "role": "assistant", "calls": [{ "id": "s6", "name": "bash", "input": { "command": "test" } }] },
+            { "role": "tool", "result": { "id": "s6", "name": "bash", "text": "f" } }
+          ]
+        },
+        {
+          "trim": false,
+          "append": [
+            { "role": "assistant", "calls": [{ "id": "s7", "name": "bash", "input": { "command": "lint" } }] },
+            { "role": "tool", "result": { "id": "s7", "name": "bash", "text": "g" } }
+          ]
+        },
+        { "trim": true, "append": [] }
       ]
     },
     {
