@@ -10,6 +10,7 @@
 import { applyConfig, configToml as buildConfigToml } from "./lib/config.mjs";
 import { setupCodingAgent as printCodingAgentPaths } from "./lib/coding-agent.mjs";
 import { clackSetup as askInClack, configureUrlAndKey } from "./lib/configure.mjs";
+import { applyProfile, captureAnthropicKey, configureLitellm, stackEnvFor } from "./lib/litellm.mjs";
 import { captureKeyFromEnv } from "./lib/secret.mjs";
 import { smoke as mem0Smoke } from "./lib/smoke.mjs";
 import { ensureState } from "./lib/state.mjs";
@@ -30,6 +31,7 @@ export { prepareStackEnv, setupNotices } from "./lib/stack-env.mjs";
  */
 export async function init(ctx) {
   captureKeyFromEnv();
+  captureAnthropicKey();
   ensureState(ctx);
   applyConfig(ctx);
 }
@@ -43,6 +45,8 @@ export async function hydrate(ctx, h) {
   const state = ensureState(ctx);
   applyConfig(ctx);
   state.savedUrl = (h.envValue(ctx.wizardConf, "MEM0_API_URL") || "").trim();
+  // `--up`: the stack LiteLLM option saved by the last configure run.
+  applyProfile(ctx, h.envValue(ctx.wizardConf, "MEM0_LITELLM") === "1");
 }
 
 /**
@@ -63,12 +67,21 @@ export function apiBase(ctx, h) {
 export const resolvePorts = resolveMem0Url;
 
 /**
- * Announced step "URL, key and login": server URL, API key into the mode 600 env file.
+ * Announced step "URL, key and login": server URL, API key into the mode 600 env file, then the
+ * optional "route mem0's LLM through the stack LiteLLM" (lib/litellm.mjs).
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
 export async function configureModelRouting(ctx, h) {
   await configureUrlAndKey(ctx, h);
+  const state = ensureState(ctx);
+  if (!state.url) return; // invalid URL: a dry run continues without the option
+  const keys = await configureLitellm(ctx, h);
+  applyProfile(ctx, Boolean(keys));
+  if (!keys) return;
+  // configureUrlAndKey saved MEM0_API_URL alone; save again with the option's keys (wizard.conf is rewritten whole).
+  if (ctx.dry) h.info(`[dry-run] record ${Object.keys(keys).join(", ")} in ${ctx.wizardConf}`);
+  else h.saveWizardConf(ctx, { MEM0_API_URL: state.url, ...keys }, { pmSections: buildConfigToml(ctx, state.url) });
 }
 
 /**
@@ -81,7 +94,7 @@ export function stackEnv(ctx, h) {
   return {
     description:
       "scripts/setup.mjs: write .env (MEM0_API_URL, MEM0_INDEXER_URL, no secrets), compose.override.yaml",
-    env: { MEM0_API_URL: resolveApiUrl(ctx, h) },
+    env: { MEM0_API_URL: resolveApiUrl(ctx, h), ...stackEnvFor(ctx) },
   };
 }
 

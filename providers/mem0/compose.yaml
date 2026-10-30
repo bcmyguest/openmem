@@ -13,9 +13,14 @@
 # What the base compose.yaml gives you:
 #   - `indexer` and `indexer-state-init` have no profile and no provider dependency, so they start for every
 #     provider. This fragment points the indexer at the mem0 server.
-#   - `litellm` and `hindsight` carry the profile "hindsight" and do not start under this profile.
+#   - `hindsight` carries the profile "hindsight" and never starts here.
+#   - `litellm` also carries its own profile "litellm". It starts only when the wizard's "route mem0's LLM through the
+#     stack LiteLLM" option is on, which writes COMPOSE_PROFILES=mem0,litellm. This fragment then publishes it on
+#     127.0.0.1:${MEM0_LITELLM_PORT:-4000} (loopback only, never 0.0.0.0) for a mem0 server on the host, and the
+#     entrypoint below refuses to start without LITELLM_MASTER_KEY (sk-...) from LITELLM_ENV_FILE. See docs/mem0.md.
 # Compose still interpolates every service before it filters by profile, so the stack .env needs LITELLM_CONFIG
-# even though litellm never runs here. scripts/setup.mjs (providers/mem0/lib/stack-env.mjs) writes an inert value.
+# even when litellm does not run. scripts/setup.mjs (providers/mem0/lib/stack-env.mjs) writes the mem0 route file
+# when the option is on and an inert value otherwise.
 #
 # Loopback caveat (Linux): host.docker.internal resolves to the docker bridge gateway, not to the host's 127.0.0.1.
 # A mem0 server bound only to 127.0.0.1 is therefore NOT reachable from the indexer container. Bind it to 0.0.0.0
@@ -55,3 +60,20 @@ services:
         required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Only under the "litellm" profile (see the header). Loopback publish for a mem0 server running on this host.
+  litellm:
+    ports:
+      - "127.0.0.1:${MEM0_LITELLM_PORT:-4000}:4000"
+    # The port is reachable by every local user and process, so an unauthenticated proxy is not allowed: exit unless
+    # the env file supplies an sk- master key. The routes' general_settings.master_key then makes LiteLLM enforce it.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        case "$${LITELLM_MASTER_KEY:-}" in
+          sk-?*) ;;
+          *) echo "litellm: LITELLM_MASTER_KEY=sk-... is missing from LITELLM_ENV_FILE; rerun ./setup" >&2; exit 1 ;;
+        esac
+        exec docker/prod_entrypoint.sh "$$@"
+      - litellm

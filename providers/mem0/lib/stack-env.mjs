@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureLitellmEnv } from "../../../wizard/lib/litellm-env.mjs";
 import { envValue } from "../../../wizard/lib/paths.mjs";
 import { parseEnvValue } from "./dotenv.mjs";
 import { envFileProblem } from "./state.mjs";
@@ -99,6 +100,30 @@ function customEnvFile(env, home) {
 }
 
 /**
+ * Check the stack LiteLLM option's inputs and make sure litellm.env has a master key.
+ * @param {{ home?: string, env: NodeJS.ProcessEnv }} opts
+ * @returns {{ config: string, port: string }}
+ */
+function litellmOption({ home, env }) {
+  const config = (env.MEM0_LITELLM_CONFIG || "").trim() || path.join(home || "", ".config/personal-memory/mem0-litellm.yaml");
+  if (!path.isAbsolute(config) || /[\x00-\x20\x7f$"'`\\]/.test(config)) {
+    throw new Error("MEM0_LITELLM_CONFIG must be an absolute path without spaces, quotes, '$' or backslashes");
+  }
+  if (!fs.existsSync(config)) throw new Error(`${config} is missing: rerun ./setup to write the mem0 LiteLLM routes`);
+  const port = (env.MEM0_LITELLM_PORT || "4000").trim();
+  if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
+    throw new Error("MEM0_LITELLM_PORT must be a port number (1-65535)");
+  }
+  const litellmEnv = (env.LITELLM_ENV_FILE || "").trim() || path.join(home || "", ".config/hindsight/litellm.env");
+  if (ensureLitellmEnv(litellmEnv)) console.log(`created ${litellmEnv} (mode 600)`);
+  const key = envValue(litellmEnv, "LITELLM_MASTER_KEY");
+  if (!/^sk-\S+$/.test(key)) {
+    throw new Error(`LITELLM_MASTER_KEY=sk-... is missing from ${litellmEnv}; the loopback LiteLLM refuses to start without it`);
+  }
+  return { config, port };
+}
+
+/**
  * @param {{ repo: string, home?: string, env: NodeJS.ProcessEnv }} opts
  * @returns {{ entries: [string, string][], drop: string[], report: string[] }}
  *   entries: KEY=value lines to add to the stack .env; drop: keys to remove first;
@@ -122,10 +147,19 @@ export function prepareStackEnv({ repo, home, env }) {
   // and `up` to get past interpolation. Precedence: the operator's process env, then a non-empty value
   // already in the stack .env, then the shipped config. LITELLM_CONFIG is always dropped and rewritten, which
   // also removes an empty `LITELLM_CONFIG=` line that would still fail the `:?` check.
+  //
+  // With the stack LiteLLM option on (MEM0_LITELLM=1, set by the wizard), litellm runs under the profile "litellm":
+  // LITELLM_CONFIG is the mem0 route file, litellm.env must hold an sk- master key (created here when missing, the
+  // same file and mechanism as Hindsight), and MEM0_LITELLM_PORT is the loopback port.
+  const litellm = env.MEM0_LITELLM === "1" ? litellmOption({ home, env }) : null;
   const litellmConfig =
-    (env.LITELLM_CONFIG || "").trim() || envValue(stackEnv, "LITELLM_CONFIG").trim() || shippedLitellmConfig();
+    litellm?.config ||
+    (env.LITELLM_CONFIG || "").trim() ||
+    envValue(stackEnv, "LITELLM_CONFIG").trim() ||
+    shippedLitellmConfig();
 
   const profiles = ["mem0"];
+  if (litellm) profiles.push("litellm");
   const notebookYml = path.join(home, ".config/hindsight/notebooklm.yml");
   if (fs.existsSync(notebookYml) && /^enabled:\s*true\b/m.test(fs.readFileSync(notebookYml, "utf8"))) {
     profiles.push("notebooklm");
@@ -143,6 +177,11 @@ export function prepareStackEnv({ repo, home, env }) {
   ];
   const drop = ["MEM0_API_URL", "MEM0_INDEXER_URL", "COMPOSE_PROFILES", "LITELLM_CONFIG", "MEMORY_API_URL", "MEMORY_SINK"];
   const report = [`MEM0_INDEXER_URL=${containerUrl}`, `COMPOSE_PROFILES=${profiles.join(",")}`, `LITELLM_CONFIG=${litellmConfig}`];
+  if (litellm) {
+    entries.push(["MEM0_LITELLM_PORT", litellm.port]);
+    drop.push("MEM0_LITELLM_PORT");
+    report.push(`MEM0_LITELLM_PORT=${litellm.port}`);
+  }
 
   // A custom key file location is a path, not a secret: persist it so a hand-run `docker compose`
   // and `./pm up` read the same env_file as this run. With no custom path in the process
