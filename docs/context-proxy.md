@@ -35,6 +35,8 @@ Set these in the stack `.env` or in the shell that runs compose.
 | `OPENMEM_STATE_DIR` | `~/.local/share/openmem` | The proxy mounts `<dir>/context` read-write |
 | `CONTEXT_STORE_TTL_DAYS` | `30` | Delete session files idle this many days, checked at start at most once a day; `0` keeps them (config.toml `[context_store] ttl_days`) |
 | `CONTEXT_EMBEDDING_MODEL` | empty | Embedding model for hybrid search; empty turns vectors off (config.toml `[context_store] embedding_model`) |
+| `CONTEXT_EMBEDDING_TIMEOUT_S` | `30` | Seconds per row of a background embeddings call (config.toml `[context_store] embedding_timeout_s`) |
+| `CONTEXT_EMBEDDING_MAX_CHARS` | `4000` | Characters of each row's head that are embedded (config.toml `[context_store] embedding_max_chars`) |
 | `CONTEXT_PROXY_EMBEDDING_URL` | `http://host.docker.internal:11434/v1` | OpenAI-compatible embeddings base URL as the container sees it (Ollama on the host); passed in as `CONTEXT_EMBEDDING_URL` |
 | `CONTEXT_PROXY_HINDSIGHT_URL` | `http://hindsight:8888` | Recall endpoint; the default needs the hindsight profile in the same compose project |
 

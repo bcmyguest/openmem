@@ -120,6 +120,8 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 | `[context_store] ttl_days` | `30` | `CONTEXT_STORE_TTL_DAYS` | Delete sessions idle longer than this; `0` keeps everything |
 | `[context_store] embedding_model` | empty (off) | `CONTEXT_EMBEDDING_MODEL` | Embedding model for hybrid `smart_compact_search` ([vectors](context-store.md#vectors)) |
 | `[context_store] embedding_url` | `http://127.0.0.1:11434/v1` | `CONTEXT_EMBEDDING_URL` | OpenAI-compatible embeddings endpoint as the host sees it |
+| `[context_store] embedding_timeout_s` | `30` | `CONTEXT_EMBEDDING_TIMEOUT_S` | Seconds per row of a background embeddings call |
+| `[context_store] embedding_max_chars` | `4000` | `CONTEXT_EMBEDDING_MAX_CHARS` | Characters of each row's head that are embedded |
 
 `install-coding-agent` and `./setup` copy the trim keys into the stack `.env` the proxy container reads. The store lives at `$OPENMEM_STATE_DIR/context` (default `~/.local/share/openmem/context`).
 

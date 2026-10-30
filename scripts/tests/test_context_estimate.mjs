@@ -101,7 +101,15 @@ const RECORDS = [
   check("CONTEXT_CHARS_PER_TOKEN overrides", trimSettings({ CONTEXT_CHARS_PER_TOKEN: "3.25" }, "/h").charsPerToken === 3.25);
   check("bad CONTEXT_CHARS_PER_TOKEN falls back", ["0", "-2", "x", "Infinity", ""].every((v) => trimSettings({ CONTEXT_CHARS_PER_TOKEN: v }, "/h").charsPerToken === 2.5));
   check("[context_proxy] chars_per_token maps to the env var", contextTrimEnvFromPmConfig({ context_proxy: { chars_per_token: 2.3 } }).CONTEXT_CHARS_PER_TOKEN === "2.3");
-  check("invalid chars_per_token is left out", ["2.3", 0, -1, true].every((v) => !("CONTEXT_CHARS_PER_TOKEN" in contextTrimEnvFromPmConfig({ context_proxy: { chars_per_token: v } }))));
+  {
+    const env = contextTrimEnvFromPmConfig({ context_store: { embedding_timeout_s: 90.5, embedding_max_chars: 2000 } });
+    const s = trimSettings(env, "/h");
+    check("[context_store] embedding_timeout_s / embedding_max_chars reach the trim settings", env.CONTEXT_EMBEDDING_TIMEOUT_S === "90.5"
+      && env.CONTEXT_EMBEDDING_MAX_CHARS === "2000" && s.embeddingTimeoutS === 90.5 && s.embeddingMaxChars === 2000, JSON.stringify(env));
+    const bad = trimSettings(contextTrimEnvFromPmConfig({ context_store: { embedding_timeout_s: 0, embedding_max_chars: "x" } }), "/h");
+    check("invalid embedding settings fall back", bad.embeddingTimeoutS === 30 && bad.embeddingMaxChars === 4000);
+  }
+  check("invalid chars_per_token is left out",["2.3", 0, -1, true].every((v) => !("CONTEXT_CHARS_PER_TOKEN" in contextTrimEnvFromPmConfig({ context_proxy: { chars_per_token: v } }))));
   check("OpenCode TokenUsage: input + cache read + cache write", promptTokensFromOpenCode({ input: 12, output: 900, reasoning: 40, cache: { read: 90000, write: 3000 } }) === 93012
     && promptTokensFromOpenCode({ input: 0, output: 5, reasoning: 0, cache: { read: 0, write: 0 } }) === null && promptTokensFromOpenCode(null) === null);
 }
