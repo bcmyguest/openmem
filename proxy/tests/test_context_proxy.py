@@ -4,6 +4,7 @@ import copy
 import io
 import json
 import os
+import sqlite3
 import stat
 import sys
 import tempfile
@@ -70,14 +71,25 @@ class Base(unittest.TestCase):
         return 200, {"total": 0}
 
     def ptr(self, dropped, sid=SID):
-        return pointer_text(sid, dropped, self.ctx / "sessions" / f"{sid}.log.jsonl")
+        return pointer_text(sid, dropped)
 
     def run_req(self, data, call_type="anthropic_messages", **kw):
         return process_request(data, call_type, self.settings(**kw), http=self.http)
 
+    def db_rows(self, sid=SID, where="1"):
+        path = self.ctx / "sessions" / f"{sid}.db"
+        if not path.exists():
+            return []
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute(f"SELECT * FROM messages WHERE {where} ORDER BY seq")]
+        finally:
+            conn.close()
+
     def log_rows(self, sid=SID):
-        path = self.ctx / "sessions" / f"{sid}.log.jsonl"
-        return [json.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
+        """Rows trimmed out of context (the former handoff log)."""
+        return self.db_rows(sid, "in_context = 0")
 
     def force(self, sid=SID):
         (self.ctx / "sessions").mkdir(parents=True, exist_ok=True)
@@ -90,7 +102,8 @@ class AnthropicTrimTests(Base):
         data = anth_request(copy.deepcopy(msgs))
         out = self.run_req(data)
         self.assertEqual(out["messages"], msgs)
-        self.assertFalse((self.ctx / "sessions" / f"{SID}.log.jsonl").exists())
+        self.assertEqual(self.log_rows(), [])
+        self.assertTrue(self.db_rows() and all(r["in_context"] == 1 for r in self.db_rows()))
 
     def test_cut_at_last_real_user_turn_and_pairs_kept(self):
         msgs = anth_history(3)
@@ -131,9 +144,12 @@ class AnthropicTrimTests(Base):
     def test_log_rows_shape_and_seq(self):
         self.run_req(anth_request(anth_history(3)), trim_at_tokens=1)
         rows = self.log_rows()
-        self.assertEqual([r["seq"] for r in rows], list(range(len(rows))))
-        self.assertEqual(set(rows[0]), {"seq", "ts", "role", "kind", "name", "text"})
-        self.assertRegex(rows[0]["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        seqs = [r["seq"] for r in rows]
+        self.assertEqual(seqs, sorted(set(seqs)))
+        self.assertEqual(set(rows[0]), {"seq", "fingerprint", "thread", "role", "kind", "name", "text", "blob_id",
+                                        "in_context", "trimmed_at_seq", "trimmed_at", "created_at"})
+        self.assertRegex(rows[0]["created_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertRegex(rows[0]["trimmed_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         kinds = [(r["role"], r["kind"], r["name"]) for r in rows[:5]]
         # The first user turn is pinned, so the log starts with the reply to it.
         self.assertEqual(kinds, [("assistant", "thinking", None), ("assistant", "tool_use", "Bash"),
@@ -142,7 +158,7 @@ class AnthropicTrimTests(Base):
         self.assertEqual(rows[1]["text"], '{"command":"echo 0"}')
         self.assertNotIn("question 0", json.dumps(rows))
         self.assertNotIn("SIG", json.dumps(rows))
-        mode = stat.S_IMODE(os.stat(self.ctx / "sessions" / f"{SID}.log.jsonl").st_mode)
+        mode = stat.S_IMODE(os.stat(self.ctx / "sessions" / f"{SID}.db").st_mode)
         self.assertEqual(mode, 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(self.ctx / "sessions").st_mode), 0o700)
 
@@ -199,7 +215,7 @@ class AnthropicTrimTests(Base):
                  {"role": "assistant", "content": [{"type": "text", "text": "reply"}]}]
         out = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)["messages"]
         rows = self.log_rows()
-        self.assertEqual([r["seq"] for r in rows], list(range(len(rows))))
+        self.assertEqual([r["seq"] for r in rows], sorted({r["seq"] for r in rows}))
         self.assertEqual(rows[:len(first_rows)], first_rows)
         # Turn 2 moved out: user text, thinking, tool_use, tool_result, reminder text, answer text.
         self.assertEqual(len(rows) - len(first_rows), 6)
@@ -276,32 +292,32 @@ class SessionIdTests(Base):
                 "proxy_server_request": {"headers": {"X-OpenMem-Session-Id": "oc:1",
                                                      "x-claude-code-session-id": "cc"}}}
         self.run_req(data, trim_at_tokens=1)
-        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.log.jsonl")], ["oc_1.log.jsonl"])
+        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.db")], ["oc_1.db"])
 
     def test_claude_header_before_metadata(self):
         data = {"messages": anth_history(2), "metadata": {"user_id": json.dumps({"session_id": "meta"})},
                 "proxy_server_request": {"headers": {"x-claude-code-session-id": "cc"}}}
         self.run_req(data, trim_at_tokens=1)
-        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.log.jsonl")], ["cc.log.jsonl"])
+        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.db")], ["cc.db"])
 
     def test_metadata_user_id_json(self):
         data = {"messages": anth_history(2), "metadata": {"user_id": json.dumps({"session_id": "a/b c"})}}
         self.run_req(data, trim_at_tokens=1)
-        self.assertTrue((self.ctx / "sessions" / "a_b_c.log.jsonl").exists())
+        self.assertTrue((self.ctx / "sessions" / "a_b_c.db").exists())
 
     def test_prompt_cache_key(self):
         data = {"input": [{"role": "user", "content": "x"}, {"role": "user", "content": "y"},
                           {"role": "user", "content": "z"}],
                 "prompt_cache_key": "codex-1"}
         self.run_req(data, "aresponses", trim_at_tokens=1)
-        self.assertTrue((self.ctx / "sessions" / "codex-1.log.jsonl").exists())
+        self.assertTrue((self.ctx / "sessions" / "codex-1.db").exists())
 
     def test_fingerprint_fallback(self):
         data = {"system": "S", "messages": anth_history(2)}
         out = self.run_req(data, trim_at_tokens=1)
-        logs = list((self.ctx / "sessions").glob("fp-*.log.jsonl"))
+        logs = list((self.ctx / "sessions").glob("fp-*.db"))
         self.assertEqual(len(logs), 1)
-        self.assertRegex(logs[0].name, r"^fp-[0-9a-f]{16}\.log\.jsonl$")
+        self.assertRegex(logs[0].name, r"^fp-[0-9a-f]{16}\.db$")
         self.assertIn("continuing session fp-", out["messages"][1]["content"][0]["text"])
 
 
@@ -451,7 +467,9 @@ class CompressionTests(Base):
         msgs[2]["content"][0]["content"] = big
         self.run_req(anth_request(msgs), compress_over_tokens=100, trim_at_tokens=1)
         result_rows = [r for r in self.log_rows() if r["kind"] == "tool_result"]
-        self.assertTrue(result_rows[0]["text"].startswith(f"[blob:{blob_id(big)}]\n0\n1\n"))
+        # Stored in full (the request carried it in full); blob_id names the blob the view points at.
+        self.assertEqual(result_rows[0]["text"], big)
+        self.assertEqual(result_rows[0]["blob_id"], blob_id(big))
 
     def test_responses_output_compressed(self):
         items = responses_history()
@@ -481,7 +499,7 @@ class FirstUserPinTests(Base):
         self.assertEqual(moved[1]["content"][0]["text"], self.ptr(11))
         self.assertEqual(moved[1]["content"][1], {"type": "text", "text": "follow-up"})
         self.assertFalse(any(r["text"].startswith("question 0") for r in self.log_rows()))
-        self.assertEqual([r["seq"] for r in self.log_rows()], list(range(len(self.log_rows()))))
+        self.assertEqual([r["seq"] for r in self.log_rows()], sorted({r["seq"] for r in self.log_rows()}))
 
     def test_anthropic_first_user_with_reminder_blocks_is_pinned(self):
         msgs = anth_history(2)
@@ -569,7 +587,7 @@ class ContractTests(Base):
         data = {"messages": anth_history(2),
                 "proxy_server_request": {"headers": {"x-openmem-session-id": "  ", "x-claude-code-session-id": " cc "}}}
         self.run_req(data, trim_at_tokens=1)
-        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.log.jsonl")], ["cc.log.jsonl"])
+        self.assertEqual([p.name for p in (self.ctx / "sessions").glob("*.db")], ["cc.db"])
 
     def test_registration_missing_raises(self):
         from openmem_context.store import RegistrationNotFound, Store
@@ -585,17 +603,6 @@ class ContractTests(Base):
         from openmem_context.adapters import UnsupportedCallType, adapter_for
         with self.assertRaises(UnsupportedCallType):
             adapter_for("aembedding")
-
-    def test_pointer_names_host_log_path(self):
-        s = Settings.from_env({"OPENMEM_STATE_DIR": "/state", "OPENMEM_HOST_STATE_DIR": " /home/u/.local/share/openmem "})
-        self.assertEqual(s.context_dir, Path("/state/context"))
-        self.assertEqual(s.pointer_context_dir, Path("/home/u/.local/share/openmem/context"))
-        self.assertEqual(Settings.from_env({"OPENMEM_STATE_DIR": " /state "}).pointer_context_dir, Path("/state/context"))
-        out = process_request(anth_request(anth_history(2)), "anthropic_messages",
-                              self.settings(trim_at_tokens=1, host_context_dir=Path("/host/context")), http=self.http)
-        self.assertIn("the handoff log is /host/context/sessions/sess-1.log.jsonl (JSONL, one row per block).]",
-                      out["messages"][1]["content"][0]["text"])
-
 
 class SafetyTests(Base):
     def test_disabled_switch(self):
@@ -641,11 +648,11 @@ class StandingInstructionTests(Base):
         return self.run_req(data, call_type, standing_instruction=True, **kw)
 
     def test_pointer_text_contract(self):
-        self.assertEqual(pointer_text("s1", 3, "/x/s1.log.jsonl"),
+        self.assertEqual(pointer_text("s1", 3),
                          "[openmem: continuing session s1; 3 earlier messages are NOT in your context. "
                          'You MUST call smart_compact_search(session_id="s1", query=... or pattern=...) before '
-                         "answering anything that depends on them; the handoff log is /x/s1.log.jsonl "
-                         "(JSONL, one row per block).]")
+                         "answering anything that depends on them; every message of this session is stored and "
+                         'queryable with smart_compact_search and smart_compact_sql(session_id="s1", sql=...).]')
 
     def test_anthropic_first_request_appends_one_block(self):
         msgs = anth_history(2)
@@ -653,7 +660,7 @@ class StandingInstructionTests(Base):
         self.assertEqual(out["system"], [{"type": "text", "text": "SYSTEM"},
                                          {"type": "text", "text": STANDING_INSTRUCTION}])
         self.assertEqual(out["messages"], msgs)
-        self.assertFalse((self.ctx / "sessions" / f"{SID}.log.jsonl").exists())
+        self.assertEqual(self.log_rows(), [])
 
     def test_anthropic_string_and_missing_system(self):
         data = {**anth_request(anth_history(1)), "system": "S"}
@@ -701,7 +708,7 @@ class StandingInstructionTests(Base):
             {"role": "assistant", "content": [{"type": "tool_use", "id": "tuX", "name": "Read", "input": {}}]},
             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tuX", "content": "x"}]}]
         on = self.on(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)
-        no_ts = lambda rows: [{k: v for k, v in r.items() if k != "ts"} for r in rows]  # noqa: E731
+        no_ts = lambda rows: [{k: v for k, v in r.items() if k not in ("created_at", "trimmed_at")} for r in rows]  # noqa: E731
         on_rows = no_ts(self.log_rows())
         self.ctx = Path(self.tmp.name) / "context-off"
         off = self.run_req(anth_request(copy.deepcopy(msgs)), trim_at_tokens=1)

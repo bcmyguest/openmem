@@ -5,7 +5,7 @@ import { writeFileAtomic } from "../../cli/coding-agent/file-io.mjs";
 import { DEFAULT_PROVIDER_ID } from "./providers/registry.mjs";
 
 /** Tables owned by install-coding-agent; the wizard carries them over when it rewrites the file. */
-const INSTALLER_TABLES = ["agents", "context_proxy", "compaction"];
+const INSTALLER_TABLES = ["agents", "context_proxy", "compaction", "context_store"];
 const AGENT_INTEGRATIONS = ["openmem", "provider"];
 const DEFAULT_CONTEXT_PROXY_PORT = 4100;
 // Same defaults as proxy/openmem_context/settings.py and cli/coding-agent/context-trim.mjs.
@@ -17,6 +17,12 @@ const CONTEXT_TRIM_ENV_KEYS = [
   ["context_proxy", "trim_at_tokens", "CONTEXT_TRIM_AT_TOKENS"],
   ["context_proxy", "compress_over_tokens", "CONTEXT_COMPRESS_OVER_TOKENS"],
   ["compaction", "max_chars", "CONTEXT_COMPACTION_MAX_CHARS"],
+  ["context_store", "ttl_days", "CONTEXT_STORE_TTL_DAYS"],
+];
+/** String keys of `[context_store]` and their env names (session database vectors, docs/context-store.md). */
+const CONTEXT_STORE_STRING_KEYS = [
+  ["embedding_model", "CONTEXT_EMBEDDING_MODEL"],
+  ["embedding_url", "CONTEXT_EMBEDDING_URL"],
 ];
 const CONFIG_MODE = 0o600;
 const CONFIG_HEADER = "# Written by openmem — mise-like config.\n# Docs: docs/openmem-config.md\n";
@@ -258,7 +264,8 @@ export function contextTrimFromPmConfig(cfg) {
  * `compress_over_tokens` → CONTEXT_COMPRESS_OVER_TOKENS, `[compaction] max_chars` →
  * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
  * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
- * CONTEXT_CHARS_PER_TOKEN. Unset or invalid keys are left out, so the reader's defaults
+ * CONTEXT_CHARS_PER_TOKEN, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
+ * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL. Unset or invalid keys are left out, so the reader's defaults
  * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
  * @param {Record<string, unknown>} cfg
  * @returns {Record<string, string>}
@@ -273,6 +280,10 @@ export function contextTrimEnvFromPmConfig(cfg) {
   if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
   const ratio = tableOf(cfg, "context_proxy").chars_per_token;
   if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
+  const store = tableOf(cfg, "context_store");
+  for (const [key, envName] of CONTEXT_STORE_STRING_KEYS) {
+    if (typeof store[key] === "string") out[envName] = store[key].trim();
+  }
   return out;
 }
 

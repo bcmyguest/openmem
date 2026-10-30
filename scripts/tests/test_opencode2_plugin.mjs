@@ -34,7 +34,7 @@ delete process.env.CONTEXT_PROXY_ENABLED;
 delete process.env.CONTEXT_STANDING_INSTRUCTION;
 
 const sessions = path.join(home, ".local", "share", "openmem", "context", "sessions");
-const ptr = (sid, dropped) => pointerText(sid, dropped, path.join(sessions, `${sid}.log.jsonl`));
+const ptr = (sid, dropped) => pointerText(sid, dropped);
 const calls = [];
 let pendingOps = 0;
 globalThis.fetch = async (url, init = {}) => {
@@ -184,7 +184,7 @@ try {
   check("command writes .force", fs.existsSync(path.join(sessions, "ses_one.force")));
   check("command prompts with the marked body", oc.prompts.length === 1 && oc.prompts[0].sessionID === "ses_one" && oc.prompts[0].text.includes("openmem:smart-compact") && oc.prompts[0].delivery === "queue");
 
-  // Forced trim through the context hook: pointer + Hindsight recall + ingest note; MCP tools read the log.
+  // Forced trim through the context hook: pointer + Hindsight recall + ingest note; MCP tools read the session database.
   pendingOps = 2;
   const history = [user("earlier question"), assistant("earlier answer"), user("current question")];
   const forced = contextEvent("ses_one", history);
@@ -194,7 +194,8 @@ try {
     && forced.messages[1].content[1].text === "current question", JSON.stringify(forced.messages));
   check("pointer carries recall and the ingest note", note.startsWith(ptr("ses_one", 1)) && note.includes("[openmem recall]\nrecalled: current question") && note.includes("memory ingest is still running"), note);
   check(".force consumed", !fs.existsSync(path.join(sessions, "ses_one.force")));
-  const found = callContextStoreTool("smart_compact_search", { query: "earlier answer", session_id: "ses_one" }, { env: process.env, cwd: project });
+  // The trimmed turn is an assistant reply: role "all" includes it; in_context: false keeps only trimmed rows.
+  const found = await callContextStoreTool("smart_compact_search", { query: "earlier answer", session_id: "ses_one", role: "all", in_context: false }, { env: process.env, cwd: project });
   const foundText = JSON.stringify(found);
   check("smart_compact_search finds the trimmed turn", foundText.includes("earlier answer"), foundText.slice(0, 400));
 
@@ -213,7 +214,7 @@ try {
   const compressed = withTool.messages[2].content[0].result.value;
   const blob = /smart_compact_get\(id="([0-9a-f]{16})"\)/.exec(compressed)?.[1];
   check("large tool result compressed in the request", compressed.startsWith("[openmem: tool result compressed,") && Boolean(blob));
-  const full = callContextStoreTool("smart_compact_get", { id: blob }, { env: process.env });
+  const full = await callContextStoreTool("smart_compact_get", { id: blob }, { env: process.env });
   check("smart_compact_get returns the full result", JSON.stringify(full).includes("out 199"));
 
   // Native compaction: summary replaces the model call.
