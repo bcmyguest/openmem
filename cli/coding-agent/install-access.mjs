@@ -24,11 +24,23 @@ function enableTomlFlag(text, table, key) {
   return `${head}${head.endsWith("\n") ? "" : "\n"}${key} = true\n${text.slice(end)}`;
 }
 
+/** Add top-level `key = value` (before the first table) unless the file sets `key` already. */
+function setTomlDefault(text, key, value) {
+  const statements = tomlStatements(text);
+  if (statements.some((s) => s.kind === "kv" && s.path.length === 1 && s.path[0] === key)) return text;
+  const firstTable = statements.findIndex((s) => s.kind !== "kv");
+  const at = firstTable < 0 ? text.length : statements[firstTable].start;
+  const head = text.slice(0, at);
+  return `${head}${head && !head.endsWith("\n") ? "\n" : ""}${key} = ${JSON.stringify(value)}\n${text.slice(at)}`;
+}
+
 /**
- * Codex config with hooks enabled, network allowed in the workspace-write sandbox (Codex defaults it off,
- * so curl and package installs fail) and exactly one current `[mcp_servers.openmem]`; throws on a TOML it cannot edit.
+ * Codex config with hooks enabled, the workspace-write sandbox with network allowed (Codex defaults to a
+ * read-only sandbox without network, so curl and package installs fail) and exactly one current
+ * `[mcp_servers.openmem]`; throws on a TOML it cannot edit.
  */
 function updateCodexToml(text, scriptPath, stackRoot) {
+  text = setTomlDefault(text, "sandbox_mode", "workspace-write");
   text = enableTomlFlag(text, "features", "hooks");
   text = enableTomlFlag(text, "sandbox_workspace_write", "network_access");
   const section = [
