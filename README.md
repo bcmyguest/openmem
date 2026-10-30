@@ -23,7 +23,7 @@
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-context-wide-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/overview-context-wide.png" alt="B, context management: coding agent, context proxy trimming at 120k tokens with no LLM call, model API, SQLite session store read back with smart_compact_search and smart_compact_sql; OpenCode 2 uses a native plugin" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-context-wide.png" alt="B, context management: coding agent, context proxy trimming at 125k tokens (Haiku 95k) with no LLM call, model API, SQLite session store read back with smart_compact_search and smart_compact_sql; OpenCode 2 uses a native plugin" />
 </picture>
 </p>
 
@@ -91,7 +91,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  A["<b>Coding agent</b><br/>Claude Code · Codex · OpenCode 1"] -->|requests| X["<b>Context proxy</b><br/>LiteLLM pre-call hook<br/>trims at 120k tokens · no LLM call"]
+  A["<b>Coding agent</b><br/>Claude Code · Codex · OpenCode 1"] -->|requests| X["<b>Context proxy</b><br/>LiteLLM pre-call hook<br/>trims at 125k tokens (Haiku 95k) · no LLM call"]
   X -->|trimmed request| API["<b>Model API</b><br/>Anthropic · ChatGPT (Codex)"]
   X -->|every turn| S[("<b>Session store</b><br/>SQLite · every turn, verbatim")]
   S -->|"MCP: smart_compact_search · smart_compact_sql"| A

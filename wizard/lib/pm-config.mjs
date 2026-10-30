@@ -12,7 +12,7 @@ const DEFAULT_CONTEXT_PROXY_PORT = 4100;
 export const CONTEXT_AGENT_KEYS = ["claude-code", "opencode1", "codex", "opencode2"];
 export const CONTEXT_PROXY_AGENT_KEYS = ["claude-code", "opencode1", "codex"];
 // Same defaults as proxy/openmem_context/settings.py and cli/coding-agent/context-trim.mjs.
-const DEFAULT_TRIM_AT_TOKENS = 120000;
+const DEFAULT_TRIM_AT_TOKENS = 125000;
 const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
 const DEFAULT_COMPACTION_MAX_CHARS = 12000;
 /** Config keys that reach the proxy container (stack .env) and the OpenCode 2 plugin as env. */
@@ -285,7 +285,7 @@ export function contextAgentsFromPmConfig(cfg) {
 }
 
 /**
- * Trim settings with defaults: `[context_proxy] trim_at_tokens` (120000; unset, the proxy and plugin trim Haiku at 95000), `compress_over_tokens`
+ * Trim settings with defaults: `[context_proxy] trim_at_tokens` (125000; unset, the proxy and plugin trim Haiku at 95000), `compress_over_tokens`
  * (4000), `standing_instruction` (true), `[compaction] max_chars` (12000), `native` (true). Env overrides are applied by
  * `contextTrimEnvFromPmConfig` + `trimSettings()`, not here.
  * @param {Record<string, unknown>} cfg

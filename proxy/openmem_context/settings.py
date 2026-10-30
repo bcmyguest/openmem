@@ -8,7 +8,7 @@ from pathlib import Path
 from .store import ASCII_WHITESPACE
 from .tokens import DEFAULT_CHARS_PER_TOKEN
 
-DEFAULT_TRIM_AT_TOKENS = 120000
+DEFAULT_TRIM_AT_TOKENS = 125000
 # Trim thresholds by model family (a substring of the lowercased model id), used while CONTEXT_TRIM_AT_TOKENS is
 # unset. Haiku's prompts over 100k tokens bill at a higher tier, so its sessions trim below it.
 MODEL_TRIM_AT_TOKENS = (("haiku", 95000),)

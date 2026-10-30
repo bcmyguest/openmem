@@ -66,7 +66,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
 // Settings mirror the proxy's environment variables and defaults.
 {
   const d = trimSettings({}, "/h");
-  check("defaults match the proxy", d.enabled && d.trimAtTokens === DEFAULT_TRIM_AT_TOKENS && DEFAULT_TRIM_AT_TOKENS === 120000
+  check("defaults match the proxy", d.enabled && d.trimAtTokens === DEFAULT_TRIM_AT_TOKENS && DEFAULT_TRIM_AT_TOKENS === 125000
     && d.compressOverTokens === DEFAULT_COMPRESS_OVER_TOKENS && DEFAULT_COMPRESS_OVER_TOKENS === 4000
     && d.compactionMaxChars === DEFAULT_COMPACTION_MAX_CHARS && DEFAULT_COMPACTION_MAX_CHARS === 12000
     && d.contextDir === "/h/.local/share/openmem/context");
@@ -84,7 +84,7 @@ const result = (id, name, value) => ({ role: "tool", content: [{ type: "tool-res
   check("haiku threshold by model id, OpenCode model object or LiteLLM prefix",
     trimAtFor(d, "anthropic/claude-haiku-5-5") === 95000 && trimAtFor(d, { providerID: "anthropic", id: "Claude-HAIKU" }) === 95000);
   check("other or missing models keep the default",
-    ["claude-sonnet-5", { providerID: "anthropic", id: "claude-opus-5-5" }, null, 7].every((m) => trimAtFor(d, m) === 120000));
+    ["claude-sonnet-5", { providerID: "anthropic", id: "claude-opus-5-5" }, null, 7].every((m) => trimAtFor(d, m) === 125000));
   check("CONTEXT_TRIM_AT_TOKENS overrides the model table",
     ["120000", " 50 "].every((v) => trimAtFor(trimSettings({ CONTEXT_TRIM_AT_TOKENS: v }, "/h"), "claude-haiku-5-5") === Number(v)));
   check("an invalid CONTEXT_TRIM_AT_TOKENS keeps the model table", trimAtFor(trimSettings({ CONTEXT_TRIM_AT_TOKENS: "x" }, "/h"), "claude-haiku-5-5") === 95000);
