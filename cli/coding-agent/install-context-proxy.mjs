@@ -62,6 +62,28 @@ export async function probeContextProxy(port, { fetch = globalThis.fetch, timeou
   }
 }
 
+/**
+ * Agents whose config still points at the loopback proxy: Claude Code (settings.json `env`)
+ * and OpenCode 1 (`provider.anthropic.options.baseURL`). Stopping the proxy breaks them.
+ * @returns {string[]}
+ */
+export function agentsPointedAtContextProxy(home) {
+  const out = [];
+  try {
+    if (LOOPBACK_URL.test(String(readJson(path.join(home, ".claude", "settings.json")).env?.ANTHROPIC_BASE_URL || ""))) out.push("claude-code");
+  } catch {
+    // Unreadable settings: treat as not pointed.
+  }
+  try {
+    const file = opencodeConfigPath(home);
+    const options = fs.existsSync(file) ? parseJsonc(fs.readFileSync(file, "utf8"))?.provider?.anthropic?.options : undefined;
+    if (LOOPBACK_URL.test(String(options?.baseURL || ""))) out.push("opencode");
+  } catch {
+    // Unreadable config: treat as not pointed.
+  }
+  return out;
+}
+
 function readBackup(home) {
   try {
     return readJson(contextProxyBackupPath(home));
