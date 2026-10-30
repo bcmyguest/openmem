@@ -53,9 +53,9 @@ The cut is the last real user turn after the previous cut whose kept part (the s
 
 `sessions/<sid>.db` is a SQLite database, one per session, in WAL mode. The proxy (Python `sqlite3`, `proxy/openmem_context/sessiondb.py`) and the OpenCode 2 plugin (`node:sqlite`, `cli/coding-agent/session-db.mjs`) write it; the MCP tools open it read-only. The file is created mode 600; SQLite gives `-wal` and `-shm` the same mode.
 
-### Schema (`PRAGMA user_version = 1`)
+### Schema (`PRAGMA user_version = 2`)
 
-A writer that finds `user_version = 0` creates these objects in one `BEGIN IMMEDIATE` transaction, in this order and with these exact statements (both writers share the strings; the parity test compares `sqlite_master`), then sets `user_version = 1`. A writer that finds any other version leaves the file alone and logs `UnsupportedSchema`; a reader skips it. A schema change bumps `user_version` and changes this section first.
+A writer that finds `user_version = 0` creates these objects in one `BEGIN IMMEDIATE` transaction, in this order and with these exact statements (both writers share the strings, `SCHEMA` then `MIGRATIONS`; the parity test compares `sqlite_master`), then sets `user_version = 2`. A writer that finds version 1 runs only the version 2 statements (the `events` table) in the same kind of transaction; rows already stored are untouched. A writer that finds a newer version leaves the file alone and logs `UnsupportedSchema`; a reader skips it. Readers (`smart_compact_*`, `context_status`) accept versions 1 and 2; a version 1 file has no `events` table. A schema change appends to `MIGRATIONS`, bumps `user_version` and changes this section first.
 
 ```sql
 CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, thread TEXT NOT NULL,
@@ -72,6 +72,9 @@ CREATE TRIGGER lines_fts_insert AFTER INSERT ON lines BEGIN
   INSERT INTO lines_fts (rowid, text) VALUES (new.id, new.text); END;
 CREATE TABLE vectors (message_seq INTEGER NOT NULL REFERENCES messages (seq), model TEXT NOT NULL,
   dim INTEGER NOT NULL, blob BLOB NOT NULL, PRIMARY KEY (message_seq, model));
+-- version 2
+CREATE TABLE events (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, version TEXT NOT NULL,
+  location TEXT, error TEXT, tokens_before INTEGER, tokens_after INTEGER, dropped INTEGER);
 ```
 
 | Column | Values |
@@ -91,6 +94,7 @@ CREATE TABLE vectors (message_seq INTEGER NOT NULL REFERENCES messages (seq), mo
 | `lines` | One row per `\n`-separated line of `messages.text`, `line_no` from 1, `role` copied from the message |
 | `messages_fts`, `lines_fts` | FTS5 (default `unicode61` tokenizer) over `messages.text` and `lines.text`; rowid = `messages.seq` / `lines.id` |
 | `vectors` | Embedding of the head of `messages.text` (first `embedding_max_chars` characters, default 4000) per model: `dim` float32 values, little-endian, in `blob`. `dim = 0` with an empty `blob` marks a row skipped after repeated failures |
+| `events` | One row per trim or fail-open, [below](#events) |
 
 ### Rows
 
@@ -98,9 +102,24 @@ On every request the writer turns each message that is not pinned (system and de
 
 A row's fingerprint chains it to the rows before it: `fingerprint({"prev", "role", "kind", "name", "text"})`, the trim fingerprint function (`tokens.fingerprint`: SHA-256 of sorted-key compact JSON, first 32 hex), with `prev` the previous row's fingerprint (`""` for the first). A resent history therefore yields the same keys whatever its wire form (cache markers, string or block content), the same text said twice yields two rows, and a rewritten history yields new rows from the first changed one on. The chain is over rows, not wire messages, so the proxy's Chat, Anthropic and Responses adapters and the OpenCode 2 plugin produce identical rows for the same conversation.
 
-Writes are idempotent and cheap: each writer keeps an in-memory index of the database's fingerprints (reloaded when `PRAGMA data_version` shows another connection committed), inserts only rows it has not seen, and updates `in_context` only for rows whose flag changes, all in one `BEGIN IMMEDIATE` transaction. A request that adds nothing and moves nothing writes nothing. A database error (locked past the 1 s busy timeout, disk full, newer schema) logs one `openmem-context: fail-open <type> at <file:line>` line and the request goes on with its rewritten view.
+Writes are idempotent and cheap: each writer keeps an in-memory index of the database's fingerprints (reloaded when `PRAGMA data_version` shows another connection committed), inserts only rows it has not seen, and updates `in_context` only for rows whose flag changes, all in one `BEGIN IMMEDIATE` transaction. A request that adds nothing and moves nothing writes nothing. A database error (locked past the 1 s busy timeout, disk full, newer schema) logs one `openmem-context: fail-open <type> at <file:line>` line and the request goes on with its rewritten view. A rewrite error after the session id is known also writes a `fail_open` [event](#events), and that request goes on unmodified.
 
 Rows that a later request no longer carries (a rewritten history) keep their last `in_context` value.
+
+### Events
+
+The writer appends one `events` row per trim and per fail-open it can attribute to the session. `openmem context status` and the `context_status` MCP tool summarize them across sessions; `smart_compact_sql` reads one session's rows.
+
+| Column | Values |
+| --- | --- |
+| `at` | ISO 8601 UTC without fractions |
+| `kind` | `trim` (a new cut, including a `/smart-compact` one) · `fail_open` (the rewrite raised; the request went upstream unmodified) |
+| `version` | The writer: `proxy:<12 hex>`, the first 12 hex of SHA-256 over `proxy/openmem_context/*.py` (each file's name, NUL, bytes, NUL, sorted by name; `core.code_hash`, `proxyCodeVersion`), or `opencode:<package version>` for the OpenCode 2 plugin. Status compares the newest `proxy:` value with the checkout's hash to spot a proxy running old code |
+| `location`, `error` | Fail-open only: `<file>:<line>` (JS adds `:<column>`) and the exception type. Never message content |
+| `tokens_before`, `tokens_after` | Trim only: the writer's calibrated estimate ([token estimate](context-proxy.md#token-estimate)) of the request before and after the cut, not provider-billed counts |
+| `dropped` | Trim only: messages the cut removed from context |
+
+Two fail-opens cannot be recorded and stay on stderr only: those raised before the session id is known, and those from the session database itself (the events write fails silently, so each incident logs one line). OpenCode's native compaction replacement records no event.
 
 ### Concurrency
 
