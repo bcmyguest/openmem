@@ -77,6 +77,17 @@ Example hosted reflect model:
 
 Hindsight always sends the alias names above; you do not edit model ids in `hindsight.env` for route changes.
 
+## mem0 through the same LiteLLM
+
+The `litellm` service carries its own compose profile `litellm` next to `hindsight` and `notebooklm`, so Hindsight's stack renders and starts as before. mem0's wizard can enable that profile: LiteLLM then runs without Hindsight, published on `127.0.0.1:${MEM0_LITELLM_PORT:-4000}` only, from `~/.config/personal-memory/mem0-litellm.yaml`, with the same `litellm.env` and master key.
+
+| Alias | mem0 use |
+| --- | --- |
+| `memory-llm` | mem0's LLM (fact extraction and memory updates) |
+| `memory-embed` | mem0's embedder, only for backends with an embedding model (Ollama `nomic-embed-text`, an OpenAI-compatible server) |
+
+Claude (Anthropic API key or Meridian) has no embedding model; with those backends mem0 keeps its own embedder. The mem0 config keys and their sources are in [mem0 — Models through the stack LiteLLM](mem0.md#models-through-the-stack-litellm-optional).
+
 ## Verify and migrate
 
 Health check from the compose network:
