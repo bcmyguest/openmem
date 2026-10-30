@@ -1,148 +1,218 @@
 ---
-// Smart compaction, animated: the context fills toward the trim limit; the proxy keeps the system prompt, tools and
-// task turn, moves older turns (and old tool steps of the in-flight turn) to the saved transcript, keeps the reply
-// before the cut, prepends the pointer to the cut turn, and one excerpt comes back on demand.
-// The rule lives in proxy/openmem_context/core.py (kept_indices, choose_cut, choose_gap, render).
-// One 14 s CSS loop; with prefers-reduced-motion the figure shows its final frame, still.
+// Smart compaction, animated: the context fills past the trim threshold; the proxy keeps the system prompt, tools
+// and first user turn, moves older turns (and the oldest tool steps of the in-flight turn) out of the context into
+// the session store, keeps the reply before the cut, prepends the pointer to the cut turn, and one excerpt comes back
+// through smart_compact_search. A caption line names each of the four phases.
+// The rule lives in proxy/openmem_context/core.py (kept_indices, choose_cut, choose_gap, MIN_TAIL_STEPS, render,
+// strip_reasoning); the thresholds in proxy/openmem_context/settings.py (DEFAULT_TRIM_AT_TOKENS 125000,
+// MODEL_TRIM_AT_TOKENS haiku 95000, DEFAULT_TRIM_TO_FRACTION 0.3).
+// Two layouts drawn from one geometry function: wide (columns side by side) and narrow (store below the context),
+// switched by a container query. One 14 s CSS loop; with prefers-reduced-motion the figure shows its final frame.
 import { withBase } from '../../lib/url';
 
-const CARD_W = 220;
-const CARD_H = 21;
-const STEP = 26;
-const CTX_X = 24;
-const LOG_X = 476;
-const TOP = 90;
-const LIMIT = 0.82;
-const TARGET = 0.3;
-const rowY = (i) => TOP + i * STEP;
 const LOOP = 14;
+const STEP = 26;
+const CARD_H = 21;
+const TOP = 90;
+const LIMIT = 0.82; // where the trim threshold sits on the meter
+const TRIM_TO = 0.3; // DEFAULT_TRIM_TO_FRACTION: a trim lands under 0.3 x the threshold
+const CHIP_W = 150;
 
-// Rows as the context fills. `to`: the row after the trim (kept), or the transcript slot (moved).
+// Rows as the context fills. `slot`: store slot of a moved row; `to`: context row after the trim of a kept row.
 // kind: pin = never touched, old = earlier turns, live = the in-flight turn.
 const ROWS = [
-  { text: 'system prompt · tools', kind: 'pin', tag: 'untouched', to: 0 },
-  { text: 'turn 1 · user (task)', kind: 'pin', tag: 'pinned', to: 1 },
-  { text: 'turn 1 · assistant', kind: 'old', out: true, to: 2, at: 36 },
-  { text: 'turn 2 · user', kind: 'old', out: true, to: 3, at: 38 },
-  { text: 'turn 2 · assistant', kind: 'old', tag: 'kept', to: 2 },
-  { text: 'turn 3 · user (in flight)', kind: 'live', tag: 'cut turn', to: 4 },
-  { text: 'tool_use + result 1', kind: 'live', out: true, to: 4, at: 40 },
-  { text: 'tool_use + result 2', kind: 'live', to: 5 },
-  { text: 'tool_use + result 3', kind: 'live', to: 6 },
-  { text: 'tool_use + result 4', kind: 'live', to: 7 },
+  { text: 'system prompt · tools', kind: 'pin', tag: 'kept', to: 0 },
+  { text: 'turn 1 · user (task)', kind: 'pin', tag: 'kept', to: 1 },
+  { text: 'turn 1 · assistant', kind: 'old', slot: 0, at: 34 },
+  { text: 'turn 2 · user', kind: 'old', slot: 1, at: 36 },
+  { text: 'turn 2 · assistant', kind: 'old', tag: 'kept, no thinking', to: 2 },
+  { text: 'turn 3 · user (latest)', kind: 'live', tag: 'cut turn', to: 4 },
+  { text: 'tool call + result 1', kind: 'live', slot: 2, at: 38 },
+  { text: 'tool call + result 2', kind: 'live', to: 5 },
+  { text: 'tool call + result 3', kind: 'live', to: 6 },
+  { text: 'tool call + result 4', kind: 'live', to: 7 },
 ];
-const appearAt = (i) => 2 + (i - 2) * 3.4; // % of the loop; rows 0 and 1 are always there
+const PHASES = [
+  { text: '1 · Every turn adds to the context', from: 0, to: 30 },
+  { text: '2 · Past the threshold, older turns leave the context', from: 30, to: 55 },
+  { text: '3 · A pointer to the store marks the gap', from: 55, to: 65 },
+  { text: '4 · The agent searches the store for one detail', from: 65, to: 95 },
+];
+const appearAt = (i) => 2 + (i - 2) * 3.2; // % of the loop; rows 0 and 1 are always there
 
-// Per-row keyframes: fade in while the context fills, then slide to the transcript or rise into the gap.
+function layout(v) {
+  const wide = v === 'w';
+  const g = wide
+    ? { W: 720, CTX_X: 24, CARD_W: 220, LOG_X: 476 }
+    : { W: 360, CTX_X: 14, CARD_W: 292, LOG_X: 14 };
+  g.rowY = (i) => TOP + i * STEP;
+  g.LOG_HEAD = wide ? 28 : g.rowY(9) + CARD_H + 30;
+  g.LOG_TOP = wide ? g.rowY(2) : g.LOG_HEAD + 30;
+  g.slotY = (k) => g.LOG_TOP + k * STEP;
+  g.CALL_Y = g.slotY(3) + 18;
+  g.CAP_Y = (wide ? g.rowY(9) + CARD_H : g.CALL_Y) + 28;
+  g.H = g.CAP_Y + 16;
+  g.limitX = g.CTX_X + g.CARD_W * LIMIT;
+  g.targetX = g.CTX_X + g.CARD_W * LIMIT * TRIM_TO;
+  const from = g.slotY(1);
+  const to = g.rowY(8);
+  g.chip = { x: g.LOG_X, y: from, cx: g.CTX_X - g.LOG_X, cy: to - from };
+  g.fetch = wide
+    ? `M ${g.LOG_X - 12} ${from + 10} C 400 ${from + 10}, 400 ${to + 10}, ${g.CTX_X + CHIP_W + 8} ${to + 10}`
+    : `M ${g.CTX_X + CHIP_W + 8} ${from + 10} C ${g.W - 18} ${from + 10}, ${g.W - 18} ${to + 10}, ${g.CTX_X + CHIP_W + 8} ${to + 10}`;
+  g.braceX = g.CTX_X + g.CARD_W + 8;
+  // older turns and the oldest in-turn step move out: arrows toward the store
+  const tip = (x, y, dir) => (dir === 'r' ? `M ${x - 10} ${y - 6} l 10 6 l -10 6 z` : `M ${x - 6} ${y - 10} l 6 10 l 6 -10 z`);
+  g.moves = wide
+    ? [g.rowY(2) + 23, g.rowY(6) + 10].map((y) => ({ d: `M ${g.braceX + 6} ${y} H ${g.LOG_X - 22}`, tip: tip(g.LOG_X - 14, y, 'r') }))
+    : [{ d: `M ${g.braceX + 12} ${g.rowY(2) + 10} V ${g.LOG_TOP - 18}`, tip: tip(g.braceX + 12, g.LOG_TOP - 8, 'd') }];
+  g.dx = (r) => (r.slot != null ? g.LOG_X - g.CTX_X : 0);
+  g.dy = (r, i) => (r.slot != null ? g.slotY(r.slot) : g.rowY(r.to)) - g.rowY(i);
+  return g;
+}
+
+// Per-row keyframes: fade in while the context fills, then move to the store or rise into the gap.
 // Every moving piece fades out over 95-100% so the loop restarts without a jump.
-const rowCss = ROWS.map((r, i) => {
-  if (i < 2) return '';
-  const a = appearAt(i).toFixed(1);
-  const b = (appearAt(i) + 3).toFixed(1);
-  const dx = r.out ? LOG_X - CTX_X : 0;
-  const dy = rowY(r.to) - rowY(i);
-  // Moved rows slide straight across, then settle into their transcript slot; kept rows rise after they left.
-  const s = r.out ? r.at : 50;
-  const mid = r.out ? `${r.at + 9}% { opacity: 1; transform: translate(${dx}px, 0); }\n  ` : '';
-  const e = r.out ? r.at + 13 : 58;
-  return `.sc-r${i} { animation: sc-r${i} ${LOOP}s ease-in-out infinite; }
-@keyframes sc-r${i} {
+function rowCss(v) {
+  const g = layout(v);
+  return ROWS.map((r, i) => {
+    if (i < 2) return '';
+    const a = appearAt(i).toFixed(1);
+    const b = (appearAt(i) + 3).toFixed(1);
+    const dx = g.dx(r);
+    const dy = g.dy(r, i);
+    const out = r.slot != null;
+    // Wide: moved rows slide across, then settle into their slot. Narrow: they drop straight down.
+    const s = out ? r.at : 50;
+    const mid = out && v === 'w' ? `${r.at + 9}% { opacity: 1; transform: translate(${dx}px, 0); }\n  ` : '';
+    const e = out ? r.at + 13 : 58;
+    const name = `sc-${v}${i}`;
+    return `.sc-${v} .sc-r${i} { animation: ${name} ${LOOP}s ease-in-out infinite; }
+@keyframes ${name} {
   0%, ${a}% { opacity: 0; transform: translate(0, 0); }
   ${b}%, ${s}% { opacity: 1; transform: translate(0, 0); }
   ${mid}${e}%, 95% { opacity: 1; transform: translate(${dx}px, ${dy}px); }
   100% { opacity: 0; transform: translate(${dx}px, ${dy}px); }
 }`;
-}).join('\n');
+  }).join('\n');
+}
 
-const finalTransform = (r, i) =>
-  i < 2 ? '' : `--fx:${r.out ? LOG_X - CTX_X : 0}px; --fy:${rowY(r.to) - rowY(i)}px`;
+const phaseCss = PHASES.map((p, i) => `.sc-p${i} { animation: sc-p${i} ${LOOP}s linear infinite; }
+@keyframes sc-p${i} {
+  ${p.from ? `0%, ${p.from}%` : '0%'} { opacity: 0; }
+  ${p.from + 2}%, ${p.to - 1}% { opacity: 1; }
+  ${p.to === 95 ? '100%' : `${p.to + 1}%, 100%`} { opacity: 0; }
+}`).join('\n');
 
-// Recall: the turn-2 user row in the transcript returns as a new tool result at the end of the in-flight turn.
-const FROM_Y = rowY(3);
-const TO_Y = rowY(8);
+const css = `${rowCss('w')}\n${rowCss('n')}\n${phaseCss}`;
+const views = ['w', 'n'].map((v) => ({ v, g: layout(v) }));
 ---
 <figure class="sc not-prose" aria-labelledby="sc-caption">
-  <div class="sc-surface overflow-hidden rounded-xl border border-line">
-    <svg
-      class="sc-svg"
-      viewBox="0 0 720 360"
-      role="img"
-      aria-labelledby="sc-title sc-desc"
-    >
-      <title id="sc-title">Smart compaction</title>
-      <desc id="sc-desc">
-        The agent's context fills until it reaches the trim limit. The system prompt, tools and the first user turn
-        stay. Older turns and the oldest tool step of the in-flight turn move to the saved transcript; the reply before
-        the cut stays, the cut turn gets the continuing-session pointer prepended, and the last three tool steps stay.
-        The context drops to the target, and the agent later pulls one excerpt back with smart_compact_search.
-      </desc>
+  {views.map(({ v, g }) => (
+    <div class={`sc-surface sc-${v} overflow-hidden rounded-xl border border-line`}>
+      <svg class="sc-svg" viewBox={`0 0 ${g.W} ${g.H}`} role="img" aria-labelledby={`sc-title-${v} sc-desc-${v}`}>
+        <title id={`sc-title-${v}`}>Smart compaction, step by step</title>
+        <desc id={`sc-desc-${v}`}>
+          1: every turn adds to the model context until a request passes the trim threshold, 125k tokens by default and
+          95k for Haiku. 2: the system prompt, tools and first user turn stay; older turns and the oldest tool steps of
+          the latest turn leave the context and stay in the session store. The reply before the latest user turn stays,
+          with its thinking removed, and the newest three tool steps stay (more while the request fits under 0.3 times
+          the threshold). 3: a pointer to the store is prepended to the latest user turn, and the context lands under the
+          target. 4: the agent calls smart_compact_search and one excerpt of turn 2 comes back as a tool result.
+        </desc>
 
-      <!-- column headings -->
-      <text class="sc-h" x={CTX_X} y="28">Model context</text>
-      <text class="sc-h" x={LOG_X} y="28">Saved transcript</text>
-      <text class="sc-sub" x={LOG_X} y="44">sessions/&lt;sid&gt;.db · memory</text>
+        <!-- column headings -->
+        <text class="sc-h" x={g.CTX_X} y="28">Model context</text>
+        <text class="sc-h" x={g.LOG_X} y={g.LOG_HEAD}>Session store</text>
+        <text class="sc-sub" x={g.LOG_X} y={g.LOG_HEAD + 16}>sessions/&lt;sid&gt;.db · every message, searchable</text>
 
-      <!-- context meter: the limit that triggers a trim, and the target it trims down to -->
-      <rect class="sc-meter-bg" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
-      <rect class="sc-meter" x={CTX_X} y="52" width={CARD_W} height="10" rx="5" />
-      <line class="sc-limit" x1={CTX_X + CARD_W * LIMIT} x2={CTX_X + CARD_W * LIMIT} y1="46" y2="68" />
-      <text class="sc-sub" x={CTX_X + CARD_W * LIMIT + 6} y="80">trim_at_tokens</text>
-      <line class="sc-target" x1={CTX_X + CARD_W * TARGET} x2={CTX_X + CARD_W * TARGET} y1="46" y2="68" />
-      <text class="sc-sub" x={CTX_X + CARD_W * TARGET + 6} y="80">target</text>
+        <!-- context meter: the threshold that triggers a trim, and the target it trims under -->
+        <rect class="sc-meter-bg" x={g.CTX_X} y="52" width={g.CARD_W} height="10" rx="5" />
+        <rect class="sc-meter" x={g.CTX_X} y="52" width={g.CARD_W} height="10" rx="5" />
+        <line class="sc-limit" x1={g.limitX} x2={g.limitX} y1="47" y2="67" />
+        <text class="sc-sub sc-strong" x={g.limitX} y="43" text-anchor="middle">trims at 125k · Haiku 95k</text>
+        <line class="sc-target" x1={g.targetX} x2={g.targetX} y1="47" y2="67" />
+        <text class="sc-sub" x={g.targetX} y="79" text-anchor="middle">target 0.3×</text>
 
-      <!-- transcript well -->
-      <rect class="sc-well" x={LOG_X - 8} y={rowY(2) - 8} width={CARD_W + 16} height={3 * STEP + 11} rx="10" />
+        <!-- store well -->
+        <rect class="sc-well" x={g.LOG_X - 8} y={g.LOG_TOP - 8} width={g.CARD_W + 16} height={3 * STEP + 11} rx="10" />
 
-      <!-- pointer note, prepended to the cut turn (drawn behind the cut-turn card) -->
-      <g class="sc-pointer">
-        <rect class="sc-pointer-card" x={CTX_X - 3} y={rowY(3) - 2} width={CARD_W + 6} height={STEP + CARD_H + 4} rx="7" />
-        <text class="sc-pointer-t" x={CTX_X + 10} y={rowY(3) + 15}>[openmem: continuing session …]</text>
-      </g>
-
-      <!-- context rows -->
-      {ROWS.map((r, i) => (
-        <g class={`sc-row sc-r${i}`} style={finalTransform(r, i)}>
-          <rect class={`sc-card sc-card-${r.kind}`} x={CTX_X} y={rowY(i)} width={CARD_W} height={CARD_H} rx="6" />
-          <text class="sc-card-t" x={CTX_X + 10} y={rowY(i) + 15}>{r.text}</text>
-          {r.tag && (
-            <text class={`sc-tag${i < 2 ? '' : ' sc-tag-late'}`} x={CTX_X + CARD_W - 8} y={rowY(i) + 14}>{r.tag}</text>
-          )}
+        <!-- pointer note, prepended to the cut turn (drawn behind the cut-turn card) -->
+        <g class="sc-pointer">
+          <rect class="sc-pointer-card" x={g.CTX_X - 3} y={g.rowY(3) - 2} width={g.CARD_W + 6} height={STEP + CARD_H + 4} rx="7" />
+          <text class="sc-pointer-t" x={g.CTX_X + 10} y={g.rowY(3) + 15}>[openmem: continuing session …]</text>
         </g>
-      ))}
 
-      <!-- the kept tail of the in-flight turn -->
-      <g class="sc-brace">
-        <path class="sc-brace-p" d={`M ${CTX_X + CARD_W + 8} ${rowY(5)} h 5 V ${rowY(7) + CARD_H} h -5`} />
-        <text class="sc-sub" x={CTX_X + CARD_W + 18} y={rowY(6) + 14}>last 3 steps</text>
-      </g>
+        <!-- context rows -->
+        {ROWS.map((r, i) => (
+          <g class={`sc-row sc-r${i}`} style={i < 2 ? '' : `--fx:${g.dx(r)}px; --fy:${g.dy(r, i)}px`}>
+            <rect class={`sc-card sc-card-${r.kind}`} x={g.CTX_X} y={g.rowY(i)} width={g.CARD_W} height={CARD_H} rx="6" />
+            <text class="sc-card-t" x={g.CTX_X + 10} y={g.rowY(i) + 15}>{r.text}</text>
+            {r.tag && (
+              <text class={`sc-tag${i < 2 ? '' : ' sc-late'}`} x={g.CTX_X + g.CARD_W - 8} y={g.rowY(i) + 14}>{r.tag}</text>
+            )}
+          </g>
+        ))}
 
-      <!-- trim direction: older turns and the oldest in-turn step move out -->
-      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(2) + 23} H ${LOG_X - 22}`} />
-      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(2) + 17} l 10 6 l -10 6 z`} />
-      <path class="sc-move" d={`M ${CTX_X + CARD_W + 14} ${rowY(6) + 10} H ${LOG_X - 22}`} />
-      <path class="sc-move-tip" d={`M ${LOG_X - 24} ${rowY(6) + 4} l 10 6 l -10 6 z`} />
+        <!-- the kept tail of the latest turn: MIN_TAIL_STEPS = 3, more while they fit -->
+        <g class="sc-late">
+          <path class="sc-brace-p" d={`M ${g.braceX} ${g.rowY(5)} h 5 V ${g.rowY(7) + CARD_H} h -5`} />
+          {v === 'w'
+            ? <text class="sc-sub" x={g.braceX + 12} y={g.rowY(6) + 14}>newest 3+ tool steps</text>
+            : <text class="sc-sub" transform={`translate(${g.braceX + 18} ${g.rowY(6) + 10}) rotate(90)`} text-anchor="middle">newest 3+</text>}
+        </g>
 
-      <!-- retrieval: one excerpt comes back on demand, as a new tool result -->
-      <path class="sc-fetch" d={`M ${LOG_X - 12} ${FROM_Y + 10} C 400 ${FROM_Y + 10}, 400 ${TO_Y + 10}, ${CTX_X + CARD_W - 60} ${TO_Y + 10}`} />
-      <g class="sc-chip" style={`--cx:${CTX_X - LOG_X}px; --cy:${TO_Y - FROM_Y}px`}>
-        <rect class="sc-chip-r" x={LOG_X} y={FROM_Y} width="150" height={CARD_H} rx="10" />
-        <text class="sc-chip-t" x={LOG_X + 10} y={FROM_Y + 14}>turn 2 excerpt</text>
-      </g>
-      <text class="sc-call" x={LOG_X} y={rowY(5) + 18}>smart_compact_search("…")</text>
-    </svg>
-  </div>
+        {g.moves.map((m) => (
+          <g class="sc-move">
+            <path class="sc-move-p" d={m.d} />
+            <path class="sc-move-tip" d={m.tip} />
+          </g>
+        ))}
+
+        <!-- retrieval: one excerpt comes back on demand, as a new tool result -->
+        <path class="sc-fetch" d={g.fetch} />
+        <g class="sc-chip" style={`--cx:${g.chip.cx}px; --cy:${g.chip.cy}px`}>
+          <rect class="sc-chip-r" x={g.chip.x} y={g.chip.y} width={CHIP_W} height={CARD_H} rx="10" />
+          <text class="sc-chip-t" x={g.chip.x + 10} y={g.chip.y + 14}>turn 2 excerpt</text>
+        </g>
+        <text class="sc-call" x={g.LOG_X} y={g.CALL_Y}>smart_compact_search(…)</text>
+
+        <!-- phase caption -->
+        {PHASES.map((p, i) => (
+          <text class={`sc-phase sc-p${i}`} x={g.W / 2} y={g.CAP_Y} text-anchor="middle">{p.text}</text>
+        ))}
+        <text class="sc-phase sc-static" x={g.W / 2} y={g.CAP_Y} text-anchor="middle">After a trim: older turns in the store, one recalled</text>
+      </svg>
+    </div>
+  ))}
   <figcaption id="sc-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    Past <code>trim_at_tokens</code> (or on <code>/smart-compact</code>) the context proxy trims to a target well below the limit.{' '}
-    The system prompt, tools and task turn stay; older turns move to a local transcript and memory. The reply before the cut stays,{' '}
-    and the cut turn carries a pointer with bounded recall. In a long in-flight turn, older tool steps move out too; the last three stay.{' '}
-    The agent pulls details back with <code>smart_compact_search</code>. Inspired by <a href="https://github.com/mainplane-ai/mainplane">Mainplane</a>'s continue-and-retrieve sessions.{' '}
-    <a href={withBase('docs/context-proxy/')}>Context proxy</a>.{' '}
+    When a request passes <code>trim_at_tokens</code> (125k by default, 95k for Haiku) or you type <code>/smart-compact</code>, the
+    context proxy trims it under 0.3× that threshold, with no model call. The system prompt, tools, first user turn, the reply
+    before the latest user turn, that turn and its newest three or more tool steps stay verbatim; older turns leave the context
+    but stay in the session store. Kept replies from before the trim lose their signed thinking, so the cached prompt prefix
+    stays valid. A pointer at the gap tells the agent to search the store with <code>smart_compact_search</code>.
+    Inspired by <a href="https://github.com/mainplane-ai/mainplane">Mainplane</a>'s continue-and-retrieve sessions. More:{' '}
+    <a href={withBase('docs/context-proxy/')}>Context proxy</a>
   </figcaption>
 </figure>
 
-<Fragment set:html={`<style>${rowCss}</style>`} />
+<Fragment set:html={`<style>${css}</style>`} />
 
 <style>
+  .sc {
+    container-type: inline-size;
+  }
+  .sc-n {
+    display: none;
+  }
+  @container (max-width: 34rem) {
+    .sc-w {
+      display: none;
+    }
+    .sc-n {
+      display: block;
+    }
+  }
   .sc-surface {
     position: relative;
     background-color: var(--c-map-canvas);
@@ -168,6 +238,10 @@ const TO_Y = rowY(8);
   .sc-sub {
     font-size: 10px;
     fill: var(--c-muted);
+  }
+  .sc-strong {
+    font-weight: 700;
+    fill: var(--c-ink);
   }
   .sc-meter-bg {
     fill: var(--c-panel);
@@ -252,7 +326,7 @@ const TO_Y = rowY(8);
     stroke-width: 1.5;
     stroke-dasharray: 4 4;
   }
-  .sc-move {
+  .sc-move-p {
     stroke: var(--c-brand);
     stroke-width: 2;
     stroke-dasharray: 4 4;
@@ -261,28 +335,30 @@ const TO_Y = rowY(8);
   .sc-move-tip {
     fill: var(--c-brand);
   }
+  .sc-phase {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--c-source);
+    opacity: 0;
+  }
 
-  /* timeline (14 s): 2–29% fill · 36–53% old turns and the oldest in-turn step move out ·
-     50–58% kept rows rise, meter drops to the target · 57–65% pointer joins the cut turn, tags · 64–80% fetch ·
-     80–95% hold · 95–100% fade out. Per-row keyframes come from the frontmatter (rowCss). */
+  /* timeline (14 s): 2–30% fill · 34–51% older turns and the oldest in-turn step move out ·
+     50–58% kept rows rise, meter drops under the target · 57–65% pointer joins the cut turn, tags · 64–80% fetch ·
+     80–95% hold · 95–100% fade out. Per-row and phase keyframes come from the frontmatter. */
   .sc-pointer { animation: sc-pointer 14s ease-in-out infinite; }
-  .sc-tag-late,
-  .sc-brace { animation: sc-late 14s ease-in-out infinite; }
-  .sc-move,
-  .sc-move-tip { animation: sc-move 14s ease-in-out infinite; }
+  .sc-late { animation: sc-late 14s ease-in-out infinite; }
+  .sc-move { animation: sc-move 14s ease-in-out infinite; }
   .sc-fetch,
   .sc-call { animation: sc-fetch 14s ease-in-out infinite; }
   .sc-chip { animation: sc-chip 14s ease-in-out infinite; }
 
+  /* The bar's full width is 1 / LIMIT of the threshold: it fills past the threshold (0.82), drops under the
+     target (0.3 x 0.82 = 0.246), and the recalled excerpt adds a little back. */
   @keyframes sc-meter {
-    0% { transform: scaleX(0.12); }
-    4% { transform: scaleX(0.12); }
-    30% { transform: scaleX(0.86); }
-    48% { transform: scaleX(0.86); }
-    58% { transform: scaleX(0.28); }
-    68% { transform: scaleX(0.28); }
-    78% { transform: scaleX(0.36); }
-    95% { transform: scaleX(0.36); }
+    0%, 4% { transform: scaleX(0.12); }
+    30%, 48% { transform: scaleX(0.86); }
+    58%, 68% { transform: scaleX(0.21); }
+    78%, 95% { transform: scaleX(0.27); }
     100% { transform: scaleX(0.12); }
   }
   @keyframes sc-pointer {
@@ -297,8 +373,8 @@ const TO_Y = rowY(8);
   }
   /* Arrows fade over ~0.7 s (5% of the loop) so the exported GIF frames show a ramp, not a pop. */
   @keyframes sc-move {
-    0%, 30% { opacity: 0; }
-    35%, 47% { opacity: 1; }
+    0%, 29% { opacity: 0; }
+    33%, 47% { opacity: 1; }
     53%, 100% { opacity: 0; }
   }
   @keyframes sc-fetch {
@@ -313,15 +389,16 @@ const TO_Y = rowY(8);
     100% { opacity: 0; transform: translate(var(--cx), var(--cy)); }
   }
 
-  /* Reduced motion: the end state, still. */
+  /* Reduced motion: the end state, still, with a summary line in place of the phase captions. */
   @media (prefers-reduced-motion: reduce) {
-    .sc-meter, .sc-row, .sc-pointer, .sc-tag-late, .sc-brace, .sc-move, .sc-move-tip, .sc-fetch, .sc-call, .sc-chip {
+    .sc-meter, .sc-row, .sc-pointer, .sc-late, .sc-move, .sc-fetch, .sc-call, .sc-chip, .sc-phase {
       animation: none !important;
     }
-    .sc-meter { transform: scaleX(0.36); }
+    .sc-meter { transform: scaleX(0.27); }
     .sc-row { opacity: 1; transform: translate(var(--fx, 0), var(--fy, 0)); }
     .sc-chip { transform: translate(var(--cx), var(--cy)); }
-    .sc-move, .sc-move-tip { opacity: 0; }
+    .sc-move, .sc-fetch, .sc-call { opacity: 0; }
+    .sc-static { opacity: 1; }
   }
 
   code {
