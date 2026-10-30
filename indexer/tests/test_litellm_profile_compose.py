@@ -154,7 +154,7 @@ def test_setup_mjs_with_the_option_writes_an_env_that_renders_litellm_on_loopbac
     assert any(line.startswith("LITELLM_MASTER_KEY=sk-") for line in litellm_env.read_text().splitlines())
 
     # The .env alone (COMPOSE_PROFILES, no --profile flag) renders litellm on the chosen loopback port.
-    rendered = render(stack / ".env", PROJECT, files=MEM0_FILES, env={"MEM0_ENV_FILE": str(tmp_path / "absent.env")})
+    rendered = render(stack / ".env", PROJECT, files=MEM0_FILES, env={"HOME": str(home), "MEM0_ENV_FILE": str(tmp_path / "absent.env")})
     assert set(rendered["services"]) == {"litellm", "indexer", "indexer-state-init"}
     ports = rendered["services"]["litellm"]["ports"]
     assert [(p["host_ip"], p["published"]) for p in ports] == [("127.0.0.1", "4077")]
@@ -163,7 +163,7 @@ def test_setup_mjs_with_the_option_writes_an_env_that_renders_litellm_on_loopbac
     result = run_setup(stack, home, MEM0_API_URL="http://127.0.0.1:18888")
     assert result.returncode == 0, result.stderr
     assert dict(line.split("=", 1) for line in (stack / ".env").read_text().splitlines() if line)["COMPOSE_PROFILES"] == "mem0"
-    rendered = render(stack / ".env", PROJECT, files=MEM0_FILES, env={"MEM0_ENV_FILE": str(tmp_path / "absent.env")})
+    rendered = render(stack / ".env", PROJECT, files=MEM0_FILES, env={"HOME": str(home), "MEM0_ENV_FILE": str(tmp_path / "absent.env")})
     assert "litellm" not in rendered["services"]
 
 
