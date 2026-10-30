@@ -6,7 +6,7 @@
   "settings": {
     "nativeDocs": "providers/mem0/OPERATOR.md (stack) and https://docs.mem0.ai/open-source/features/rest-api (upstream)",
     "nativeConfigPaths": ["~/.config/personal-memory/mem0.env"],
-    "wizardOwns": ["indexer URL and the host-gateway rewrite", "API key file for the indexer (mode 600)", "index.yml sources (shared indexer)"]
+    "wizardOwns": ["indexer URL and the host-gateway rewrite", "API key file for the indexer (mode 600)", "index.yml sources (shared indexer)", "optional: stack LiteLLM routes for mem0's LLM on 127.0.0.1 (compose profile litellm); you apply the printed mem0 config"]
   },
   "compose": {
     "profile": "mem0",

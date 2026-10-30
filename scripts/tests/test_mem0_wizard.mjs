@@ -264,7 +264,8 @@ async function dies(fn) {
   const ctx = freshCtx("interactive", { yes: false });
   const { h, out, saved, asked } = stubHelpers({ answers: { "REST server URL": "http://mem0.internal:8000/" } });
   await mem0.configureModelRouting(ctx, h);
-  check("interactive: only the URL is asked, never the key", asked.length === 1 && asked[0].includes("URL"));
+  // The second prompt is the stack LiteLLM yes/no (declined by default; test_mem0_litellm.mjs covers it).
+  check("interactive: only the URL is asked, never the key", asked.length === 2 && asked[0].includes("URL") && asked[1].includes("stack LiteLLM"));
   check("interactive: URL answer saved (trailing slash dropped)", saved[0]?.extra.MEM0_API_URL === "http://mem0.internal:8000");
   check("interactive: info points at the env file and the env variables", text(out).includes(envFileOf(ctx)) && text(out).includes("PM_MEM0_API_KEY") && !fs.existsSync(envFileOf(ctx)));
 }
@@ -337,6 +338,8 @@ async function dies(fn) {
       logs.push(`password ${o.message}`);
       return ` ${KEY} `;
     },
+    // The stack LiteLLM question (declined here; test_mem0_litellm.mjs covers it).
+    confirm: async () => false,
     isCancel: () => false,
     cancel: () => {},
     note: (m, t) => logs.push(`note ${t}: ${m}`),

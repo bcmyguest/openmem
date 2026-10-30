@@ -79,7 +79,9 @@ def test_absent_env_file_still_renders(scratch, tmp_path):
 
 def test_fragment_declares_an_optional_env_file_and_no_service_of_its_own():
     data = yaml.safe_load((ROOT / "providers" / "mem0" / "compose.yaml").read_text())
-    assert set(data["services"]) == {"indexer", "notebooklm"}
+    # litellm is an overlay of the base service (loopback port, key check) for the "litellm" profile, not a new service.
+    assert set(data["services"]) == {"indexer", "notebooklm", "litellm"}
+    assert not {"image", "build"} & set(data["services"]["litellm"])
     assert "volumes" not in data
     for name in ("indexer", "notebooklm"):
         entry = data["services"][name]["env_file"][0]

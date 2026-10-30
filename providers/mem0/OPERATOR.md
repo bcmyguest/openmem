@@ -16,6 +16,7 @@ server only (no `/v1/` prefix).
 | Embedder / LLM keys for mem0 itself | Indexer sink (`MEMORY_SINK=mem0`) and host-gateway rewrite |
 | Create an API key (dashboard or `POST /api-keys`) | Store `MEM0_API_KEY` in `~/.config/personal-memory/mem0.env` (mode **600**) |
 | Optional `AUTH_DISABLED=true` (dev only) | Smoke: `GET /docs`, retain, search, delete-by-id |
+| Apply the printed `llm` / `embedder` blocks to mem0 (optional) | Optional stack LiteLLM for mem0's LLM: routes, `litellm.env`, profile `litellm` on `127.0.0.1` |
 
 ## URLs
 
@@ -118,7 +119,25 @@ Updates `wizard.conf` (and `config.toml` `[memory].provider` when present), rest
 unless `--no-stack`, and runs `install-mcp --provider-only` unless `--no-mcp`. Does **not**
 migrate memories. Flags: [README — Switch memory provider](../../README.md#switch-memory-provider).
 
+## Models through the stack LiteLLM
+
+Optional (wizard step 3, or `MEM0_LITELLM=1` under `--yes`): mem0's LLM, and
+its embedder when the backend has one, go through the stack LiteLLM. Inputs
+under `--yes`: `MEM0_LITELLM_BACKEND` (`ollama`, `custom`, `anthropic`,
+`meridian`), `MEM0_LITELLM_MODEL`, `MEM0_LITELLM_API_BASE`,
+`MEM0_LITELLM_EMBED_MODEL` (`none` keeps mem0's embedder),
+`MEM0_LITELLM_PORT` (default 4000), `ANTHROPIC_API_KEY`. The wizard writes
+`~/.config/personal-memory/mem0-litellm.yaml`, keeps keys in
+`~/.config/hindsight/litellm.env` (mode 600), and prints the mem0 `llm` /
+`embedder` blocks (provider `openai`, `openai_base_url`
+`http://127.0.0.1:<port>/v1`, `api_key` = `LITELLM_MASTER_KEY`). You apply
+them; the wizard never edits the mem0 server config. Key sources and limits:
+[docs/mem0.md](../../docs/mem0.md#models-through-the-stack-litellm-optional).
+
 ## Compose
 
 `providers/mem0/compose.yaml` defines no mem0 service — only env +
 `extra_hosts` on the shared `indexer`. Profile `mem0` selects that fragment.
+It also overlays the base `litellm` service: under profile `litellm` it
+publishes `127.0.0.1:${MEM0_LITELLM_PORT:-4000}` (never `0.0.0.0`) and its
+entrypoint exits unless `LITELLM_MASTER_KEY` starts with `sk-`.
