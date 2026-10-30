@@ -314,5 +314,39 @@ function install(home, flags = {}) {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
+{
+  // Usage summary: cache hit ratio over rows reporting every cache count, creation tokens split by new cut,
+  // breakpoint distribution; rows with a missing count still count as requests.
+  const home = tmpHome();
+  const dir = path.join(home, "sessions");
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  const a = openSession(path.join(dir, "ses_u.db"));
+  const usage = (at, trimmed, input, read, creation, breakpoints, breakpoint_at) => a.addEvent("usage", at, "proxy:aaaaaaaaaaaa",
+    { model: "claude", thread_root: "r", trimmed, input_tokens: input, cache_read_tokens: read,
+      cache_creation_tokens: creation, output_tokens: 10, breakpoints, breakpoint_at });
+  usage("2026-10-30T10:00:00Z", 0, 100, 9000, 900, 2, "system,m-1");
+  usage("2026-10-30T10:01:00Z", 2, 50, 1000, 8950, 2, "system,m-1");
+  usage("2026-10-30T10:02:00Z", 1, 100, 9900, 0, 3, "tools,system,m-1");
+  usage("2026-10-30T10:03:00Z", 0, 70, null, null, null, null);
+  usage("2026-10-28T10:00:00Z", 0, 1, 1, 1, 4, "x");
+  const u = summarizeEvents(dir, { now }).usage;
+  check("usage summary counts requests and cache tokens", u.requests === 4 && u.withCacheCounts === 3
+    && u.inputTokens === 250 && u.cacheReadTokens === 19900 && u.cacheCreationTokens === 9850 && u.outputTokens === 30,
+    JSON.stringify(u));
+  check("usage hit ratio is read over all prompt tokens", Math.abs(u.hitRatio - 19900 / 30000) < 1e-12, JSON.stringify(u));
+  check("usage splits creation tokens by new cut", u.newCut.requests === 1 && u.newCut.cacheCreationTokens === 8950
+    && u.other.requests === 3 && u.other.withCacheCounts === 2 && u.other.cacheCreationTokens === 900, JSON.stringify(u));
+  check("usage breakpoint distribution", JSON.stringify(u.breakpoints) === JSON.stringify({ 2: 2, 3: 1 })
+    && u.breakpointLayouts[0].at === "system,m-1" && u.breakpointLayouts[0].requests === 2, JSON.stringify(u));
+  const lines = eventLines({ events: summarizeEvents(dir, { now }), checkoutProxyVersion: null });
+  check("status prints the prompt cache lines", lines.some((l) => l.startsWith("prompt cache: 4 requests (3 with cache counts), hit ratio 66.3%"))
+    && lines.some((l) => l.includes("8950 on 1 request making a new cut (avg 8950), 900 on 3 others (avg 450)"))
+    && lines.some((l) => l.includes("breakpoints per request: 2: 2, 3: 1")), lines.join("\n"));
+  const empty = summarizeEvents(path.join(home, "none"), { now });
+  check("no usage rows: no prompt cache lines, null ratio", empty.usage.requests === 0 && empty.usage.hitRatio === null
+    && !eventLines({ events: empty, checkoutProxyVersion: null }).some((l) => l.startsWith("prompt cache")));
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
 if (failed) process.exit(1);
 console.log("all context management tests passed");

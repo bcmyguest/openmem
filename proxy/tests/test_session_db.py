@@ -228,6 +228,20 @@ class FailOpenTests(DbBase):
         self.assertEqual(self.query("SELECT text FROM messages WHERE fingerprint = 'old'"), [("kept",)])
         self.assertEqual(self.query("SELECT count(*) FROM events"), [(0,)])
 
+    def test_version_2_database_gains_usage_columns_and_keeps_events(self):
+        (self.ctx / "sessions").mkdir(parents=True)
+        conn = sqlite3.connect(self.path())
+        for ddl in sessiondb.SCHEMA + next(s for v, s in sessiondb.MIGRATIONS if v == 2):
+            conn.execute(ddl)
+        conn.execute("INSERT INTO events (at, kind, version, dropped) VALUES ('t', 'trim', 'proxy:x', 3)")
+        conn.execute("PRAGMA user_version = 2")
+        conn.commit()
+        conn.close()
+        self.run_req(history(1))
+        self.assertEqual(self.query("PRAGMA user_version")[0][0], sessiondb.SCHEMA_VERSION)
+        self.assertEqual(self.query("SELECT kind, dropped, cache_read_tokens, breakpoints FROM events"),
+                         [("trim", 3, None, None)])
+
 
 class TtlTests(unittest.TestCase):
     def setUp(self):

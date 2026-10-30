@@ -80,6 +80,16 @@ for (const n of ["smart_compact_search", "smart_compact_get", "smart_compact_sql
 }
 
 {
+  const db = openSession(path.join(sessions, "ses_usage.db"));
+  db.addEvent("usage", new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), "proxy:aaaaaaaaaaaa",
+    { model: "claude", trimmed: 2, input_tokens: 10, cache_read_tokens: 0, cache_creation_tokens: 990, output_tokens: 5,
+      breakpoints: 2, breakpoint_at: "system,m-1" });
+  const s = await callContextStoreTool("context_status", {}, { env: ENV });
+  check("context_status summarizes prompt-cache usage", s.usage.requests === 1 && s.usage.hitRatio === 0
+    && s.usage.newCut.cacheCreationTokens === 990 && s.usage.breakpoints[2] === 1, JSON.stringify(s.usage));
+}
+
+{
   const r = await search({ query: "Proxy PORT", session_id: "new" });
   check("session filter searches only that session", r.results.every((x) => x.session_id === "new"), JSON.stringify(r));
   check("all-terms row ranks first", r.results[0]?.seq === 1 && r.results[0]?.matched_terms === 2, JSON.stringify(r.results[0]));

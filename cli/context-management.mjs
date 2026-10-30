@@ -153,12 +153,31 @@ export function eventLines(s) {
     + (e.trims ? `, ~${e.tokensSaved} tokens saved (estimated ${e.tokensBefore} -> ${e.tokensAfter}), ${e.dropped} messages dropped` : "")
     + `, ${e.failOpens} fail-open${e.failOpens === 1 ? "" : "s"} (request sent untrimmed)`];
   for (const x of e.lastErrors) lines.push(`  ${x.at} ${x.error} at ${x.location} (${x.version}, session ${x.session})`);
+  lines.push(...usageLines(e.usage));
   const running = e.latest.proxy;
   if (running && s.checkoutProxyVersion) {
     lines.push(`proxy code: ${running === s.checkoutProxyVersion ? `${running}, matches the checkout`
       : `${running} in the last event, checkout is ${s.checkoutProxyVersion}; restart the context-proxy service to load it`}`);
   }
   lines.push("not recorded here: fail-opens before the session id is known or from the session database itself (proxy stderr only)");
+  return lines;
+}
+
+/** Prompt-cache lines from summarizeEvents' `usage`; none when no usage event was recorded. */
+function usageLines(u) {
+  if (!u?.requests) return [];
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const ratio = u.hitRatio === null ? "n/a" : `${(u.hitRatio * 100).toFixed(1)}%`;
+  const lines = [`prompt cache: ${plural(u.requests, "request")} (${u.withCacheCounts} with cache counts), hit ratio ${ratio}`
+    + ` (read ${u.cacheReadTokens} / read + creation ${u.cacheCreationTokens} + uncached ${u.inputTokens})`];
+  const avg = (g) => (g.withCacheCounts ? Math.round(g.cacheCreationTokens / g.withCacheCounts) : "n/a");
+  lines.push(`  cache creation: ${u.newCut.cacheCreationTokens} on ${plural(u.newCut.requests, "request")} making a new cut`
+    + ` (avg ${avg(u.newCut)}), ${u.other.cacheCreationTokens} on ${plural(u.other.requests, "other")} (avg ${avg(u.other)})`);
+  const counts = Object.entries(u.breakpoints).map(([n, k]) => `${n}: ${k}`).join(", ");
+  if (counts) {
+    lines.push(`  cache_control breakpoints per request: ${counts}; top layouts `
+      + u.breakpointLayouts.map((x) => `${x.at} (${x.requests})`).join(", "));
+  }
   return lines;
 }
 

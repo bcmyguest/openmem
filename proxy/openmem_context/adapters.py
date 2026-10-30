@@ -19,6 +19,16 @@ CODEX_RESPONSES_ROUTE = "/backend-api/codex/responses"
 THINKING_TYPES = ("thinking", "redacted_thinking")
 
 
+def _cache_markers(item):
+    """cache_control markers on a message and its content blocks, tool_result inner blocks included."""
+    count = 1 if item.get("cache_control") else 0
+    content = item.get("content")
+    for b in content if isinstance(content, list) else ():
+        if isinstance(b, dict):
+            count += _cache_markers(b)
+    return count
+
+
 class UnsupportedCallType(LookupError):
     """No adapter handles this LiteLLM call type."""
 
@@ -185,6 +195,21 @@ class AnthropicAdapter:
 
     def system_text(self, data):
         return _plain_text(data.get("system", ""), ("text",))
+
+    def cache_breakpoints(self, data):
+        """(count, positions) of the request's cache_control markers: "tools", "system" or "m-<k>" (the k-th message
+        from the end, 1 = last), in prefix order. A tool_result's inner blocks count for their message."""
+        at = []
+        for key in ("tools", "system"):
+            value = data.get(key)
+            at += [key] * sum(1 for b in value if isinstance(b, dict) and b.get("cache_control")) \
+                if isinstance(value, list) else []
+        messages = data.get("messages")
+        messages = messages if isinstance(messages, list) else []
+        for j, item in enumerate(messages):
+            if isinstance(item, dict):
+                at += [f"m-{len(messages) - j}"] * _cache_markers(item)
+        return len(at), ",".join(at)
 
     def add_instruction(self, data, text):
         """Append one text block to `system`; a string system becomes its own leading block."""

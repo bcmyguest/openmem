@@ -8,7 +8,8 @@ Manual, needs Docker; not part of `unittest discover` (the name does not start w
 The image defaults to the context-proxy service's image in compose.yaml. Checks, for /v1/messages,
 /v1/chat/completions, /v1/responses and the Codex pass-through /backend-api/codex/responses, streamed and not:
 async_pre_call_hook rewrote the upstream body (standing instruction, compressed tool result), the session database
-got the messages, and async_log_success_event recorded the fake's prompt tokens in the trim state. Then: FTS5 from
+got the messages, and async_log_success_event recorded the fake's prompt tokens in the trim state
+and a usage event. Then: FTS5 from
 the image's Python sqlite3, WAL on the bind mount, and the MCP tool code reading on the host while the container
 writes. Containers and the network are named cbench-img-*; the work directory is removed unless --keep.
 """
@@ -135,6 +136,18 @@ def trim_tokens(sessions, sid):
     return ((state.get("usage") or {}).get("last") or {}).get("tokens")
 
 
+def usage_event(db):
+    """The newest usage event's cache counts and breakpoints, or None."""
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        return con.execute("SELECT input_tokens, cache_read_tokens, cache_creation_tokens, breakpoints FROM events "
+                           "WHERE kind = 'usage' ORDER BY id DESC LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def host_count(db):
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
@@ -201,6 +214,12 @@ def main():
                       f"rows={host_count(db) if db.exists() else 0}")
                 tokens = wait_for(lambda: trim_tokens(sessions, sid))
                 check(f"{label}: success event calibrated usage", tokens == PROMPT_TOKENS, f"tokens={tokens}")
+                event = wait_for(lambda: usage_event(db))
+                # The fake's Anthropic usage reports cache counts; the others report only totals. The request
+                # carries no cache_control, so the Anthropic route counts 0 breakpoints and the others record none.
+                want = (21, PROMPT_TOKENS - 21, 0, 0) if name == "messages" else None
+                ok = event == want if want else event is not None and sum(x or 0 for x in event[:3]) == PROMPT_TOKENS
+                check(f"{label}: usage event recorded", ok, f"event={event}")
 
         # FTS5 from the image's Python sqlite3, on a database the hook wrote.
         fts = docker("exec", f"{NAME}-proxy", "python3", "-c",

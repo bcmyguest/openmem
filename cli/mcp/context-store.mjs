@@ -50,8 +50,10 @@ const SCHEMA_TEXT = "messages(seq INTEGER PRIMARY KEY, fingerprint, thread, role
   + "kind 'text'|'tool_use'|'tool_result'|'thinking', name (tool name or NULL), text, blob_id, in_context 0|1, "
   + "trimmed_at_seq, trimmed_at, created_at); lines(id, message_seq, line_no (1-based), role, text) with one row per "
   + "line of each message; messages_fts(text) and lines_fts(text): FTS5 indexes whose rowid is messages.seq / lines.id; "
-  + "vectors(message_seq, model, dim, blob); events(id, at, kind 'trim'|'fail_open', version, location, error, "
-  + "tokens_before, tokens_after, dropped), one row per trim or fail-open, token figures estimated.";
+  + "vectors(message_seq, model, dim, blob); events(id, at, kind 'trim'|'fail_open'|'usage', version, location, error, "
+  + "tokens_before, tokens_after, dropped, model, thread_root, trimmed 0|1|2, input_tokens, cache_read_tokens, "
+  + "cache_creation_tokens, output_tokens, breakpoints, breakpoint_at), one row per trim, fail-open or model call; "
+  + "trim token figures estimated, usage counts provider-reported (NULL when not reported).";
 
 export const CONTEXT_STORE_MCP_TOOLS = [
   {
@@ -140,8 +142,9 @@ export const CONTEXT_STORE_MCP_TOOLS = [
     title: "Context management health",
     description:
       "Summarize context management over recent sessions from the session store: trims, estimated tokens saved, "
-      + "fail-opens with their error type and location, and the proxy code version (stale when it differs from the "
-      + "checkout). A fail-open means the request still succeeded but was sent untrimmed. Use this instead of docker "
+      + "fail-opens with their error type and location, the proxy code version (stale when it differs from the "
+      + "checkout), and provider-reported prompt-cache usage (hit ratio, cache-creation tokens on requests that made a "
+      + "new cut vs others, cache_control breakpoint counts). A fail-open means the request still succeeded but was sent untrimmed. Use this instead of docker "
       + "logs; per-session detail is in smart_compact_sql's events table.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
