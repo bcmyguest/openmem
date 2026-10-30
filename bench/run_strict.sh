@@ -26,7 +26,7 @@ IMAGE=${IMAGE:-ghcr.io/berriai/litellm:v1.106.6}
 HOST_IP=${HOST_IP:-172.17.0.1}
 MODEL=${MODEL:-anthropic/claude-haiku-5-5}
 WINDOW=${WINDOW:-1000000}
-TRIM_AT=${TRIM_AT:-120000}
+TRIM_AT=${TRIM_AT-120000}  # TRIM_AT= (set, empty) leaves the proxy's per-model threshold
 COMPRESS_AT=${COMPRESS_AT:-4000}
 NATIVE_WINDOW=${NATIVE_WINDOW:-153000}
 N_PER_ARM=${N_PER_ARM:-2}
