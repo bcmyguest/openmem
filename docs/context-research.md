@@ -144,7 +144,7 @@ Lookups were perfect. Every lost point is a count question, in six trials. Two f
 - **Echo overcount.** `smart_compact_sql` counts the session's lines, and those include the agent's own tool output and answers, which repeat log lines. The repeats are counted again, giving overcounts of +1 to +8: d-sqlite L1600 s44 (count 0.50), d-hybrid L1600 s43 (0.83) and L12800 s43 (0.08).
 - **No SQL.** On some count questions the agent answered without calling SQL: d-hybrid L6400 s43 used SQL on 6 of 12 count questions and scored 0.33.
 
-The single missed count in L1600 s42, in both settings, is not yet diagnosed.
+The single missed count in L1600 s42 is the same question in both settings (gold 46, answer 45). The store returned the matching rows; the agent's own SQL scoping was off: its first query counted every matching line (174), and it then had to exclude lines from the pinned first user turn by hand, which it got wrong by one.
 
 The agent never ran a hybrid search. All 337 `smart_compact_search` calls across both settings ran lexical, using exact `pattern`s or lexical queries for exact ids, and counts went through 307 `smart_compact_sql` calls. Run D therefore does not measure vectors, and d-hybrid's lower count mean comes from the failures above, not from embedding. The single-thread embedder also lagged under 4 concurrent sessions: at the end of the run 6 of the 15 trimmed d-hybrid databases had a vector for every row and the other 9 had none.
 
