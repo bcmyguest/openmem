@@ -201,11 +201,37 @@ def choose_gap(adapter, items, cut, after, first, fits):
 
 
 def render(adapter, items, cut, note, first=None, gap=None):
-    """The kept items (kept_indices) in order, the cut turn carrying the note."""
+    """The kept items (kept_indices) in order, the cut turn carrying the note, with signed reasoning stripped
+    (strip_reasoning)."""
     if cut is None:
         return items
     keep = kept_indices(adapter, items, cut, gap, first)
-    return [adapter.prepend_note(x, note) if j == cut else x for j, x in enumerate(items) if j in keep]
+    return strip_reasoning(adapter, [adapter.prepend_note(x, note) if j == cut else x
+                                     for j, x in enumerate(items) if j in keep])
+
+
+def strip_reasoning(adapter, view):
+    """Remove signed reasoning from every assistant message of a trimmed view except the latest one.
+
+    A thinking block is signed against everything before it; a trim edits that prefix, so kept blocks would no
+    longer verify. The latest assistant message (the trailing run of assistant items ending at the last one) goes
+    out unchanged, as the API requires. Every trimmed request is rendered here, so the stripped prefix stays the
+    same from one request to the next. A message left empty is dropped (adapter.without_reasoning).
+    """
+    last = next((j for j in range(len(view) - 1, -1, -1) if adapter.is_assistant(view[j])), None)
+    if last is None:
+        return view
+    start = last
+    while start > 0 and adapter.is_assistant(view[start - 1]):
+        start -= 1
+    out = []
+    for j, x in enumerate(view):
+        if j < start and adapter.is_assistant(x):
+            x = adapter.without_reasoning(x)
+            if x is None:
+                continue
+        out.append(x)
+    return out
 
 
 def _locate(items, idx, want, lo=0):

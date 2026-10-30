@@ -199,6 +199,28 @@
           ]
         }
       ]
+    },
+    {
+      "name": "signed thinking stripped outside the latest assistant run",
+      "sid": "ses_thinking",
+      "compress": 0,
+      "requests": [
+        {
+          "trim": true,
+          "messages": [
+            { "role": "user", "text": "TASK: fix the build" },
+            { "role": "assistant", "reasoning": "check first", "signature": "SIG1", "calls": [{ "id": "h1", "name": "bash", "input": { "command": "make" } }] },
+            { "role": "tool", "result": { "id": "h1", "name": "bash", "text": "error" } },
+            { "role": "assistant", "redacted": "RED1" },
+            { "role": "user", "text": "try again" },
+            { "role": "assistant", "reasoning": "edit", "signature": "SIG2", "calls": [{ "id": "h2", "name": "edit", "input": { "path": "Makefile" } }] },
+            { "role": "tool", "result": { "id": "h2", "name": "edit", "text": "ok" } },
+            { "role": "assistant", "reasoning": "rerun", "signature": "SIG3", "calls": [{ "id": "h3", "name": "bash", "input": { "command": "make" } }] },
+            { "role": "tool", "result": { "id": "h3", "name": "bash", "text": "built" } }
+          ]
+        },
+        { "trim": false, "append": [{ "role": "assistant", "reasoning": "done", "signature": "SIG4", "text": "fixed" }] }
+      ]
     }
   ]
 }
