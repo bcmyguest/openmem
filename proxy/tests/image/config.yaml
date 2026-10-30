@@ -1,0 +1,18 @@
+# LiteLLM config for the image check (proxy/tests/image/run.sh): every route goes to the fake upstream.
+model_list:
+  - model_name: "claude-fake"
+    litellm_params:
+      model: "anthropic/claude-fake"
+      api_base: "http://fake:9000"
+      api_key: "fake-anthropic-key"
+  - model_name: "gpt-fake"
+    litellm_params:
+      model: "openai/gpt-fake"
+      api_base: "http://fake:9000/v1"
+      api_key: "fake-openai-key"
+
+litellm_settings:
+  callbacks: ["image_check_hooks.handler", "image_check_hooks.probe"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,6 +1,6 @@
 # Context proxy
 
-The `context-proxy` compose service is a LiteLLM proxy that sits between a coding agent and Anthropic and rewrites each request before forwarding it:
+The `context-proxy` compose service is a LiteLLM proxy that sits between a coding agent and its model API (Anthropic for Claude Code and OpenCode 1, ChatGPT's Codex backend for Codex) and rewrites each request before forwarding it:
 
 1. **Tool-result compression.** A tool result over `CONTEXT_COMPRESS_OVER_TOKENS` is replaced by its first 40 and last 20 lines (capped at 4000 and 2000 characters) behind a header naming `smart_compact_get(id=...)`. The full text goes to `blobs/<id>.txt`.
 2. **Store.** Every request's messages go into the session's SQLite database, `sessions/<sid>.db`: one row per content block, keyed by a chained fingerprint so resent history is never stored twice, with lines and FTS5 indexes for search. Each row records whether it is still in the model's context. Database errors are logged and never block the request. Schema and rules: [context-store.md](context-store.md#session-database).
@@ -14,7 +14,9 @@ The cut is sticky. Later requests with the same history receive the same rewrite
 
 Related work and benchmark results behind this design: [context research](context-research.md).
 
-Code: `proxy/openmem_context/` (stdlib only), `proxy/openmem_context_hook.py` (LiteLLM `async_pre_call_hook` and `async_log_success_event`), `proxy/config.yaml`. Tests: `python3 -m unittest discover -s proxy/tests` (part of `npm test`).
+Code: `proxy/openmem_context/` (stdlib only), `proxy/openmem_context_hook.py` (LiteLLM `async_pre_call_hook` and `async_log_success_event`), `proxy/config.yaml`. Tests: `python3 -m unittest discover -s proxy/tests` (part of `npm test`). Image check (Docker, manual): `python3 proxy/tests/image/run.py` runs the hook inside the compose image against a fake upstream.
+
+The service image is the LiteLLM dev build `v1.109.0-dev.1`, the only release with PR #41522 (ChatGPT-subscription pass-through, which Codex needs); stable releases lack it. Hindsight's own `litellm` service stays on stable. Move the pin to the first stable release with #41522 and rerun the image check.
 
 ## Configuration
 
@@ -48,19 +50,20 @@ The trim compares `CONTEXT_TRIM_AT_TOKENS` with an estimate calibrated from the 
 
 The estimate only decides whether a new cut is chosen. It never changes a stored cut or the rendered request, so calibration keeps the rewrite sticky and cache-stable.
 
-Usage sources, read in the LiteLLM v1.106.6 source and checked against that image with a fake Anthropic upstream (all six calls recorded input + cache read + cache write):
+Usage sources, read in the LiteLLM source and checked with a fake upstream: v1.106.6 for the first three rows; v1.109.0-dev.1 (`proxy/tests/image/run.py`, 2026-10-29) for all four, each plain and streamed, recording the fake's 4321 prompt tokens:
 
 | Call | Success-hook response | Prompt tokens |
 | --- | --- | --- |
 | `/v1/messages` (`anthropic_messages`), plain or streamed | `ModelResponse` built from Anthropic's usage (streams: from the SSE usage events) | `usage.prompt_tokens`, which LiteLLM sums from `input_tokens` + `cache_read_input_tokens` + `cache_creation_input_tokens` |
 | `/v1/chat/completions`, plain or streamed | `ModelResponse` | `usage.prompt_tokens` |
 | `/v1/responses`, plain or streamed | `ResponsesAPIResponse`, or the `response.completed` event | `usage.input_tokens` (cached tokens included) |
+| `/backend-api/codex/responses` (call type `pass_through_endpoint`; the call id comes from the logging object, not the forwarded body) | `ResponsesAPIResponse` from the terminal stream event | `usage.input_tokens` |
 
-A raw Anthropic usage object is summed the same way, and `standard_logging_object.prompt_tokens` is the last fallback. Limits: when an upstream reports no usage, LiteLLM substitutes its own `token_counter` estimate and calibration learns that estimate; LiteLLM adds `stream_options.include_usage` itself only for OpenAI-backed chat streams. Anthropic responses with server-side `iterations` report input summed over the iterations, which overstates one prompt and trims early. A call that fails, or a proxy restart between request and response, leaves the session on its previous sample. OpenAI-backed routes were not run live.
+A raw Anthropic usage object is summed the same way, and `standard_logging_object.prompt_tokens` is the last fallback. Limits: when an upstream reports no usage, LiteLLM substitutes its own `token_counter` estimate and calibration learns that estimate; LiteLLM adds `stream_options.include_usage` itself only for OpenAI-backed chat streams. Anthropic responses with server-side `iterations` report input summed over the iterations, which overstates one prompt and trims early. A call that fails, or a proxy restart between request and response, leaves the session on its previous sample. OpenAI-backed routes were not run live. On the Codex route LiteLLM parses the stream only for a model in its price map (`chatgpt/gpt-6-sol` is); for an unmapped model the success hook gets an unparsed stream and calibration falls back to `CONTEXT_CHARS_PER_TOKEN`.
 
 ## Enable
 
-`install-coding-agent` writes the env file and points Claude Code at the proxy. By hand:
+`install-coding-agent` writes the env file and points Claude Code, OpenCode 1 and Codex at the proxy. By hand:
 
 ```sh
 mkdir -p -m 700 ~/.local/share/openmem/context   # compose must not create it as root
@@ -78,11 +81,28 @@ Claude Code settings (`env`):
 
 Leave `ANTHROPIC_API_KEY` out of the proxy environment. The client's own credentials, including Claude subscription OAuth, then pass through to Anthropic.
 
+Codex (`~/.codex/config.toml`, written mode 600; a previous `model_provider` is backed up and restored on disable):
+
+```toml
+model_provider = "openmem"
+
+[model_providers.openmem]
+name = "OpenMem context proxy"
+base_url = "http://127.0.0.1:4100/backend-api/codex"
+wire_api = "responses"
+requires_openai_auth = true
+supports_websockets = false
+http_headers = { "x-litellm-api-key" = "Bearer <LITELLM_MASTER_KEY>" }
+```
+
+Codex keeps its ChatGPT login: `requires_openai_auth` makes it send the ChatGPT bearer and `ChatGPT-Account-ID` as it does to chatgpt.com, and LiteLLM's `/backend-api/codex/{models,responses}` route forwards both to `https://chatgpt.com/backend-api/codex`. That route also requires the LiteLLM key in `x-litellm-api-key`, separate from the ChatGPT bearer (`codex_passthrough_endpoints.py`). `openai_base_url` cannot carry it: Codex ignores `http_headers` on the built-in `openai` provider. The hook handles the pass-through only on the `/backend-api/codex/responses` route (Responses adapter, `prompt_cache_key` as session id); other pass-through bodies go through unchanged. A custom provider has no remote compaction in Codex 0.162.0, so Codex compacts locally.
+
 The service runs as `HOST_UID:HOST_GID` so the context store stays host-owned. It has its own profile, separate from the `litellm` service Hindsight uses, so Hindsight's model traffic never passes through it.
 
 ## Limits
 
-- **Codex is not wired yet.** The Responses adapter (`/v1/responses`, `prompt_cache_key` as session id) is unit-tested only.
+- **Codex was checked live once** (one `codex exec` turn: answer, stored turn, usage). Trims, compression and recall on the Codex route ran only against the fake upstream. Whether `codex resume` lists sessions recorded under another `model_provider` is unverified.
+- **Dev image.** The service runs a LiteLLM dev build (`v1.109.0-dev.1`); expect to move the pin.
 - **OpenAI-format clients need routes.** The shipped `"*"` route sends every model name to Anthropic. Add one entry per OpenAI model to `proxy/config.yaml` (see the comment there). Whether an exact model name takes precedence over the `"*"` wildcard has not been tested here.
 - **Claude Code persists large outputs itself.** In Claude Code 2.1.280, a 106 KB Bash output reached the API as a file path plus a 2 KB preview; a 24 KB output arrived inline and was compressed. Compression therefore mostly hits mid-size results.
 - **One worker.** Session state uses an in-process lock; do not run LiteLLM with several workers.

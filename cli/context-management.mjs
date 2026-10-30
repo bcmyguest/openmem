@@ -23,15 +23,15 @@ import {
 /** Compose service and profile name (compose.yaml). */
 export const CONTEXT_PROXY_SERVICE = "context-proxy";
 /**
- * Agents whose "on" needs the proxy service. Codex is accepted in config but not routed yet: the pinned
- * LiteLLM has no ChatGPT-login forwarding (docs/compatibility.md, footnote 9).
+ * Agents whose "on" needs the proxy service. Codex goes through LiteLLM's ChatGPT-subscription pass-through,
+ * which the pinned dev image has (PR #41522; docs/compatibility.md, footnote 9).
  */
-export const SERVICE_AGENT_KEYS = ["claude-code", "opencode1"];
+export const SERVICE_AGENT_KEYS = ["claude-code", "opencode1", "codex"];
 /** How each config key is served. */
 export const CONTEXT_AGENT_ROUTE = {
   "claude-code": "context-proxy",
   opencode1: "context-proxy",
-  codex: "not routed (needs a LiteLLM with ChatGPT-login forwarding)",
+  codex: "context-proxy (ChatGPT login, /backend-api/codex)",
   opencode2: "native plugin",
 };
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,9 +47,9 @@ Usage:
                                            the service when no proxy-routed agent is on)
   ${BIN} status [--json]                  per-agent values, proxy health, agents pointed at it
 
-Agents: ${CONTEXT_AGENT_KEYS.join(", ")} (default: all). claude-code and opencode1 go through the
-context-proxy service; opencode2 trims in its own plugin (on when config sets neither its key nor
-enabled); codex is not routed yet.
+Agents: ${CONTEXT_AGENT_KEYS.join(", ")} (default: all). claude-code, opencode1 and codex go through
+the context-proxy service (codex keeps its ChatGPT login); opencode2 trims in its own plugin (on when
+config sets neither its key nor enabled).
 Docs: docs/context-management.md`;
 
 /** True when any agent that needs the service resolves on. */
@@ -186,7 +186,6 @@ export async function runContextCommand(opts) {
   const saved = updatePmConfigContextAgents(home, Object.fromEntries(keys.map((k) => [k, on])), { dry: flags.dry });
   const summary = keys.map((k) => `${k} = ${on}`).join(", ");
   log.info(`${saved.result === "dry-run" ? "[dry-run] would save" : "saved"} [context_proxy.agents] ${summary}`);
-  if (keys.includes("codex") && on) log.info(`codex: ${CONTEXT_AGENT_ROUTE.codex}`);
   // install-coding-agent follows the saved values: it wires agents and starts or stops the service.
   const args = [path.join(PKG_ROOT, "cli", "install-coding-agent.mjs"), "--yes"];
   if (flags.dry) args.push("--dry-run");

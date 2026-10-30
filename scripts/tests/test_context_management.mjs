@@ -138,7 +138,7 @@ function install(home, flags = {}) {
   docker.length = 0;
   writeCfg(home, "[context_proxy.agents]\ncodex = true\n");
   await run();
-  check("codex = true alone does not start the service (not routed yet)", !docker.some((c) => c.includes(" up ")));
+  check("codex = true alone starts the service (Codex is proxy-routed)", docker.some((c) => c.endsWith("up -d context-proxy")), docker.join("\n"));
   docker.length = 0;
   const noStack = tmpHome();
   writeCfg(noStack, "[context_proxy.agents]\nclaude-code = true\n");
@@ -193,7 +193,7 @@ function install(home, flags = {}) {
   const r3 = await captured(() => chooseContextManagement({ yes: true, dry: true, home, pmMerged: { context_proxy: { enabled: true } } }, "8", ["claude-code"]));
   check("saved enabled = true without agent keys: Claude Code defaults on", r3.value["claude-code"] === true);
   const r4 = await captured(() => chooseContextManagement({ yes: true, dry: true, home, pmMerged: {} }, "8", ["codex"]));
-  check("codex is named but not offered", r4.lines.some((l) => /codex: not routed.*not offered/.test(l)) && r4.lines.some((l) => /saved values kept/.test(l)));
+  check("codex is offered, off by default", !r4.lines.some((l) => /not offered|saved values kept/.test(l)) && r4.value.codex === false);
 
   const real = { yes: true, dry: false, home, pmMerged: {} };
   await captured(() => chooseContextManagement(real, "8", ["claude-code", "opencode2"]));

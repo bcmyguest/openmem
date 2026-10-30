@@ -13,6 +13,10 @@
 #       api_key: os.environ/OPENAI_API_KEY
 #
 # and put OPENAI_API_KEY in the env file (CONTEXT_PROXY_ENV_FILE).
+#
+# Codex with ChatGPT login needs no route: LiteLLM's built-in /backend-api/codex/{models,responses} pass-through
+# (PR #41522, in the pinned dev image) forwards the ChatGPT bearer to chatgpt.com; the client sends the LiteLLM key
+# in x-litellm-api-key. The hook sees those calls as call type pass_through_endpoint.
 model_list:
   - model_name: "anthropic/*"
     litellm_params:

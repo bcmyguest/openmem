@@ -12,6 +12,9 @@ from .compress import compress_text, compressed_blob_id
 _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 _RESULT_TYPES = ("function_call_output", "custom_tool_call_output", "local_shell_call_output")
 _CALL_TYPES = ("function_call", "custom_tool_call", "local_shell_call")
+# LiteLLM's ChatGPT-subscription pass-through (PR #41522): Codex posts Responses bodies here, and the pre-call hook
+# sees them with call type "pass_through_endpoint".
+CODEX_RESPONSES_ROUTE = "/backend-api/codex/responses"
 
 
 class UnsupportedCallType(LookupError):
@@ -365,9 +368,14 @@ class ResponsesAdapter:
         return [("assistant", "text", None, f"[{t}]")]
 
 
-def adapter_for(call_type):
-    """Adapter for a LiteLLM call type; raises UnsupportedCallType for any other call."""
+def adapter_for(call_type, route=None):
+    """Adapter for a LiteLLM call type; raises UnsupportedCallType for any other call.
+
+    A pass-through call is handled only on the Codex Responses route; every other pass-through body is opaque.
+    """
     name = str(getattr(call_type, "value", call_type))
+    if name == "pass_through_endpoint" and isinstance(route, str) and route.rstrip("/") == CODEX_RESPONSES_ROUTE:
+        return ResponsesAdapter()
     match name:
         case "anthropic_messages":
             return AnthropicAdapter()

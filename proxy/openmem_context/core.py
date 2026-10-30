@@ -196,9 +196,9 @@ def _store_messages(store, sid, adapter, original, items, cut, first, settings):
         _log_error(exc)
 
 
-def _rewrite(data, call_type, settings, http):
+def _rewrite(data, call_type, settings, http, route, call_id):
     try:
-        adapter = adapter_for(call_type)
+        adapter = adapter_for(call_type, route)
     except UnsupportedCallType:
         return data
     original = adapter.get_items(data)
@@ -256,7 +256,7 @@ def _rewrite(data, call_type, settings, http):
         _store_messages(store, sid, adapter, original, items, cut, first, settings)
 
     # Measured like the estimate, before the standing instruction, so calibration compares like with like.
-    _await_usage(data.get("litellm_call_id"), sid, root, request_chars(*context, view))
+    _await_usage(data.get("litellm_call_id") or call_id, sid, root, request_chars(*context, view))
     if not (len(view) == len(original) and all(a is b for a, b in zip(view, original))):
         data[adapter.items_key] = view
     if settings.standing_instruction:
@@ -354,13 +354,17 @@ def startup(settings=None):
     return thread
 
 
-def process_request(data, call_type, settings=None, http=None):
-    """Rewrite data in place and return it; on any error return it unmodified."""
+def process_request(data, call_type, settings=None, http=None, route=None, call_id=None):
+    """Rewrite data in place and return it; on any error return it unmodified.
+
+    route is the request path (selects the adapter for a pass-through call). call_id is the litellm_call_id when
+    data does not carry one: a pass-through body is forwarded upstream as is, so the id stays out of it.
+    """
     try:
         settings = settings or Settings.from_env()
         if not settings.enabled or not isinstance(data, dict):
             return data
-        return _rewrite(data, call_type, settings, http or recall_mod.urllib_http)
+        return _rewrite(data, call_type, settings, http or recall_mod.urllib_http, route, call_id)
     except Exception as exc:
         _log_error(exc)
         return data

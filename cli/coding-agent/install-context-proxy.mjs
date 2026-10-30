@@ -1,22 +1,33 @@
 /**
- * Point Claude Code and OpenCode at the local LiteLLM context proxy, or undo that.
- * Codex stays hook-only until a stable LiteLLM forwards ChatGPT-login auth.
+ * Point Claude Code, OpenCode 1 and Codex at the local LiteLLM context proxy, or undo that.
  *
  * The proxy key travels as a request header. Claude Code reads ANTHROPIC_CUSTOM_HEADERS only
  * from its environment or a settings `env` block (no helper hook for headers), so a settings
- * file that holds the key is written mode 600; so is the OpenCode config. Values that were
- * there before and are not ours are backed up (mode 600) and restored on disable.
+ * file that holds the key is written mode 600; so are the OpenCode and Codex configs. Values that
+ * were there before and are not ours are backed up (mode 600) and restored on disable.
+ *
+ * Codex keeps its ChatGPT login: a custom `[model_providers.openmem]` with `requires_openai_auth`
+ * sends the ChatGPT bearer and ChatGPT-Account-ID as before, `http_headers` adds the LiteLLM key, and
+ * `base_url` is LiteLLM's subscription pass-through `/backend-api/codex` (PR #41522). The built-in
+ * openai provider cannot carry the extra header: Codex ignores `model_providers.openai` overrides.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import TOML from "@iarna/toml";
 import { contextRoot } from "./context-store.mjs";
 import { readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
+import { removeSpans, tomlSpansUnder, tomlStatements } from "./toml-edit.mjs";
 
 const KEY_NAME = "LITELLM_MASTER_KEY";
 const HEADER_NAME = "x-litellm-api-key";
 const LOOPBACK_URL = /^http:\/\/127\.0\.0\.1:\d+(?:\/v1)?$/;
+const CODEX_LOOPBACK_URL = /^http:\/\/127\.0\.0\.1:\d+\/backend-api\/codex$/;
+/** `model_provider` id the installer owns in ~/.codex/config.toml. */
+export const CODEX_PROVIDER_ID = "openmem";
+/** Agent ids installContextProxy wires (install-coding-agent ids; opencode is OpenCode 1 or 2). */
+const PROXY_AGENT_IDS = ["claude-code", "opencode", "codex"];
 const SECRET_MODE = 0o600;
 const PROBE_TIMEOUT_MS = 1500;
 
@@ -62,9 +73,26 @@ export async function probeContextProxy(port, { fetch = globalThis.fetch, timeou
   }
 }
 
+export function codexConfigPath(home) {
+  return path.join(home, ".codex", "config.toml");
+}
+
+/** Parsed ~/.codex/config.toml (`{}` when missing); malformed TOML throws. */
+function readCodexConfig(home) {
+  const file = codexConfigPath(home);
+  return fs.existsSync(file) ? TOML.parse(fs.readFileSync(file, "utf8")) : {};
+}
+
+/** True when the Codex config selects our provider or still has its loopback entry. */
+function codexPointed(cfg) {
+  const ours = cfg.model_providers?.[CODEX_PROVIDER_ID];
+  return cfg.model_provider === CODEX_PROVIDER_ID || CODEX_LOOPBACK_URL.test(String(ours?.base_url || ""));
+}
+
 /**
- * Agents whose config still points at the loopback proxy: Claude Code (settings.json `env`)
- * and OpenCode 1 (`provider.anthropic.options.baseURL`). Stopping the proxy breaks them.
+ * Agents whose config still points at the loopback proxy: Claude Code (settings.json `env`),
+ * OpenCode 1 (`provider.anthropic.options.baseURL`) and Codex (`model_provider = "openmem"`).
+ * Stopping the proxy breaks them.
  * @returns {string[]}
  */
 export function agentsPointedAtContextProxy(home) {
@@ -78,6 +106,11 @@ export function agentsPointedAtContextProxy(home) {
     const file = opencodeConfigPath(home);
     const options = fs.existsSync(file) ? parseJsonc(fs.readFileSync(file, "utf8"))?.provider?.anthropic?.options : undefined;
     if (LOOPBACK_URL.test(String(options?.baseURL || ""))) out.push("opencode");
+  } catch {
+    // Unreadable config: treat as not pointed.
+  }
+  try {
+    if (codexPointed(readCodexConfig(home))) out.push("codex");
   } catch {
     // Unreadable config: treat as not pointed.
   }
@@ -186,6 +219,77 @@ function wireOpencode(home, { enabled, port, key }) {
   return true;
 }
 
+/** `text` with `line` after the last top-level key/value pair (else at the start), so the key stays top-level. */
+function withTopLevelLine(text, line) {
+  const statements = tomlStatements(text);
+  const firstTable = statements.findIndex((st) => st.kind !== "kv");
+  const topLevel = firstTable < 0 ? statements : statements.slice(0, firstTable);
+  const at = topLevel.length ? topLevel.at(-1).end : 0;
+  const head = text.slice(0, at);
+  return `${head}${head && !head.endsWith("\n") ? "\n" : ""}${line}\n${text.slice(at)}`;
+}
+
+/** `text` without the top-level `model_provider` and without `[model_providers.openmem]`. */
+function withoutCodexWiring(text) {
+  const spans = [
+    ...tomlSpansUnder(text, ["model_providers", CODEX_PROVIDER_ID]),
+    ...tomlStatements(text).filter((st) => st.kind === "kv" && st.path.length === 1 && st.path[0] === "model_provider"),
+  ];
+  return removeSpans(text, spans);
+}
+
+/**
+ * Codex: `model_provider = "openmem"` and `[model_providers.openmem]` (ChatGPT login kept, LiteLLM key in
+ * `http_headers`). A foreign `model_provider` is backed up and restored on disable. A config the TOML
+ * parser rejects is left alone with a warning.
+ */
+function wireCodex(home, { enabled, port, key, h }) {
+  const file = codexConfigPath(home);
+  const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  let cfg;
+  try {
+    cfg = text ? TOML.parse(text) : {};
+  } catch (err) {
+    h?.warn(`codex: left ${file} unchanged; cannot parse it (${err.message})`);
+    return false;
+  }
+  const pointed = codexPointed(cfg);
+  if (!enabled && !pointed) return false;
+  const backup = readBackup(home);
+  const rest = withoutCodexWiring(text).trimEnd();
+  const base = rest ? `${rest}\n` : "";
+  let next;
+  if (enabled) {
+    if (!pointed && cfg.model_provider !== undefined && !backup.codex) {
+      backup.codex = { model_provider: cfg.model_provider };
+      writeBackup(home, backup);
+    }
+    const section = [
+      `[model_providers.${CODEX_PROVIDER_ID}]`,
+      'name = "OpenMem context proxy"',
+      `base_url = ${JSON.stringify(`http://127.0.0.1:${port}/backend-api/codex`)}`,
+      'wire_api = "responses"',
+      "requires_openai_auth = true",
+      "supports_websockets = false",
+      `http_headers = { ${JSON.stringify(HEADER_NAME)} = ${JSON.stringify(`Bearer ${key}`)} }`,
+    ].join("\n");
+    next = `${withTopLevelLine(base, `model_provider = ${JSON.stringify(CODEX_PROVIDER_ID)}`)}\n${section}\n`;
+  } else {
+    const saved = backup.codex?.model_provider;
+    next = typeof saved === "string" && saved ? withTopLevelLine(base, `model_provider = ${JSON.stringify(saved)}`) : base;
+    if (backup.codex) {
+      delete backup.codex;
+      writeBackup(home, backup);
+    }
+  }
+  TOML.parse(next);
+  writeFileAtomic(file, next, enabled ? { mode: SECRET_MODE } : {});
+  return true;
+}
+
+/** Base URL an agent is pointed at: the proxy root, or the Codex subscription pass-through. */
+const proxyUrl = (id, port) => `http://127.0.0.1:${port}${id === "codex" ? "/backend-api/codex" : ""}`;
+
 /**
  * Enable: write the key file and proxy settings. Disable: remove exactly those settings
  * when they still point at the loopback proxy, restoring backed-up values; the key file is kept.
@@ -193,15 +297,15 @@ function wireOpencode(home, { enabled, port, key }) {
  * proxy settings are removed; such agents are returned in `pluginTrimmed`.
  */
 export function installContextProxy({ home, agents, enabled, agentEnabled = {}, port, dry = false, h, opencodeMajor = 1 }) {
-  const targets = agents.filter((id) => id === "claude-code" || id === "opencode");
+  const targets = agents.filter((id) => PROXY_AGENT_IDS.includes(id));
   const isOpencode2 = (id) => id === "opencode" && opencodeMajor >= 2;
-  // Per-agent choice ({ "claude-code"?, opencode? }); a missing entry uses `enabled`.
+  // Per-agent choice ({ "claude-code"?, opencode?, codex? }); a missing entry uses `enabled`.
   const on = (id) => (typeof agentEnabled[id] === "boolean" ? agentEnabled[id] : Boolean(enabled));
   const pluginTrimmed = targets.filter(isOpencode2);
   if (dry) {
     for (const id of targets) {
       if (isOpencode2(id)) h?.info(`[dry-run] ${id}: OpenCode 2 trims natively; not pointed at the context proxy`);
-      else h?.info(`[dry-run] ${on(id) ? "point" : "unpoint"} ${id} ${on(id) ? "at" : "from"} context proxy http://127.0.0.1:${port}`);
+      else h?.info(`[dry-run] ${on(id) ? "point" : "unpoint"} ${id} ${on(id) ? "at" : "from"} context proxy ${proxyUrl(id, port)}`);
     }
     return { changed: [], pluginTrimmed };
   }
@@ -219,10 +323,11 @@ export function installContextProxy({ home, agents, enabled, agentEnabled = {}, 
       continue;
     }
     const enable = on(id);
-    const done = id === "claude-code" ? wireClaude(home, { enabled: enable, port, key }) : wireOpencode(home, { enabled: enable, port, key });
+    const wire = { "claude-code": wireClaude, opencode: wireOpencode, codex: wireCodex }[id];
+    const done = wire(home, { enabled: enable, port, key, h });
     if (!done) continue;
     changed.push(id);
-    h?.ok(`${id}: context proxy ${enable ? `→ http://127.0.0.1:${port}` : "settings removed"}`);
+    h?.ok(`${id}: context proxy ${enable ? `→ ${proxyUrl(id, port)}` : "settings removed"}`);
   }
   return { changed, pluginTrimmed };
 }

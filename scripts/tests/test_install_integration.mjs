@@ -220,13 +220,18 @@ if (args.includes("--auto-patch")) {
   await install(home, {});
   env = json(path.join(home, ".claude/settings.json")).env;
   check("persisted port and key reused on reinstall", env.ANTHROPIC_BASE_URL === "http://127.0.0.1:4200" && env.ANTHROPIC_CUSTOM_HEADERS.endsWith(key));
-  check("codex config untouched by the proxy", !read(path.join(home, ".codex/config.toml")).includes("127.0.0.1:4200"));
+  const codexCfg = TOML.parse(read(path.join(home, ".codex/config.toml")));
+  check("codex points at the proxy's Codex route", codexCfg.model_provider === "openmem"
+    && codexCfg.model_providers?.openmem?.base_url === "http://127.0.0.1:4200/backend-api/codex"
+    && codexCfg.mcp_servers?.openmem !== undefined);
 
   await install(home, { contextProxy: false });
   const claude = json(path.join(home, ".claude/settings.json"));
   check("disable removes exactly the two Claude keys", !("ANTHROPIC_BASE_URL" in claude.env) && !("ANTHROPIC_CUSTOM_HEADERS" in claude.env) && claude.env.KEEP_ME === "1");
   const ocAfter = parseOpencode(read(path.join(home, ".config/opencode/opencode.jsonc")));
   check("disable removes the OpenCode proxy options", !ocAfter.provider?.anthropic && ocAfter.theme === "dark");
+  const codexAfter = TOML.parse(read(path.join(home, ".codex/config.toml")));
+  check("disable removes the Codex proxy provider", codexAfter.model_provider === undefined && !codexAfter.model_providers?.openmem && codexAfter.mcp_servers?.openmem !== undefined);
   check("disable persisted", TOML.parse(read(cfgFile)).context_proxy?.enabled === false && TOML.parse(read(cfgFile)).context_proxy?.port === 4200);
   check("key file kept after disable", read(keyFile).includes(key));
   fs.rmSync(home, { recursive: true, force: true });
