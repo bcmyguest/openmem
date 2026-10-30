@@ -1,184 +1,68 @@
 ---
-// Hero figure: the core data path. Full provider and optional integration details live in docs.
+// Hero figure: two overview diagrams, A (memory) and B (context management), drawn by
+// overview-diagrams.mjs with the site's colour tokens. Wide layouts from lg up; below that the
+// narrow layouts sit side by side (md) or stacked (phone). Docs use the same source as static SVGs.
 import { withBase } from '../../lib/url';
-import { site } from '../../site.config.mjs';
+import { CSS_PALETTE, contextDiagram, memoryDiagram } from './overview-diagrams.mjs';
 
+const wide = [memoryDiagram(CSS_PALETTE, 'wide', 'hero-mem-w'), contextDiagram(CSS_PALETTE, 'wide', 'hero-ctx-w')];
+const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagram(CSS_PALETTE, 'narrow', 'hero-ctx-n')];
 ---
-<figure class="arch not-prose" aria-labelledby="arch-caption">
-  <div class="arch-surface overflow-hidden rounded-xl border border-line">
-    <div class="arch-flow">
-      <div class="arch-col" role="group" aria-labelledby="arch-h-src">
-        <p id="arch-h-src" class="arch-label">Sources</p>
-        <ul class="arch-list">
-          <li class="arch-node">Git repos, notes, feeds</li>
-        </ul>
-      </div>
-
-      <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
-
-      <div class="arch-col" role="group" aria-labelledby="arch-h-idx">
-        <p id="arch-h-idx" class="arch-label">OpenMem indexer</p>
-        <ul class="arch-list">
-          <li class="arch-node">Indexes your sources</li>
-        </ul>
-      </div>
-
-      <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
-
-      <div class="arch-col" role="group" aria-labelledby="arch-h-prov">
-        <p id="arch-h-prov" class="arch-label">Memory provider</p>
-        <ul class="arch-list">
-          <li class="arch-node">One active provider</li>
-        </ul>
-      </div>
-
-      <svg class="arch-arrow arch-arrow-bidir" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M2 8H32" /><path class="tip" d="M30 3l8 5-8 5z" /><path class="tip-l" d="M10 3L2 8l8 5z" /></svg>
-
-      <div class="arch-col" role="group" aria-labelledby="arch-h-bridge">
-        <p id="arch-h-bridge" class="arch-label">OpenMem MCP</p>
-        <ul class="arch-list">
-          <li class="arch-node"><code>memory_*</code> tools</li>
-        </ul>
-      </div>
-
-      <svg class="arch-arrow" viewBox="0 0 40 16" aria-hidden="true" focusable="false"><path class="flow" d="M8 8H32" /><path class="tip-l" d="M10 3L2 8l8 5z" /><path class="tip" d="M30 3l8 5-8 5z" /></svg>
-
-      <div class="arch-col" role="group" aria-labelledby="arch-h-agents">
-        <p id="arch-h-agents" class="arch-label">Coding agents</p>
-        <ul class="arch-list">
-          <li class="arch-node">Claude Code, Codex, Cursor, OpenCode</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="arch-title" aria-hidden="true">
-      <span>{site.name.toUpperCase()}</span><span>DATA FLOW</span>
-    </div>
+<figure class="ov not-prose" aria-labelledby="ov-caption">
+  <div class="ov-wide">
+    {wide.map((svg) => <div class="ov-card" set:html={svg} />)}
   </div>
-  <figcaption id="arch-caption" class="mt-3 text-xs leading-relaxed text-muted">
-    The indexer writes to one provider; coding agents read and write through OpenMem's <code>memory_*</code> tools.{' '}
-    Long sessions use smart compaction (below) instead of an LLM summary.{' '}
-    <a href={withBase('docs/architecture/')}>Full architecture</a> · <a href={withBase('docs/provider-status/')}>Provider status</a>.
+  <div class="ov-narrow">
+    {narrow.map((svg) => <div class="ov-card" set:html={svg} />)}
+  </div>
+  <figcaption id="ov-caption" class="mt-3 text-sm leading-relaxed text-muted">
+    OpenMem parts are tinted. A: the indexer feeds one provider; agents read and write it through OpenMem's <code>memory_*</code> tools and session hooks.
+    B: past the limit the context proxy moves older turns to a local store instead of asking a model for a summary.{' '}
+    <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/architecture/')}>Full architecture</a> ·
+    <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> ·
+    <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/provider-status/')}>Provider status</a>
   </figcaption>
 </figure>
 
 <style>
-  .arch-surface {
-    position: relative;
-    background-color: var(--c-map-canvas);
-    background-image:
-      linear-gradient(var(--c-map-dot) 1px, transparent 1px),
-      linear-gradient(90deg, var(--c-map-dot) 1px, transparent 1px);
-    background-size: 24px 24px;
-    background-position: -1px -1px;
-  }
-  .arch-flow {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
-    padding: 1.25rem 1rem 1rem;
-  }
-  @media (min-width: 64rem) {
-    .arch-flow {
-      grid-template-columns: 1fr 2rem 1fr 2rem 1.05fr 2rem 1fr 2rem 0.95fr;
-      align-items: center;
-      gap: 0;
-      padding: 1.75rem 1rem 1.25rem;
-    }
-  }
-  .arch-col {
-    border: 1px solid var(--c-line);
-    background: var(--c-panel);
-    border-radius: 0.75rem;
-    padding: 0.875rem;
-    height: 100%;
-  }
-  .arch-label {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--c-muted);
-    margin: 0 0 0.625rem;
-  }
-  .arch-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-  .arch-node {
-    border: 1px solid var(--c-line);
-    background: var(--c-panel-raised);
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.625rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-  .arch-arrow {
-    width: 100%;
-    height: 1.25rem;
-    justify-self: center;
-    transform: rotate(90deg);
-    max-width: 2.5rem;
-    margin: 0.625rem auto;
-  }
-  @media (min-width: 64rem) {
-    .arch-arrow {
-      transform: none;
-      margin: 0;
-    }
-  }
-  .arch-arrow .flow {
-    stroke: var(--c-brand);
-    stroke-width: 2;
-    fill: none;
-    stroke-dasharray: 4 4;
-    animation: arch-dash 1.2s linear infinite;
-  }
-  .arch-arrow .tip,
-  .arch-arrow .tip-l {
-    fill: var(--c-brand);
-  }
-  .arch-arrow-bidir .flow {
-    stroke-dasharray: none;
-  }
-  @keyframes arch-dash {
-    to {
-      stroke-dashoffset: -8;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .arch-arrow .flow {
-      animation: none;
-    }
-  }
-  .arch-title {
+  .ov-wide {
     display: none;
   }
+  .ov-narrow {
+    display: grid;
+    gap: 1rem;
+    justify-items: center;
+  }
+  @media (min-width: 48rem) {
+    .ov-narrow {
+      grid-template-columns: 1fr 1fr;
+      align-items: start;
+    }
+  }
   @media (min-width: 64rem) {
-    .arch-title {
-      position: absolute;
-      right: 1.5rem;
-      bottom: 0.875rem;
+    .ov-wide {
       display: grid;
-      grid-template-columns: auto auto;
-      border: 1px solid var(--c-line);
-      background: var(--c-panel);
-      border-radius: 0.25rem;
-      font-size: 0.625rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      color: var(--c-muted);
+      gap: 1rem;
     }
-    .arch-title span {
-      padding: 0.25rem 0.5rem;
+    .ov-narrow {
+      display: none;
     }
-    .arch-title span + span {
-      border-left: 1px solid var(--c-line);
-    }
+  }
+  .ov-card {
+    width: 100%;
+    max-width: 26rem;
+    border: 1px solid var(--c-line);
+    border-radius: 0.875rem;
+    overflow: hidden;
+    line-height: 0;
+  }
+  .ov-wide .ov-card {
+    max-width: none;
+  }
+  .ov-card :global(svg) {
+    display: block;
+    width: 100%;
+    height: auto;
   }
   code {
     font-size: 0.85em;
