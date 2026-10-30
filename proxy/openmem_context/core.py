@@ -190,7 +190,8 @@ def _store_messages(store, sid, adapter, original, items, cut, first, settings):
         added = sessiondb.open_session(path).sync(rows, cut_row, _utc_now())
         if added and settings.embedding_model:
             embed_mod.embedder.notify(path, settings.embedding_model, settings.embedding_url,
-                                      settings.embedding_api_key)
+                                      settings.embedding_api_key, settings.embedding_timeout_s,
+                                      settings.embedding_max_chars)
     except Exception as exc:
         sessiondb.drop_session(path)
         _log_error(exc)

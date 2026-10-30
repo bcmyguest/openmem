@@ -17,6 +17,9 @@ DEFAULT_TTL_DAYS = 30
 # OpenAI-compatible embeddings base URL (POST <url>/embeddings): Ollama on the host. compose.yaml sets the
 # container's view (host.docker.internal).
 DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
+# Seconds per row of an embeddings call, and characters of a row's head sent (docs/context-store.md, "Vectors").
+DEFAULT_EMBEDDING_TIMEOUT_S = 30.0
+DEFAULT_EMBEDDING_MAX_CHARS = 4000
 
 
 def _int(env, name, default):
@@ -44,6 +47,11 @@ def _positive_float(env, name, default):
     return value if math.isfinite(value) and value > 0 else default
 
 
+def _positive_int(env, name, default):
+    value = _int(env, name, default)
+    return value if value > 0 else default
+
+
 def _flag(env, name):
     """True unless the variable is 0, false, no or off."""
     return str(env.get(name, "1")).strip().lower() not in ("0", "false", "no", "off")
@@ -68,6 +76,10 @@ class Settings:
     embedding_model: str = ""
     embedding_url: str = DEFAULT_EMBEDDING_URL
     embedding_api_key: str = ""
+    # An embeddings call of n rows times out after n times this (CONTEXT_EMBEDDING_TIMEOUT_S).
+    embedding_timeout_s: float = DEFAULT_EMBEDDING_TIMEOUT_S
+    # Each row's first this many characters are embedded (CONTEXT_EMBEDDING_MAX_CHARS).
+    embedding_max_chars: int = DEFAULT_EMBEDDING_MAX_CHARS
 
     @classmethod
     def from_env(cls, env=None):
@@ -88,4 +100,6 @@ class Settings:
             embedding_model=str(env.get("CONTEXT_EMBEDDING_MODEL", "")).strip(),
             embedding_url=(str(env.get("CONTEXT_EMBEDDING_URL", "")).strip() or DEFAULT_EMBEDDING_URL).rstrip("/"),
             embedding_api_key=str(env.get("CONTEXT_EMBEDDING_API_KEY", "")).strip(),
+            embedding_timeout_s=_positive_float(env, "CONTEXT_EMBEDDING_TIMEOUT_S", DEFAULT_EMBEDDING_TIMEOUT_S),
+            embedding_max_chars=_positive_int(env, "CONTEXT_EMBEDDING_MAX_CHARS", DEFAULT_EMBEDDING_MAX_CHARS),
         )
