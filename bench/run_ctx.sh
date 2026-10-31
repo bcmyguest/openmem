@@ -28,7 +28,10 @@
 # proxy's per-model threshold (Haiku 95k); `./run_ctx.sh prep E` exports it.
 #   e-none     proxy pass-through, DISABLE_AUTO_COMPACT=1
 #   e-native   proxy pass-through, Claude Code's default auto-compaction (no window override)
+#   e-native-153k  as e-native, CLAUDE_CODE_AUTO_COMPACT_WINDOW=$NATIVE_WINDOW (Claude Code reads Haiku 5.5's
+#              window as 1M, so e-native never compacts on these tasks; run B's s2-native window)
 #   e-smart    as d-sqlite: trim + compression over $COMPRESS_AT, the three smart_compact tools
+# Run S (evidence plan phase 4): e-none and e-smart as in E on claude-sonnet-5, at the proxy's per-model threshold (125k).
 set -euo pipefail
 B=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$B"
@@ -44,11 +47,12 @@ setrun() {
     Csmoke) ARMS="s3c-semantic s3d-recall";;
     D|Dsmoke) ARMS="d-sqlite d-hybrid";;
     Dp|Df) ARMS="d-sqlite";;
-    E) ARMS="e-none e-native e-smart";;
+    E) ARMS="e-none e-native e-native-153k e-smart";;
+    S) ARMS="e-none e-smart"; MODEL=anthropic/claude-sonnet-5;;
     *) echo "unknown run $RUN" >&2; exit 2;; esac
   [ "$RUN" = Csmoke ] && TRIM_AT=20000
   [ "$RUN" = Dsmoke ] && TRIM_AT=20000
-  case $RUN in Dp|Df|E) TRIM_AT=;; esac  # as run D: the proxy's per-model threshold
+  case $RUN in Dp|Df|E|S) TRIM_AT=;; esac  # as run D: the proxy's per-model threshold
   return 0
 }
 port() {
@@ -59,7 +63,8 @@ port() {
     Csmoke:s3c-semantic) echo 4243;; Csmoke:s3d-recall) echo 4244;; Csmoke:s3c-semantic-nudged) echo 4248;;
     D:d-sqlite) echo 4251;; D:d-hybrid) echo 4252;; Dsmoke:d-sqlite) echo 4253;; Dsmoke:d-hybrid) echo 4254;;
     Dp:d-sqlite) echo 4255;; Df:d-sqlite) echo 4256;;
-    E:e-none) echo 4257;; E:e-native) echo 4258;; E:e-smart) echo 4259;;
+    E:e-none) echo 4257;; E:e-native) echo 4258;; E:e-smart) echo 4259;; E:e-native-153k) echo 4260;;
+    S:e-none) echo 4261;; S:e-smart) echo 4262;;
     *) echo "no port for $RUN $1" >&2; exit 2;;
   esac
 }
@@ -74,7 +79,7 @@ eval "$(declare -f arm_flags | sed '1s/^arm_flags /arm_flags_strict /')"
 
 proxy_up() {
   case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) proxy_up_c "$1" ;; d-*|e-smart) proxy_up_d "$1" ;;
-    e-none|e-native) proxy_up_e "$1" ;; *) proxy_up_strict "$@" ;; esac
+    e-none|e-native*) proxy_up_e "$1" ;; *) proxy_up_strict "$@" ;; esac
 }
 proxy_up_c() {  # as s3a-smart (trim at $TRIM_AT, compression over $COMPRESS_AT); s3d: no standing instruction
   local arm=$1 p si=(); p=$(port "$arm")
@@ -95,7 +100,7 @@ proxy_up_c() {  # as s3a-smart (trim at $TRIM_AT, compression over $COMPRESS_AT)
 
 arm_flags() {
   case $1 in s3c-semantic|s3c-semantic-nudged|s3d-recall) arm_flags_c "$1" ;; d-*|e-smart) arm_flags_d "$1" ;;
-    e-none|e-native) arm_flags_e "$1" ;; *) arm_flags_strict "$@" ;; esac
+    e-none|e-native*) arm_flags_e "$1" ;; *) arm_flags_strict "$@" ;; esac
 }
 arm_flags_c() {  # strict base flags (no s3 case matches), then the arm's MCP, mounts and tool policy
   local arm=$1 deny=$DENY_BUILTIN ro=true
@@ -135,8 +140,8 @@ R_DF=$B/repo-Df
 # Run E: every arm's proxy code at $E_SHA (main after the 125k default; Haiku still 95k).
 E_SHA=1297811
 R_E=$B/repo-E
-d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; Df:*) echo "$DF_SHA";; E:*) echo "$E_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
-d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; Df:*) echo "$R_DF";; E:*) echo "$R_E";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
+d_sha() { case $RUN:$1 in Dp:*) echo "$DP_SHA";; Df:*) echo "$DF_SHA";; E:*|S:*) echo "$E_SHA";; *:d-hybrid) echo "$D_SHA_HYBRID";; *) echo "$D_SHA";; esac; }
+d_repo() { case $RUN:$1 in Dp:*) echo "$R_DP";; Df:*) echo "$R_DF";; E:*|S:*) echo "$R_E";; *:d-hybrid) echo "$R_DH";; *) echo "$R_D";; esac; }
 D_IMAGE=ghcr.io/berriai/litellm:v1.109.0-dev.1
 D_EMB_MODEL=nomic-embed-text
 D_EMB_PORT=18434
@@ -231,6 +236,8 @@ arm_flags_e() {  # strict base flags with no MCP; e-native drops DISABLE_AUTO_CO
   arm_flags_strict "$arm"
   [ "$arm" = e-native ] && for i in "${!FLAGS[@]}"; do
     [ "${FLAGS[$i]}" = DISABLE_AUTO_COMPACT=1 ] && unset 'FLAGS[i]' 'FLAGS[i-1]'; done
+  [ "$arm" = e-native-153k ] && for i in "${!FLAGS[@]}"; do
+    [ "${FLAGS[$i]}" = DISABLE_AUTO_COMPACT=1 ] && FLAGS[i]=CLAUDE_CODE_AUTO_COMPACT_WINDOW=$NATIVE_WINDOW; done
   FLAGS=("${FLAGS[@]}")
 }
 
@@ -250,6 +257,7 @@ case "${1:-}" in
   prep) case ${2:-} in D|Dp|Df|E) RUN=$2; d_prep ;; *) echo "usage: $0 prep D|Dp|Df|E" >&2; exit 2 ;; esac ;;
   ollama) d_ollama "${2:-}" ;;
   up) setrun "$2"; load_token; for a in $ARMS; do proxy_up "$a"; done; wait_live ;;
+  up1) setrun "$2"; load_token; proxy_up "$3"; ARMS=$3; wait_live ;;  # one arm, leaving the others running
   down) setrun "$2"; for a in $ARMS; do
           docker logs "$(pname "$a")" > "$RESULTS/$a/proxy.log" 2>&1 || true
           docker rm -f "$(pname "$a")" >/dev/null 2>&1 || true; done ;;
@@ -262,5 +270,5 @@ case "${1:-}" in
          mkdir -p "$RESULTS/$arm/trials"
          trial "$arm" "$task" "$RESULTS/$arm/trials" "$RUN-$arm.$task" > "$RESULTS/$arm/$RUN-$arm.$task.log" 2>&1 ;;
   summarize) setrun "$2"; "$B/.venv/bin/python" "$B/summarize.py" "$RESULTS" "$STATE" > "$RESULTS/summary-base.md" ;;
-  *) echo "usage: $0 prep|ollama|up|down|one|smoke|summarize ..." >&2; exit 2 ;;
+  *) echo "usage: $0 prep|ollama|up|up1|down|one|smoke|summarize ..." >&2; exit 2 ;;
 esac

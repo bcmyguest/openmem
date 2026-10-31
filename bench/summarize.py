@@ -29,15 +29,19 @@ TIER_AT = 100_000
 RATE_LIMIT_RE = re.compile(r"\b429\b|rate.?limit|overloaded|\b529\b", re.I)
 SEARCH_TOOL, GET_TOOL = "mcp__openmem__smart_compact_search", "mcp__openmem__smart_compact_get"
 PRICE = {False: (0.10, 0.125, 0.20, 0.01, 0.50), True: (0.50, 0.625, 1.00, 0.05, 2.50)}
+# Per-model (input, 5m write, 1h write, cache read, output) $/MTok for models without Haiku's 100k tier
+# (platform.claude.com/docs/en/about-claude/pricing).
+FLAT_PRICE = {"claude-sonnet-5": (2.00, 2.50, 4.00, 0.20, 10.00)}
 CSV_FIELDS = ("ts", "arm", "arm_header", "session", "model", "ok", "input", "cache_read", "cache_write",
               "cache_write_1h", "output", "prompt", "long_tier", "usd", "trimmed", "n_compressed",
               "n_messages", "latency_s", "source")
 
 
-def request_cost(inp: int, cr: int, cw: int, out: int, cw_1h: int = 0) -> tuple[float, bool]:
+def request_cost(inp: int, cr: int, cw: int, out: int, cw_1h: int = 0, model: str = "") -> tuple[float, bool]:
     prompt = inp + cr + cw
-    long = prompt > TIER_AT
-    p_in, p_w5, p_w1, p_cr, p_out = PRICE[long]
+    flat = FLAT_PRICE.get(str(model).rsplit("/", 1)[-1])
+    long = flat is None and prompt > TIER_AT
+    p_in, p_w5, p_w1, p_cr, p_out = flat or PRICE[long]
     cw_1h = min(cw_1h, cw)
     usd = (inp * p_in + (cw - cw_1h) * p_w5 + cw_1h * p_w1 + cr * p_cr + out * p_out) / 1e6
     return usd, long
@@ -67,7 +71,8 @@ def priced(rows: list[dict]) -> list[dict]:
             out.append({**r, "usd": 0.0, "prompt": 0, "long_tier": False})
             continue
         n = {k: int(r.get(k) or 0) for k in ("input", "cache_read", "cache_write", "cache_write_1h", "output")}
-        usd, long = request_cost(n["input"], n["cache_read"], n["cache_write"], n["output"], n["cache_write_1h"])
+        usd, long = request_cost(n["input"], n["cache_read"], n["cache_write"], n["output"], n["cache_write_1h"],
+                                 r.get("model") or "")
         out.append({**r, **n, "usd": usd, "long_tier": long,
                     "prompt": n["input"] + n["cache_read"] + n["cache_write"]})
     return out

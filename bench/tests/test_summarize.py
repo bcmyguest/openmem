@@ -25,6 +25,12 @@ def test_request_cost_tiers():
     assert w == pytest.approx((600 * 0.125 + 400 * 0.20) / 1e6)
 
 
+def test_request_cost_flat_model():
+    # Sonnet 5 has no prompt-length tier: a 900k prompt pays the same rates as a small one
+    usd, is_long = summarize.request_cost(1, 900_000, 1000, 1000, cw_1h=1000, model="anthropic/claude-sonnet-5")
+    assert not is_long and usd == pytest.approx((1 * 2.00 + 900_000 * 0.20 + 1000 * 4.00 + 1000 * 10.00) / 1e6)
+
+
 def _tree(tmp_path: Path) -> Path:
     results = tmp_path / "results"
     arm = results / "a3b-trim"
