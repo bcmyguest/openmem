@@ -6,9 +6,9 @@ Original experiment plan for the claim in [context-management.md](context-manage
 
 | Work | Evidence now available | State |
 | --- | --- | --- |
-| Phase 1, run E | `bench/results-E/summary.json` contains 51 rows across e-none (13), e-native (12), e-native-153k (12), and e-smart (14), including sensitivity and rerun rows. These are raw rows, not the planned balanced 3-arm comparison. | Analysis and paired CIs pending. |
+| Phase 1, run E | `bench/results-E/summary.json` contains 51 rows across e-none (13), e-native (12), e-native-153k (12), and e-smart (14), including sensitivity and rerun rows. | Seed-paired H1–H3 and H5 comparisons below; H6 remains unmeasured. |
 | Phase 2, scratchpad | `scratchpad-phase2` has commits `8631472` (pins table) and `0809dc3` (MCP write tool). Separate trial worktrees contain step2c read-path commits, including `2e55743`. | Read path is not integrated into `main`; the brief/test conflict below needs resolution before treating it as complete. |
-| Phase 4, Sonnet | `bench/results-S/summary.json` contains two seed-matched pairs on log L6400. Mean lenient reward: e-none 0.479, e-smart 0.542. Total list-price cost: $19.85 versus $7.86 for the two trials per arm. | Trials complete; H4 analysis and documentation pending. The first pair exceeded the original $10 abort threshold; the user approved the second pair. |
+| Phase 4, Sonnet | `bench/results-S/summary.json` contains two seed-matched pairs on log L6400. Mean lenient reward: e-none 0.479, e-smart 0.542. Total list-price cost: $19.85 versus $7.86 for the two trials per arm. | H4 comparison below. The first pair exceeded the original $10 abort threshold; the user approved the second pair. |
 | Coding-task replay | Eight trials completed: two seeds each for `decision-fixes` and `step2c` under e-native and e-smart. `bench/replay/results/report.md` holds raw metrics. | Scoring review pending; see below. |
 | Phase 3, decision consistency | Four completed sudoku t150 rows (seeds 45 and 46, e-none and e-smart), all with lenient reward 1.0. One decision-ledger D40 trial has a `result.json`; two more trial directories are partial. | Incomplete. No active runner was visible at this check; remaining trials need a restart and a fresh summary. |
 | Phases 5 and 6 | Phase 5 threshold ablation was optional; phase 6 Compact-Bench was deferred in the original plan. | No completed results found in this check. |
@@ -20,6 +20,25 @@ The replay exposed two harness fixes. `bench/ctx_metrics.py` now skips non-objec
 The replay report's `tests_pass` column is unsuitable for `step2c`: the brief requires changing the standing instruction and pointer text while forbidding changes to existing assertions, yet the existing exact-string tests pin both values. The four completed `step2c` trials all have `tests_rc=1`. The observed failures differ across trials, and one trial also has Python test failures, so a passing score cannot be inferred from `tests_rc` alone. Score the brief's requested behavior, Python tests, the exact failing checks, and the agent's report separately before drawing an arm comparison. The original two-trial inspection found that agents claimed passing npm tests without running the full suite; inspect all four final reports before treating that finding as a full-run result.
 
 The replay uses Claude Haiku 4.5 and host Claude Code with bubblewrap; run E uses the ContextBench harness. Its raw means (e-native versus e-smart: 74.0 versus 132.5 tool calls, 295 versus 463 seconds, $0.85 versus $1.27 per trial) describe these eight trials only. Only two of four e-smart replay trials called `smart_compact_search`, once each; the Sonnet ContextBench smart trials called it 11 and 12 times. These results do not establish an effect of trimming or a model-specific cause for stalled coding agents because task success and the `step2c` scorer remain unresolved.
+
+### Completed seed-paired comparisons
+
+Source: `bench/results-E/summary.json` and `bench/results-S/summary.json`. Each trial row is one observation. Within each task size, pair arms by seed; resample the paired seeds with replacement 20,000 times for two-sided 95% percentile-bootstrap intervals. The planned e-native-153k sensitivity arm and phase 3 sudoku rows are outside the primary comparison. No primary row has a recorded exception or rate-limit error. With only two or three seeds per cell, these intervals describe the observed seeds and give weak coverage for new tasks or seeds.
+
+| Run E task | Pairs smart/none | Reward difference smart − none, 95% CI | Reward difference smart − native, 95% CI | Smart/none cost ratio, 95% CI |
+| --- | ---: | ---: | ---: | ---: |
+| kv R4000 | 3 | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.130 [0.128, 0.132] |
+| log L1600 | 3 | +0.431 [0.250, 0.542] | +0.417 [0.333, 0.500] | 0.811 [0.102, 1.528] |
+| log L6400 | 3 | +0.389 [0.125, 0.542] | +0.417 [0.167, 0.583] | 0.109 [0.107, 0.111] |
+| log L12800 | 2 | +0.646 [0.625, 0.667] | +0.653 [0.583, 0.708] (3 pairs) | 0.062 [0.062, 0.063] |
+
+Pooling the available log pairs gives smart − none reward +0.469 [0.339, 0.578] across 8 pairs and smart − native +0.495 [0.384, 0.593] across 9 pairs. This pooled interval resamples individual task/seed pairs; it describes the observed mix of log sizes. R4000 is a ceiling case: all three arms scored 1.0, so it supports non-inferiority on these seeds but not strict superiority over native. H1 was not disproved. H2 is supported on log tasks and fails its strict-superiority condition on kv R4000. Smart cost was lower on every R4000, L6400, and L12800 pair. At L1600, the cost-ratio CI crosses 1 and one smart trial cost more than its baseline, so H3's pre-registered all-family cost claim is not established.
+
+For H5, the paired smart/none agent-wall-time ratios were 0.996 [0.794, 1.140] at R4000, 1.532 [0.640, 2.021] at L1600, 1.004 [0.979, 1.052] at L6400, and 0.876 [0.582, 1.169] at L12800. The wide L1600 interval includes the 1.2 slowdown threshold; these trials neither establish nor rule out a slowdown there.
+
+On Sonnet log L6400 (seeds 45–46), smart − none reward was +0.0625 [0.0417, 0.0833]. The mean paired smart/none cost ratio was 0.401 [0.361, 0.441]; the two-arm totals were $7.86 and $19.85. Total reported input, cache, and output tokens were 22.73M smart versus 69.26M none (ratio 0.328). Both observed pairs meet H4's score and cost rule, with only two seeds and one task size.
+
+H6 cannot be scored from these artifacts. In `usage.jsonl`, `trimmed=true` marks both a newly cut request and later requests carrying the same cut; the flag is not a new-trim indicator. The LiteLLM `latency_s` logger receives model-call start/end timestamps, and the saved trim events do not record hook duration. Comparing all `trimmed=true` requests with untrimmed requests would answer a different question.
 
 ## 0. What the published numbers rest on
 
