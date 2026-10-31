@@ -51,7 +51,9 @@ def steps_of(agent: Path) -> list[dict]:
                 continue
             if ev.get("parent_tool_use_id"):
                 continue
-            msg = ev.get("message") or {}
+            msg = ev.get("message")
+            if not isinstance(msg, dict):
+                msg = {}
             content = msg.get("content") if isinstance(msg.get("content"), list) else []
             if ev.get("type") == "assistant":
                 mid = msg.get("id")
