@@ -30,7 +30,7 @@ Primary metric: `reward_lenient` per trial (kv tag-insensitive; `bench/summarize
 | H1 quality | Smart ≥ keep-everything on held-out seeds at R4000/L6400/L12800 | paired (same seed) mean difference smart − none < −0.05 with 95% bootstrap CI excluding 0 |
 | H2 quality vs native | Smart > native (default) | paired difference ≤ 0 or CI includes 0 at n = 9 pairs per task family |
 | H3 cost | Smart < native and < none per trial on Haiku | smart/none cost ratio CI includes 1.0, or smart > native on any family |
-| H4 price-tier | On Sonnet (flat 1M pricing) smart's cost advantage shrinks but stays ≥ 1.3× over none via fewer tokens | Sonnet smart/none ratio CI includes 1.0 (then the cost story is Haiku-only; publish it as such) |
+| H4 price-tier | On Sonnet 5, at Sonnet's per-model trim threshold (125k), smart passes if it costs no more per trial than e-none (no compaction) and scores the same or better on `reward_lenient` | smart costs more than e-none per trial, or scores worse on `reward_lenient` (then the cost claim is published as Haiku-only) |
 | H5 speed | Within one run, smart's agent wall time per trial is not slower than none by more than 20% | wall-time ratio smart/none > 1.2 with CI excluding 1.2 |
 | H6 trim latency | Requests carrying a trim cost ≤ 1 s extra over the same arm's untrimmed requests | median difference > 1 s (then document the hook cost, do not hide it) |
 | H7 decisions | Whole-turn eviction drops the agent's own decisions: smart without scratchpad scores < none on the decision task | smart ≥ none (then risk (c) is not observable here; accept as-is) |
@@ -116,17 +116,17 @@ Decision: run **sudoku-sketchpad** (existing) and add one small family, `decisio
 
 - Stream: N rounds. Round k gives the agent two or three valid options for item k ("pick the codename for service k from {A,B,C}") and asks it to reply `DECIDE k=<choice>`. Filler batches (log lines reused from `log_triage`) push the context past 95k. Then Q questions: "which codename did you pick for k?" → `ANSWER k=<choice>`, plus M "apply your choice" questions whose correct answer is a deterministic function of the earlier choice (e.g. "the port for k is 8000 + index of your choice").
 - Grader (`bench/cb/contextbench/graders/decision.py`, mirrors `graders/log.py:64`): parse the agent's `DECIDE` lines from early turns (not from gold), compare each `ANSWER` to the agent's own decision; reward = fraction consistent. Deterministic; no LLM judge.
-- Sizes: `D40-F1600` (40 decisions, 1,600 filler lines, ~110k tokens, one trim) and `D80-F6400` (3–4 trims). Seeds 45–47.
+- Sizes: `D40-F2600` (40 decisions, 2,600 filler lines, ~118k streamed tokens, one trim) and `D80-F6400` (3–4 trims). Seeds 45–47.
 
-Cells: {e-none, e-smart, e-smart-pin} × {sudoku t150, ledger D40-F1600, ledger D80-F6400} × 3 seeds = 27 trials; e-native omitted (H7/H8 are about eviction, not summaries). Cost ≈ 27 × 0.35 = **$9.5**, ≈ 1.5 h.
+Cells: {e-none, e-smart, e-smart-pin} × {sudoku t150, ledger D40-F2600, ledger D80-F6400} × 3 seeds = 27 trials; e-native omitted (H7/H8 are about eviction, not summaries). Cost ≈ 27 × 0.35 = **$9.5**, ≈ 1.5 h.
 
 Decision rules: H7, H8 as in §1. If `e-smart` scores ≥ `e-none` on both families, record "eviction loss not observed at these sizes" and ship the scratchpad only if H8's lift is ≥ 0.05 with CI excluding 0.
 
 ### Phase 4: Sonnet, one task, end of programme (H4)
 
-Model `claude-sonnet-5` (confirm id against the LiteLLM route `bench/litellm/bench-config.yaml:7-12`; flat 1M pricing, so `PRICE` in `summarize.py:31` needs a per-model table — add `PRICES[model]`, and `site/scripts/bench/compute-contextbench.py` inherits it). Trim threshold: set `CONTEXT_TRIM_AT_TOKENS=95000` explicitly so the trim count matches Haiku and only price changes; default per-model would be 120k (`settings.py:11`).
+Model `claude-sonnet-5` (confirm id against the LiteLLM route `bench/litellm/bench-config.yaml:7-12`; flat 1M pricing, so `PRICE` in `summarize.py:31` needs a per-model table — add `PRICES[model]`, and `site/scripts/bench/compute-contextbench.py` inherits it). Trim threshold: leave `CONTEXT_TRIM_AT_TOKENS` unset so Sonnet gets its per-model default of 125k (`settings.py:11`, `DEFAULT_TRIM_AT_TOKENS`); Haiku's 95k override (`MODEL_TRIM_AT_TOKENS`, `settings.py:14`) does not apply to Sonnet.
 
-Cells: {e-none, e-smart} × log L6400 × seeds {45, 46} = 4 trials. Cost per trial at Sonnet rates (~20× Haiku base, no cliff): none ≈ 10M tokens mostly cache reads ≈ $4–6; smart ≈ 7M ≈ $2–3. Total ≈ **$16**; abort after the first pair if it exceeds $10. Report cost ratio with CI and the token ratio; H4 decides how the cost claim is worded.
+Cells: {e-none, e-smart} × log L6400 × seeds {45, 46} = 4 trials. Cost per trial at Sonnet rates (~20× Haiku base, no cliff): none ≈ 10M tokens mostly cache reads ≈ $4–6; smart ≈ 7M ≈ $2–3. Total ≈ **$16**; abort after the first pair if it exceeds $10. The first pair cost $12.71, over the abort threshold; the user waived the abort rule and approved a second pair, and Sonnet stops there. Report cost ratio with CI and the token ratio; H4 decides how the cost claim is worded.
 
 ### Phase 5: threshold ablation (optional, cheap)
 
