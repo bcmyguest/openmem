@@ -1,0 +1,43 @@
+[metadata]
+author_name = "contextbench"
+difficulty = "medium"
+category = "context-management"
+tags = ["context-management", "contextbench"]
+contextbench_family = "decision_ledger"
+contextbench_budget_tokens = 32768
+contextbench_reserve_tokens = 2048
+contextbench_pressure = 2.317
+contextbench_feasible = true
+contextbench_regime = "pressure"
+contextbench_stream_count = 200
+contextbench_stream_sha256 = "80c5878bf398431b6ac27d56dab4e04ba28fdeaccdf64aa335fb270068d6eab1"
+instance_approx_tokens = 51579
+instance_decisions = 40
+instance_filler_lines = 1600
+instance_filler_lines_per_batch = 20
+instance_n_actions = 200
+instance_n_apply = 40
+instance_n_filler_batches = 80
+instance_n_questions = 80
+instance_n_recall = 40
+instance_seed = 47
+instance_task_family = "decision_ledger"
+
+[verifier]
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 14400.0
+
+[environment]
+docker_image = "python:3.12-slim"
+workdir = "/app"
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+
+[environment.env]
+CONTEXTBENCH_STREAM_COUNT = "200"
+CONTEXTBENCH_STREAM_SHA256 = "80c5878bf398431b6ac27d56dab4e04ba28fdeaccdf64aa335fb270068d6eab1"
+CONTEXTBENCH_STREAM_PATH = "/app/stream/chunks.jsonl"

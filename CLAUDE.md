@@ -11,6 +11,7 @@ Rules and gotchas for agents. Behavior and configuration live in `docs/`; read t
 | Coding-agent install, hooks, integration modes | [docs/coding-agents.md](docs/coding-agents.md), [docs/coding-agent-hooks.md](docs/coding-agent-hooks.md) |
 | Context management (per-agent switches, OpenCode 2 plugin) | [docs/context-management.md](docs/context-management.md) |
 | Context proxy (trim, compression, recall, usage calibration) | [docs/context-proxy.md](docs/context-proxy.md) |
+| ContextBench run E, Sonnet, coding-task replay, and pending decision trials | [docs/evidence-plan.md](docs/evidence-plan.md#current-run-status-2026-10-31) |
 | Session store (schema, events, embedding) | [docs/context-store.md](docs/context-store.md) |
 | Feed sync scheduling | [docs/sources-feeds.md](docs/sources-feeds.md) |
 | mem0 through the stack LiteLLM | [docs/mem0.md](docs/mem0.md#models-through-the-stack-litellm-optional) |

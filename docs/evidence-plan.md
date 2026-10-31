@@ -1,6 +1,25 @@
 # Evidence plan: smart compaction, run E
 
-Pre-registered experiment programme for the claim in [context-management.md](context-management.md#benchmarks): *OpenMem smart compaction keeps ContextBench scores at or above keep-everything while costing less than native compaction and keep-everything.* Nothing here has run. Budget: **$58 at list price** (phases 1–5), hard stop at $75.
+Original experiment plan for the claim in [context-management.md](context-management.md#benchmarks): *OpenMem smart compaction keeps ContextBench scores at or above keep-everything while costing less than native compaction and keep-everything.* The budget below is the original estimate, **$58 at list price** (phases 1–5), with a $75 hard stop. Results and deviations are recorded here as trials finish.
+
+## Current run status (2026-10-31)
+
+| Work | Evidence now available | State |
+| --- | --- | --- |
+| Phase 1, run E | `bench/results-E/summary.json` contains 51 rows across e-none (13), e-native (12), e-native-153k (12), and e-smart (14), including sensitivity and rerun rows. These are raw rows, not the planned balanced 3-arm comparison. | Analysis and paired CIs pending. |
+| Phase 2, scratchpad | `scratchpad-phase2` has commits `8631472` (pins table) and `0809dc3` (MCP write tool). Separate trial worktrees contain step2c read-path commits, including `2e55743`. | Read path is not integrated into `main`; the brief/test conflict below needs resolution before treating it as complete. |
+| Phase 4, Sonnet | `bench/results-S/summary.json` contains two seed-matched pairs on log L6400. Mean lenient reward: e-none 0.479, e-smart 0.542. Total list-price cost: $19.85 versus $7.86 for the two trials per arm. | Trials complete; H4 analysis and documentation pending. The first pair exceeded the original $10 abort threshold; the user approved the second pair. |
+| Coding-task replay | Eight trials completed: two seeds each for `decision-fixes` and `step2c` under e-native and e-smart. `bench/replay/results/report.md` holds raw metrics. | Scoring review pending; see below. |
+| Phase 3, decision consistency | Four completed sudoku t150 rows (seeds 45 and 46, e-none and e-smart), all with lenient reward 1.0. One decision-ledger D40 trial has a `result.json`; two more trial directories are partial. | Incomplete. No active runner was visible at this check; remaining trials need a restart and a fresh summary. |
+| Phases 5 and 6 | Phase 5 threshold ablation was optional; phase 6 Compact-Bench was deferred in the original plan. | No completed results found in this check. |
+
+The three result sets above total $101.72 at list price ($65.54 run E, $27.71 Sonnet, $8.47 replay), excluding earlier runs. This exceeds the original $75 stop by $26.72. These are artifact totals, not a reconciled billing statement. Further API trials are paused pending a new budget decision.
+
+The replay exposed two harness fixes. `bench/ctx_metrics.py` now skips non-object message entries; commit `09c8ae1` contains that fix. The replay script uses a short `/tmp/rp-XXXXXX` `TMPDIR` and links it into each trial directory to keep sandbox socket paths short. A three-turn smoke run showed no sandbox error, but made no Bash call, so sandboxed Bash remains unverified. The replay tree was previously ignored by `.git/info/exclude`; its source and packaged task inputs are now tracked. The eight invalid pre-fix trials were removed from the replay results.
+
+The replay report's `tests_pass` column is unsuitable for `step2c`: the brief requires changing the standing instruction and pointer text while forbidding changes to existing assertions, yet the existing exact-string tests pin both values. The four completed `step2c` trials all have `tests_rc=1`. The observed failures differ across trials, and one trial also has Python test failures, so a passing score cannot be inferred from `tests_rc` alone. Score the brief's requested behavior, Python tests, the exact failing checks, and the agent's report separately before drawing an arm comparison. The original two-trial inspection found that agents claimed passing npm tests without running the full suite; inspect all four final reports before treating that finding as a full-run result.
+
+The replay uses Claude Haiku 4.5 and host Claude Code with bubblewrap; run E uses the ContextBench harness. Its raw means (e-native versus e-smart: 74.0 versus 132.5 tool calls, 295 versus 463 seconds, $0.85 versus $1.27 per trial) describe these eight trials only. They do not establish an effect of trimming because task success and the `step2c` scorer remain unresolved.
 
 ## 0. What the published numbers rest on
 

@@ -1,0 +1,13 @@
+{
+  "task_family": "decision_ledger",
+  "seed": 47,
+  "decisions": 40,
+  "filler_lines": 1600,
+  "filler_lines_per_batch": 20,
+  "n_recall": 40,
+  "n_apply": 40,
+  "n_questions": 80,
+  "n_filler_batches": 80,
+  "n_actions": 200,
+  "approx_tokens": 51579
+}
