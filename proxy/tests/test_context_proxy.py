@@ -995,7 +995,9 @@ class StandingInstructionTests(Base):
                          "request. "
                          'You MUST call smart_compact_search(session_id="s1", query=... or pattern=...) before '
                          'answering anything that depends on them, and never answer "not found", "never '
-                         'received" or "no search tool" without calling it; every message of this session is '
+                         'received" or "no search tool" without calling it. '
+                         'To recover a file you read earlier, search for the text you need instead of reading it again, and re-read only the lines you still lack (offset/limit). '
+                         'Every message of this session is '
                          'stored and '
                          'queryable with smart_compact_search and smart_compact_sql(session_id="s1", sql=...).]')
 

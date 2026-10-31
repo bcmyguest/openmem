@@ -100,8 +100,10 @@ def pointer_text(sid, dropped):
         f"The tools smart_compact_search and smart_compact_sql are available to you in this request. "
         f'You MUST call smart_compact_search(session_id="{sid}", query=... or pattern=...) before answering '
         f'anything that depends on them, and never answer "not found", "never received" or "no search tool" '
-        f"without calling it; "
-        f'every message of this session is stored and queryable with '
+        f"without calling it. "
+        f"To recover a file you read earlier, search for the text you need instead of reading it again, "
+        f"and re-read only the lines you still lack (offset/limit). "
+        f"Every message of this session is stored and queryable with "
         f'smart_compact_search and smart_compact_sql(session_id="{sid}", sql=...).]'
     )
 
