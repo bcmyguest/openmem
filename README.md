@@ -27,12 +27,12 @@
 </picture>
 </p>
 
-**Benchmarks:** [smart compaction against Claude Code's native compaction and keep-everything](https://bcmyguest.github.io/openmem/docs/context-management/#benchmarks) on [ContextBench](https://github.com/RulinShao/ContextBench) synthetic tasks (Claude Haiku 5.5). [Run E and replay status](docs/evidence-plan.md#current-run-status-2026-10-31) records newer trials still under analysis. Compact-Bench real-coding results are pending.
+**Benchmarks:** In seed-matched [ContextBench](https://github.com/RulinShao/ContextBench) log tasks on Haiku 5.5, smart compaction scored 0.469 higher than keep-everything (95% bootstrap interval 0.339–0.578; eight pairs). All arms scored 1.0 on kv R4000. Costs fell at R4000, L6400, and L12800; the L1600 saving remains uncertain. Claude Code's default native arm made no compaction in these tasks. [Methods and results](docs/context-management.md#benchmarks) · [paired intervals and pending work](docs/evidence-plan.md#completed-seed-paired-comparisons). Compact-Bench real-coding results are pending.
 
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="Line charts of ContextBench score by task size, kv-store and log-triage: OpenMem smart compaction stays at 0.90 to 1.00; native compaction and keep everything fall as tasks grow" width="480" />
+<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="Run E ContextBench scores: kv R4000 scores 1.00 in all arms; on log tasks, OpenMem scores 1.00 at L1600, 0.88 at L6400 and 1.00 at L12800, above both baselines" width="480" />
 </picture>
 </p>
 

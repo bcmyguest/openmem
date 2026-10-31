@@ -197,14 +197,24 @@ Same task and setup, run 2026-10-30. This version (commit 47d17fa) builds on the
 
 The cache fix halves the mean cost, from $0.218 to $0.108, and every trial scored 1.00. Most of the cost gap comes from one search-tools-only trial (trial 5). It trimmed 3 times, wrote 2.2M tokens to the cache at a 0.693 hit rate, and cost $0.589. Without that trial the search-tools-only mean is $0.126. No cache-fix trial behaved that way, but five trials cannot rule it out. Every trial in both runs kept its largest prompt under 95k tokens.
 
+## Run E: held-out seed-matched comparison
+
+Run E used Haiku 5.5, Claude Code strict mode, the same proxy build, and seeds 45–47 for each arm. The primary arms were `e-none` (no compaction), `e-native` (Claude Code default), and `e-smart` (OpenMem SQLite search, 95k Haiku threshold, search-tools pointer and cache-stable trim). Tasks were kv R4000 and log L1600/L6400/L12800. Keep-everything has only seeds 45–46 at L12800. `e-native-153k` is a sensitivity arm and is excluded from the primary chart. The default native arm recorded no compactions, so these trials compare OpenMem chiefly with two keep-everything variants. Raw rows are in `bench/results-E/summary.json`; the [published chart](context-management.md#benchmarks) reads the trial artifacts through `site/scripts/bench/compute-contextbench.py`.
+
+The paired log-score advantage was +0.469 against keep-everything (95% bootstrap interval 0.339–0.578, eight pairs) and +0.495 against default native (0.384–0.593, nine pairs). Kv R4000 scored 1.0 in all arms. Smart/none cost ratios were 0.130 [0.128, 0.132] at R4000, 0.811 [0.102, 1.528] at L1600, 0.109 [0.107, 0.111] at L6400, and 0.062 [0.062, 0.063] at L12800. The L1600 interval crosses 1. The [evidence plan](evidence-plan.md#completed-seed-paired-comparisons) gives each size's score and wall-time interval and explains the bootstrap method.
+
+Sonnet 5 has two paired log L6400 seeds in `bench/results-S/summary.json`. Smart minus none score was +0.0625 [0.0417, 0.0833]; its cost ratio was 0.401 [0.361, 0.441]. The two smart trials cost $7.86 at list price against $19.85 for none. This supports the direction on that one task, with too few seeds for broad model claims.
+
+The coding-task replay used Haiku 4.5. Its `step2c` brief required changing strings pinned by existing exact-string tests while forbidding assertion edits; all four `step2c` trials therefore report `tests_rc=1`. Two of four smart-arm replays searched OpenMem once. This does not diagnose the earlier hour-long subagents, whose transcripts were not scored for scratchpad behavior. The decision-consistency trial set remains partial. Scratchpad read-path work is outside `main`, so no scratchpad benefit is claimed here.
+
 ## Limitations
 
-- One model (Haiku 5.5) and three seeds per task; run B's baselines have one or two seeds per cell.
+- The primary run E uses Haiku 5.5 and two or three seeds per cell. Sonnet has two paired seeds on one task. Earlier run B baselines have one or two seeds per cell.
 - Synthetic tasks with exact keys, which favour lexical search. No paraphrase or semantic task yet, so run D never exercised vectors.
 - Haiku drops the `#tag` in kv answers in every setting; compare `reward_lenient`.
 - Runs before D trimmed late (203–236k real tokens) because of the chars/4 estimate; run D's calibrated estimate fired at 116.5–120.1k.
 - kv R16000 under s1 hit the harness step limit at 979k tokens before any question, so it is not a recall score.
-- Counts in run D overcount when the agent's own tool output and answers echo log lines, and drop when the agent skips SQL. Runs A and earlier were limited by the JSONL log's `line_matches`.
+- Counts in run D overcount when the agent's own tool output and answers echo log lines, and drop when the agent skips SQL. Runs A and earlier were limited by the JSONL log's `line_matches`. Run E did not repair the scoring issue.
 - The d-hybrid embedder runs single-threaded and fell behind under 4 concurrent sessions.
 - Compression never fired, so s3a and s3b test the same thing.
 
@@ -213,4 +223,4 @@ The cache fix halves the mean cost, from $0.218 to $0.108, and every trial score
 1. Fix counts: exclude tool output from counted lines, add a role filter, and add a count clause to the standing instruction. Deferred.
 2. Add a paraphrase or semantic task (Chroma's semantic needle variant or LongMemEval), so hybrid search is used and measured.
 3. Run Compact-Bench real coding sessions.
-4. Repeat with a second model.
+4. Finish decision-consistency and scratchpad tests with a validated Codex context limit before drawing a coding-agent conclusion.

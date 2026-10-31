@@ -131,7 +131,7 @@ function niceMax(v) {
   return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v);
 }
 
-const SIZES = { kv: ['R1000', 'R4000', 'R16000'], log: ['L1600', 'L6400', 'L12800'] };
+const SIZES = { kv: ['R4000'], log: ['L1600', 'L6400', 'L12800'] };
 
 function lineChart(data, t, { title, takeaway, desc, panels }) {
   const [head, hh] = heading(t, title, takeaway);
@@ -203,17 +203,12 @@ function qualityTakeaway(d) {
 function timeTakeaway(d) {
   const L = big(d, 'log');
   const c = (k) => mins(d.cells[k].log[L]);
-  return `At log-triage ${L} an OpenMem trial took ${num(c('smart'))} min and a keep-everything trial ${num(c('s1'))} min. The runs had different API load, so treat the gap as rough.`;
+  return `At log-triage ${L} an OpenMem trial took ${num(c('smart'))} min and a keep-everything trial ${num(c('s1'))} min.`;
 }
 function costTakeaway(d) {
   const L = big(d, 'log');
   const c = (k) => d.cells[k].log[L].usd;
-  // largest relative gap between OpenMem and native compaction over the cells where both ran
-  const gaps = Object.keys(SIZES).flatMap((f) => SIZES[f].map((s) => [d.cells.smart[f][s].usd, d.cells.s2[f][s].usd]))
-    .filter(([a, b]) => a != null && b != null)
-    .map(([a, b]) => Math.abs(a - b) / b);
-  const pct = Math.ceil(Math.max(...gaps) * 100);
-  return `At log-triage ${L} keep everything cost $${c('s1').toFixed(2)} per trial and OpenMem $${c('smart').toFixed(2)}. Where both ran, OpenMem cost within ${pct}% of native compaction.`;
+  return `At log-triage ${L}, keep everything cost $${c('s1').toFixed(2)} per trial and OpenMem $${c('smart').toFixed(2)}.`;
 }
 
 const pctFmt = (v) => `${Math.round(v * 100)}%`;
@@ -249,7 +244,7 @@ const CHARTS = {
     lineChart(d, t, {
       title: 'Wall time per trial',
       takeaway: timeTakeaway(d),
-      desc: 'Mean agent wall time per trial in minutes; runs differ in API load.',
+      desc: 'Mean agent wall time per trial in minutes for run E.',
       panels: [
         { fam: 'kv', title: 'kv-store, minutes', get: mins, fmt: num },
         { fam: 'log', title: 'log-triage, minutes', get: mins, fmt: num },
@@ -275,13 +270,12 @@ const CHARTS = {
         { fam: 'log', title: 'log-triage', get: (c) => c.cache_hit ?? null, min: 0.8, max: 1, ticks: [0.8, 0.9, 1], fmt: pctFmt },
       ],
     }),
-  'contextbench-compaction': barChart,
 };
 
 const f2 = (v) => (v == null ? '—' : v.toFixed(2));
 const kTok = (v) => (v == null ? '—' : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : `${Math.round(v / 1000)}k`);
 const usd = (v) => (v == null ? '—' : `$${v.toFixed(2)}`);
-const SIZE_ROWS = [['kv', 'R1000'], ['kv', 'R4000'], ['kv', 'R16000'], ['log', 'L1600'], ['log', 'L6400'], ['log', 'L12800']];
+const SIZE_ROWS = [['kv', 'R4000'], ['log', 'L1600'], ['log', 'L6400'], ['log', 'L12800']];
 const TASK = { kv: 'kv-store', log: 'log-triage' };
 
 const CHART_W = 480; // CSS px the charts are drawn at (W); the PNGs are exported at 2x
@@ -342,7 +336,6 @@ function benchmarkMarkdown(d) {
     '| --- | --- | --- | --- | --- | --- |',
     ...['smart', 's2', 's1'].map((k) => `| ${L[k]} | ${t[k].trials} | ${(t[k].agent_wall_s.mean / 60).toFixed(1)} min | ${t[k].requests} | ${t[k].request_latency_s.mean.toFixed(2)} s | ${pctFmt(t[k].cache_hit_all_requests)} |`),
   ];
-  const nat = t.s2.native_detected_vs_cc;
   return [
     chartHtml('contextbench-quality', `Line charts of answer quality by task size (kv-store score, log-triage score, lookup and count questions) for OpenMem smart compaction, native compaction and keep everything. ${qualityTakeaway(d)}`),
     '',
@@ -352,11 +345,7 @@ function benchmarkMarkdown(d) {
     '',
     '### Time',
     '',
-    chartHtml('contextbench-compaction', `Bar chart of seconds per compaction event, median bars with 10th to 90th percentile whiskers. ${compactionTakeaway(d)}`),
-    '',
-    `Native compaction is a model call. Claude Code's summary call took ${dist(t.s2.native_summary_request_latency_s)}; Claude Code's own compaction timer read ${dist(t.s2.native_cc_compaction_s)}. The summary calls are the requests after which the next prompt drops below half its size; that finds ${nat.detected} of the ${nat.cc_compact_boundaries} compactions Claude Code reported.`,
-    '',
-    `Smart compaction makes no model call: the proxy cuts the history in its pre-call hook and records no separate hook time. The request that carried a trim took ${dist(t.smart.smart_trim_request_latency_s)}, against ${dist(t.smart.smart_other_request_latency_s)} for the other requests of the same run. That request also rewrites the prompt cache for the shortened history, so the difference is an upper bound on the trim's own time, assuming LiteLLM's request timer covers the pre-call hook (not verified).`,
+    `Run E recorded no native compactions. Its default native arm therefore behaved as a keep-everything baseline at these sizes. The saved usage log cannot identify which request paid for a new OpenMem trim, so it does not support a trim-latency estimate.`,
     '',
     chartHtml('contextbench-time', `Line charts of agent wall time per trial by task size for kv-store and log-triage. ${timeTakeaway(d)}`),
     '',
@@ -366,7 +355,7 @@ function benchmarkMarkdown(d) {
     '',
     `Source: [${BENCH_NAME}](${BENCH_URL}) synthetic tasks, Claude Haiku 5.5.`,
     '',
-    'Wall time and request latency come from different runs: the baselines (run B) and smart compaction (run D) used different LiteLLM builds, ran at different times under different API load, and only run D had the OpenMem hook. Treat the comparison as rough.',
+    'All three settings ran in run E. Wall times still include variable model service latency; the seed-paired intervals are in [the evidence plan](evidence-plan.md#completed-seed-paired-comparisons).',
     '',
     '### Cost and prompt cache',
     '',

@@ -8,11 +8,9 @@ run D trim requests), so it must run under the bench venv (ctx_metrics needs con
 Default output: site/src/data/contextbench.json. Every number in that file comes from here.
 
 Inputs:
-  results-B/{s1-none,s2-native}/trials/*      run B baselines (rate-limited/, harness-failed/,
-                                               invalid/ are siblings of trials/ and never read)
-  results-D/d-sqlite/trials/*                 run D, shipped design (invalid/ not read)
+  results-E/{e-none,e-native,e-smart}/trials/*  run E, seed-matched arms
   results-*/<arm>/usage.jsonl                 per-request tokens and latency_s (bench proxy log)
-  state-{B,D}/<arm>/context/sessions/         trim logs and session DBs (via ctx_metrics)
+  state-E/<arm>/context/sessions/             trim logs and session DBs (via ctx_metrics)
   compact-bench-openmem/results/full/          Compact-Bench; published only once task_report.json exists
 """
 from __future__ import annotations
@@ -24,11 +22,11 @@ from datetime import datetime
 from pathlib import Path
 
 SETTINGS = [  # (key, label, results dir, state dir, arm)
-    ("s1", "Keep everything", "results-B", "state-B", "s1-none"),
-    ("s2", "Native compaction", "results-B", "state-B", "s2-native"),
-    ("smart", "OpenMem smart compaction", "results-D", "state-D", "d-sqlite"),
+    ("s1", "Keep everything", "results-E", "state-E", "e-none"),
+    ("s2", "Native compaction (default)", "results-E", "state-E", "e-native"),
+    ("smart", "OpenMem smart compaction", "results-E", "state-E", "e-smart"),
 ]
-SIZES = {"kv": ["R1000", "R4000", "R16000"], "log": ["L1600", "L6400", "L12800"]}
+SIZES = {"kv": ["R4000"], "log": ["L1600", "L6400", "L12800"]}
 # A native compaction is the request right before Claude Code's prompt drops: the next request of the
 # session sends less than this share of its prompt (the post-compaction prompt is the summary plus a
 # few preserved messages). The detected count is checked against cc_stream.json's compact_boundary list.
@@ -89,7 +87,7 @@ def trial_record(bench: Path, results: str, state: str, arm: str, name: str, ctx
     rec["total_tokens"] = rec["input"] + rec["cache_read"] + rec["cache_write"] + rec["output"]
     # native summary requests: the prompt of the next request falls below DROP_SHARE of this one
     rec["summary_idx"] = [i for i in range(len(rows) - 1) if _prompt(rows[i + 1]) < DROP_SHARE * _prompt(rows[i])]
-    rec["trim_idx"] = list(m.get("trim_reqs") or []) if arm.startswith("d-") else []
+    rec["trim_idx"] = list(m.get("trim_reqs") or []) if arm == "e-smart" else []
     rec["_lat"] = [float(r.get("latency_s") or 0) for r in rows]
     return rec
 
@@ -175,6 +173,9 @@ def main(argv: list[str]) -> int:
         tdir = bench / results / arm / "trials"
         trials = []
         for p in sorted(tdir.iterdir()):
+            if not any(f"{family}-{size}-" in p.name for family, sizes in
+                       (("kv-store", SIZES["kv"]), ("log-triage", SIZES["log"])) for size in sizes):
+                continue
             if not (p / "result.json").is_file():
                 data["excluded"].append({"setting": key, "trial": p.name, "reason": "no result.json"})
                 continue
@@ -230,8 +231,8 @@ def main(argv: list[str]) -> int:
         "agent_wall_s": {"smart": cm("smart", "agent_wall_s"), "s2": cm("s2", "agent_wall_s")},
         "requests": {"smart": cm("smart", "requests"), "s2": cm("s2", "requests")},
         "compaction_event_s_median": {
-            "smart_trim_request_upper_bound": data["timing"]["smart"]["smart_trim_request_latency_s"]["median"],
-            "s2_summary_call": data["timing"]["s2"]["native_summary_request_latency_s"]["median"]},
+            "smart_trim_request_upper_bound": (data["timing"]["smart"]["smart_trim_request_latency_s"] or {}).get("median"),
+            "s2_summary_call": (data["timing"]["s2"]["native_summary_request_latency_s"] or {}).get("median")},
         "cache_hit": {"smart": cm("smart", "cache_hit"), "s2": cm("s2", "cache_hit")},
     }
     for key, trials in all_trials.items():
