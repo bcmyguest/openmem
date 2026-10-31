@@ -32,7 +32,7 @@
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="Run E ContextBench scores: kv R4000 scores 1.00 in all arms; on log tasks, OpenMem scores 1.00 at L1600, 0.88 at L6400 and 1.00 at L12800, above both baselines" width="480" />
+<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="ContextBench scores: kv R4000 scores 1.00 in all arms; on log tasks, OpenMem scores 1.00 at L1600, 0.88 at L6400 and 1.00 at L12800, above both baselines" width="480" />
 </picture>
 </p>
 

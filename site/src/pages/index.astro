@@ -18,7 +18,7 @@ const description =
   'Memory and context management for coding agents: smart compaction that keeps every turn searchable, and memory_* tools over Hindsight, mem0, or Cognee.';
 
 // Benchmark tiles, read from contextbench.json (site/scripts/bench/compute-contextbench.py):
-// Run E cell means across the four published task sizes; the default native arm recorded no compactions.
+// Cell means across the four published task sizes; the default native arm recorded no compactions.
 const BENCH_URL = 'https://github.com/RulinShao/ContextBench';
 const vs = bench.vs_native;
 const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
@@ -29,7 +29,7 @@ const tiles = [
     label: 'Peak prompt',
     value: `${Math.round(bench.headline.smart_peak_prompt_max_all / 1000)}k`,
     unit: 'tokens',
-    note: 'largest OpenMem request across run E',
+    note: 'largest OpenMem request in this comparison',
   },
   { label: 'Prompt-cache hits', value: pct(vs.cache_hit.smart), unit: 'of prompt tokens', note: `default native ${pct(vs.cache_hit.s2)}` },
 ];
@@ -124,15 +124,15 @@ npx ${site.npm.package} switch mem0 --yes`;
             </li>
           ))}
         </ul>
-        <p class="mt-3 text-xs leading-relaxed text-muted">Run E on <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> synthetic tasks: mean of the {vs.cells.length} published task-size means, Claude Haiku 5.5, {seedRange}. Claude Code's default native arm recorded zero compactions. {wallTimeSentence(vs)} <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
+        <p class="mt-3 text-xs leading-relaxed text-muted">Seed-matched <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> synthetic tasks: mean of the {vs.cells.length} published task-size means, Claude Haiku 5.5, {seedRange}. Claude Code's default native arm recorded zero compeds. {wallTimeSentence(vs)} <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
 
         <div class="mt-8">
           <figure>
             <picture>
               <source media="(prefers-color-scheme: dark)" srcset={withBase('media/contextbench-quality-compact-dark.png')} />
-              <img src={withBase('media/contextbench-quality-compact.png')} alt="Run E: all arms score 1.00 on kv R4000; OpenMem scores above both baselines on each log task" width="960" height="760" loading="lazy" />
+              <img src={withBase('media/contextbench-quality-compact.png')} alt="All arms score 1.00 on kv R4000; OpenMem scores above both baselines on each log task" width="960" height="760" loading="lazy" />
             </picture>
-            <figcaption class="mt-2 text-xs text-muted">ContextBench run E, mean tag-insensitive score by task size.</figcaption>
+            <figcaption class="mt-2 text-xs text-muted">ContextBench, mean tag-insensitive score by task size.</figcaption>
           </figure>
         </div>
       </div>
