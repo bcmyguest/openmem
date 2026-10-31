@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
 # Non-interactive checkout bootstrap (CI, remote shells without a TTY).
-# Prefer: npx openmem  or  cd checkout && npx . setup
+# Prefer: ./setup  or  npm run setup
+# Do not use `npx . setup` here: a checkout does not link its own package bins
+# into node_modules/.bin, so npx fails with "openmem: not found" (exit 127).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO}"
 
 npm install --no-fund --no-audit
 
+run_setup() {
+  if [ -e "${REPO}/setup" ]; then
+    exec "${REPO}/setup" "$@"
+  fi
+  exec npm run setup -- "$@"
+}
+
 if [ -f "${HOME}/.config/hindsight/wizard.conf" ]; then
-  exec npx . setup --yes --no-smoke "$@"
+  run_setup --yes --no-smoke "$@"
 fi
 
 if [ -t 0 ] && [ -t 1 ]; then
-  exec npx . setup --no-smoke "$@"
+  run_setup --no-smoke "$@"
 fi
 
 cat <<EOF
@@ -23,8 +32,8 @@ Run the wizard on a terminal (Docker, provider, indexing):
   cd ${REPO}
   mkdir -p ~/.config/personal-memory
   cp config/openmem.toml.example ~/.config/personal-memory/config.toml
-  npx . setup
+  ./setup
 
-Or from npm (no clone): npx openmem
+Or from npm (no clone): npx @bcmyguest/openmem
 EOF
 exit 0
