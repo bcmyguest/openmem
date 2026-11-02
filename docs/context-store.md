@@ -217,7 +217,7 @@ For Ollama: `ollama pull nomic-embed-text`, then `embedding_model = "nomic-embed
 
 ## Retention
 
-`[context_store] ttl_days` (env `CONTEXT_STORE_TTL_DAYS`, default 30; `0` keeps everything). At start, the proxy (on a daemon thread) and the MCP server sweep `sessions/`, at most once a day: when `.ttl-stamp` is older than 24 h or missing, they touch it and delete every session whose newest file is older than the TTL. A session's files are grouped by suffix (`.db`, `.db-wal`, `.db-shm`, `.json`, `.trim.json`, `.force`, `.log.jsonl`); dot files and other names are left alone. Blobs are shared between sessions and are not swept. A writer that finds its cached database deleted or replaced reopens it on the next request.
+`[context_store] ttl_days` (env `CONTEXT_STORE_TTL_DAYS`, default 30; `0` keeps everything). At start, the proxy (on a daemon thread) and the MCP server sweep `sessions/`, at most once a day: when `.ttl-stamp` is older than 24 h or missing, they touch it and delete every session whose newest file is older than the TTL. A session's files are grouped by suffix (`.db`, `.db-wal`, `.db-shm`, `.json`, `.trim.json`, `.force`, `.log.jsonl`); dot files and other names are left alone. After session cleanup, the same pass deletes orphaned `blobs/<id>.txt` files that no remaining `messages.blob_id` references (blobs are content-addressed and shared across sessions). If any remaining session database cannot be opened, the blob pass is skipped for that run. A writer that finds its cached database deleted or replaced reopens it on the next request.
 
 ## Proxy-inserted text
 

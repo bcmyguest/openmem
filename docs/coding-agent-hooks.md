@@ -62,14 +62,20 @@ Every hook and plugin recall (SessionStart and prompt hooks for Claude Code, Cod
 
 Indexer banks map to provider scopes (`coding-agent::repo`, `obsidian::vault`, mem0 `user_id`, Cognee dataset names). Default MCP scope key: `openmem-mcp`. See [coding-agent-scopes.md](coding-agent-scopes.md).
 
-Hook access is configured in `~/.config/personal-memory/coding-agent.json`. With no file,
-hooks are enabled for all workspaces and use the bank derived from the workspace name. A
-malformed or unreadable config denies hook access, as does an event with no workspace path.
-Set `disabled: true` to turn hooks off, or set `optInOnly: true` and list allowed absolute
-workspace prefixes in `optInPaths`. Project banks resolve in this order: longest matching
-prefix in active `index.yml` `banks`, longest matching prefix in this openmem
-config, then the legacy Hindsight `~/.hindsight/coding-agent.json` mapping. Without
-a match, the literal repository directory name is used in `coding-agent::<name>` (case
-preserved). Nested workspace paths resolve to their Git repository root, and linked
-worktrees share the common repository identity. The openmem config owns current
-access and mapping policy; the legacy mapping remains supported for compatibility.
+Hook access is configured in `~/.config/personal-memory/coding-agent.json` (not the
+indexer file `~/.hindsight/coding-agent.json`). `install-coding-agent` and the Hindsight
+wizard create that openmem file when missing, copying `disabled` / `optInOnly` /
+`optInPaths` / `mapPathToBank` from the legacy Hindsight file when it is present and
+valid; otherwise they create `{}` (all workspaces allowed — the historical default).
+With no file yet, hooks still allow every workspace and use the bank derived from the
+workspace name. A malformed or unreadable config denies hook access, as does an event
+with no workspace path. Set `disabled: true` to turn hooks off, or set `optInOnly: true`
+and list allowed absolute workspace prefixes in `optInPaths`. Project banks resolve in
+this order: longest matching prefix in active `index.yml` `banks`, longest matching
+prefix in this openmem config, then the legacy Hindsight `~/.hindsight/coding-agent.json`
+mapping. Without a match, the literal repository directory name is used in
+`coding-agent::<name>` (case preserved). Nested workspace paths resolve to their Git
+repository root, and linked worktrees share the common repository identity. The openmem
+config owns current access and mapping policy; the legacy mapping remains supported for
+compatibility. Indexer `optInPaths` filtering stays on the Hindsight file — see
+[coding-agents.md](coding-agents.md).

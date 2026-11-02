@@ -2,6 +2,7 @@
 cli/coding-agent/session-db.mjs."""
 
 import os
+import sqlite3
 import time
 from pathlib import Path
 
@@ -21,8 +22,79 @@ def session_of(name):
     return None
 
 
+def _sqlite_header(path):
+    """True when path starts with the SQLite magic (avoids opening placeholder .db files that would rewrite -wal)."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
+
+
+def referenced_blob_ids(sessions_dir):
+    """Distinct messages.blob_id values across remaining session databases, or None if any DB is unreadable.
+
+    A missing sessions directory means no references (empty set). Other OS errors fail closed (None).
+    """
+    ids = set()
+    try:
+        entries = list(os.scandir(sessions_dir))
+    except FileNotFoundError:
+        return set()
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.endswith(".db") or not entry.is_file(follow_symlinks=False):
+            continue
+        if not _sqlite_header(entry.path):
+            return None
+        try:
+            con = sqlite3.connect(f"file:{entry.path}?mode=ro", uri=True)
+            try:
+                for (bid,) in con.execute("SELECT DISTINCT blob_id FROM messages WHERE blob_id IS NOT NULL"):
+                    if bid:
+                        ids.add(bid)
+            finally:
+                con.close()
+        except sqlite3.Error:
+            return None
+    return ids
+
+
+def sweep_orphan_blobs(root):
+    """Delete blobs/<id>.txt with no remaining messages.blob_id reference. Returns deleted ids, sorted.
+
+    Skips the whole pass when any remaining session database cannot be opened (fail closed).
+    """
+    sessions = Path(root) / "sessions"
+    blobs = Path(root) / "blobs"
+    refs = referenced_blob_ids(sessions)
+    if refs is None:
+        return []
+    deleted = []
+    try:
+        entries = list(os.scandir(blobs))
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.name.endswith(".txt") or not entry.is_file(follow_symlinks=False):
+            continue
+        bid = entry.name[:-4]
+        if bid in refs:
+            continue
+        try:
+            os.unlink(entry.path)
+        except FileNotFoundError:
+            continue
+        deleted.append(bid)
+    return sorted(deleted)
+
+
 def sweep(root, ttl_days, now=None):
-    """Delete every session whose newest file is older than ttl_days; returns the deleted sids, sorted."""
+    """Delete every session whose newest file is older than ttl_days; returns the deleted sids, sorted.
+
+    After session cleanup, also deletes orphaned blobs under blobs/ (shared across sessions).
+    """
     if not ttl_days or ttl_days <= 0:
         return []
     now = time.time() if now is None else now
@@ -30,6 +102,9 @@ def sweep(root, ttl_days, now=None):
     groups = {}
     try:
         entries = list(os.scandir(sessions))
+    except FileNotFoundError:
+        sweep_orphan_blobs(root)
+        return []
     except OSError:
         return []
     for entry in entries:
@@ -54,6 +129,7 @@ def sweep(root, ttl_days, now=None):
             except FileNotFoundError:
                 pass
         deleted.append(sid)
+    sweep_orphan_blobs(root)
     return sorted(deleted)
 
 

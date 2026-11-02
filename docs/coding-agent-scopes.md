@@ -10,8 +10,10 @@ One **scope key** is reused across indexer, unified MCP, and (where supported) t
 
 Default when tools omit `bank`: **`openmem-mcp`**.
 
-Configure what gets indexed in `~/.config/hindsight/index.yml`. Optional filters in
-`~/.hindsight/coding-agent.json` (`optInPaths`) limit which discovered sources are indexed.
+Configure what gets indexed in `~/.config/hindsight/index.yml`. Optional indexer filters in
+`~/.hindsight/coding-agent.json` (`optInPaths`) limit which discovered sources are indexed —
+that file is not the hook access policy (hooks read
+`~/.config/personal-memory/coding-agent.json`; see [coding-agents.md](coding-agents.md)).
 Project bank routing is shared by the indexer and session integrations: the longest
 matching `banks` prefix in the active index config wins, followed by
 `~/.config/personal-memory/coding-agent.json` `mapPathToBank`, then the legacy

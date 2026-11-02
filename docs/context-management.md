@@ -215,7 +215,7 @@ The installer does not wire the unified MCP for OpenCode 2 ([compatibility](comp
 | `[compaction] max_chars` | `12000` | `CONTEXT_COMPACTION_MAX_CHARS` | Cap on the recall block (frame included) after a trim or compaction pointer |
 | `[compaction] recall` | `true` | `CONTEXT_COMPACTION_RECALL` | Recall in the trim or compaction pointer |
 | `[compaction] native` | `true` | none | OpenCode 2 only: replace OpenCode's compaction summary with the pointer plus recall |
-| `[context_store] ttl_days` | `30` | `CONTEXT_STORE_TTL_DAYS` | Delete sessions idle longer than this; `0` keeps everything |
+| `[context_store] ttl_days` | `30` | `CONTEXT_STORE_TTL_DAYS` | Delete sessions idle longer than this, then orphaned `blobs/` with no remaining `messages.blob_id`; `0` keeps everything |
 | `[context_store] embedding_model` | empty (off) | `CONTEXT_EMBEDDING_MODEL` | Embedding model for hybrid `smart_compact_search` ([vectors](context-store.md#vectors)) |
 | `[context_store] embedding_url` | `http://127.0.0.1:11434/v1` | `CONTEXT_EMBEDDING_URL` | OpenAI-compatible embeddings endpoint as the host sees it |
 | `[context_store] embedding_timeout_s` | `30` | `CONTEXT_EMBEDDING_TIMEOUT_S` | Seconds per row of a background embeddings call |

@@ -269,6 +269,47 @@ class TtlTests(unittest.TestCase):
         left = sorted(p.name for p in (self.root / "sessions").iterdir())
         self.assertEqual(left, [".hidden.tmp", "mixed.db", "mixed.db-wal", "new.json", "notes.txt"])
 
+    def test_sweep_deletes_orphan_blobs(self):
+        import sqlite3
+
+        sessions = self.root / "sessions"
+        blobs = self.root / "blobs"
+        blobs.mkdir()
+
+        def write_db(sid, blob_id):
+            path = sessions / f"{sid}.db"
+            con = sqlite3.connect(path)
+            con.executescript(
+                "CREATE TABLE messages (seq INTEGER PRIMARY KEY, fingerprint TEXT, thread TEXT, "
+                "role TEXT, kind TEXT, name TEXT, text TEXT, blob_id TEXT, in_context INTEGER, "
+                "trimmed_at_seq INTEGER, trimmed_at TEXT, created_at TEXT);"
+            )
+            con.execute(
+                "INSERT INTO messages VALUES (1,'f','t','tool','tool_result','Bash','x',?,1,NULL,NULL,'t')",
+                (blob_id,),
+            )
+            con.commit()
+            con.close()
+            return path
+
+        write_db("keep", "aaaaaaaaaaaaaaaa")
+        gone = write_db("gone", "bbbbbbbbbbbbbbbb")
+        for bid in ("aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"):
+            (blobs / f"{bid}.txt").write_text(bid)
+        t = time.time() - 40 * 86400
+        os.utime(gone, (t, t))
+        self.assertEqual(ttl.sweep(self.root, 30), ["gone"])
+        self.assertEqual(sorted(p.name for p in blobs.iterdir()), ["aaaaaaaaaaaaaaaa.txt"])
+
+    def test_sweep_orphan_blobs_skips_when_db_unreadable(self):
+        blobs = self.root / "blobs"
+        blobs.mkdir()
+        (self.root / "sessions" / "bad.db").write_text("not-sqlite")
+        target = blobs / "dddddddddddddddd.txt"
+        target.write_text("d")
+        self.assertEqual(ttl.sweep_orphan_blobs(self.root), [])
+        self.assertTrue(target.exists())
+
     def test_zero_keeps_everything_and_stamp_limits_to_daily(self):
         self.touch("a.db", 40)
         self.assertEqual(ttl.maybe_sweep(self.root, 0), [])

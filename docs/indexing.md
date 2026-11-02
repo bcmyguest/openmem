@@ -42,7 +42,7 @@ A file found this way replaces the default entirely. Keys it omits take the buil
 | `skip_dirs` | Directory names not descended into. Dot-prefixed directories are always skipped. |
 | `poll_seconds`, `vault_quiet_seconds`, `relist_seconds` | Watcher timings. |
 
-`optInPaths` in `~/.hindsight/coding-agent.json` still filters sources after discovery.
+`optInPaths` in `~/.hindsight/coding-agent.json` still filters indexer sources after discovery (separate from hook access in `~/.config/personal-memory/coding-agent.json` — see [coding-agents.md](coding-agents.md)).
 
 Check the result with `--list` before a first `--apply`. Excluded sources are reported on stderr.
 

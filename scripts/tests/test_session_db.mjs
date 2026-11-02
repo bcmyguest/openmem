@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { callContextStoreTool, checkReadOnlySql, CONTEXT_STORE_MCP_TOOLS, startContextStore } from "../../cli/mcp/context-store.mjs";
 import {
   EMBED_MAX_FAILURES, embeddingBatchSize, maybeSweepContextStore, nearest, openSession, packVector, pendingRows, scheduleEmbedding,
-  sqlite, sweepContextStore, unpackVector, vectorCounts,
+  sqlite, sweepContextStore, sweepOrphanBlobs, unpackVector, vectorCounts,
 } from "../../cli/coding-agent/session-db.mjs";
 import { writeSessionRows } from "./fixtures/session-db.mjs";
 
@@ -280,6 +280,54 @@ try {
     check("MCP start runs the sweep", deleted.join() === "old" && fs.existsSync(path.join(mcpRoot, ".ttl-stamp")));
     const kept = await startContextStore({ OPENMEM_STATE_DIR: path.join(tmp, "ttl-off"), HOME: tmp, CONTEXT_STORE_TTL_DAYS: "0" }, { stackRoot: tmp });
     check("ttl_days 0 skips the sweep", kept.length === 0 && !fs.existsSync(path.join(tmp, "ttl-off", "context", ".ttl-stamp")));
+  }
+
+  // Orphan blob sweep: after session TTL, drop blobs/<id>.txt with no remaining messages.blob_id (JS + Python).
+  {
+    const blobRoot = path.join(tmp, "ttl-blobs");
+    const sessions = path.join(blobRoot, "sessions");
+    const blobs = path.join(blobRoot, "blobs");
+    fs.mkdirSync(sessions, { recursive: true });
+    fs.mkdirSync(blobs, { recursive: true });
+    writeSessionRows(sessions, "keep", [
+      { role: "tool", kind: "tool_result", name: "Bash", text: "full", blob_id: "aaaaaaaaaaaaaaaa" },
+    ]);
+    writeSessionRows(sessions, "gone", [
+      { role: "tool", kind: "tool_result", name: "Bash", text: "gone", blob_id: "bbbbbbbbbbbbbbbb" },
+    ]);
+    for (const id of ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"]) {
+      fs.writeFileSync(path.join(blobs, `${id}.txt`), id);
+    }
+    const ageGone = (root) => {
+      const age = (Date.now() - 40 * 86_400_000) / 1000;
+      for (const name of fs.readdirSync(path.join(root, "sessions"))) {
+        if (!name.startsWith("gone")) continue;
+        fs.utimesSync(path.join(root, "sessions", name), age, age);
+      }
+    };
+    ageGone(blobRoot);
+    const pyRoot = path.join(tmp, "ttl-blobs-py");
+    fs.cpSync(blobRoot, pyRoot, { recursive: true, preserveTimestamps: true });
+    ageGone(pyRoot);
+    const jsDeleted = sweepContextStore(blobRoot, 30);
+    const goneDb = path.join(sessions, "gone.db");
+    const leftBlobs = fs.readdirSync(blobs).sort().join(",");
+    check("TTL deletes stale session and keeps live one", jsDeleted.join() === "gone"
+      && fs.existsSync(path.join(sessions, "keep.db"))
+      && !fs.existsSync(goneDb));
+    check("orphan blob sweep keeps referenced, drops the rest", leftBlobs === "aaaaaaaaaaaaaaaa.txt", leftBlobs);
+    const py = spawnSync("python3", ["-c", `import sys, json; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, "proxy"))}); `
+      + `from openmem_context.ttl import sweep; print(json.dumps(sweep(${JSON.stringify(pyRoot)}, 30)))`], { encoding: "utf8" });
+    const pyBlobs = fs.readdirSync(path.join(pyRoot, "blobs")).sort().join(",");
+    check("Python orphan blob sweep matches JS", py.status === 0 && py.stdout.trim() === JSON.stringify(jsDeleted)
+      && pyBlobs === leftBlobs, py.stdout + py.stderr + pyBlobs);
+    const corrupt = path.join(tmp, "ttl-blobs-corrupt");
+    fs.mkdirSync(path.join(corrupt, "sessions"), { recursive: true });
+    fs.mkdirSync(path.join(corrupt, "blobs"), { recursive: true });
+    fs.writeFileSync(path.join(corrupt, "sessions", "bad.db"), "not-sqlite");
+    fs.writeFileSync(path.join(corrupt, "blobs", "dddddddddddddddd.txt"), "d");
+    check("unreadable session DB skips blob deletion", sweepOrphanBlobs(corrupt).length === 0
+      && fs.existsSync(path.join(corrupt, "blobs", "dddddddddddddddd.txt")));
   }
 
   // A Python writer (the proxy) and a JS reader (the MCP server) on one database at the same time.

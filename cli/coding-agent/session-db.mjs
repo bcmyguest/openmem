@@ -642,12 +642,89 @@ export function sessionOf(name) {
   return suffix ? [name.slice(0, -suffix.length), suffix] : null;
 }
 
-/** Delete every session whose newest file is older than ttlDays (ttl.py sweep); returns the deleted sids, sorted. */
+/**
+ * Distinct messages.blob_id values across remaining session databases, or null if any DB is unreadable
+ * (ttl.py referenced_blob_ids). Fail closed so a corrupt DB cannot orphan its blobs into deletion.
+ */
+const SQLITE_MAGIC = Buffer.from("SQLite format 3\0");
+
+/** True when path starts with the SQLite magic (avoids opening placeholder .db files that would rewrite -wal). */
+function sqliteHeader(file) {
+  const fd = fs.openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(16);
+    return fs.readSync(fd, buf, 0, 16, 0) === 16 && buf.equals(SQLITE_MAGIC);
+  } catch {
+    return false;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export function referencedBlobIds(sessionsDir) {
+  let names;
+  try { names = fs.readdirSync(sessionsDir, { withFileTypes: true }); } catch (error) {
+    // Missing sessions → no refs; any other read error fails closed so blobs are not deleted.
+    return error?.code === "ENOENT" ? new Set() : null;
+  }
+  const ids = new Set();
+  const { DatabaseSync } = sqlite();
+  for (const entry of names) {
+    if (!entry.isFile() || !entry.name.endsWith(DB_SUFFIX)) continue;
+    const file = path.join(sessionsDir, entry.name);
+    if (!sqliteHeader(file)) return null;
+    let db;
+    try {
+      db = new DatabaseSync(file, { readOnly: true });
+      for (const row of db.prepare("SELECT DISTINCT blob_id FROM messages WHERE blob_id IS NOT NULL").all()) {
+        if (row.blob_id) ids.add(row.blob_id);
+      }
+    } catch {
+      try { db?.close(); } catch { /* already broken */ }
+      return null;
+    }
+    try { db.close(); } catch { /* ignore */ }
+  }
+  return ids;
+}
+
+/**
+ * Delete blobs/<id>.txt with no remaining messages.blob_id reference (ttl.py sweep_orphan_blobs).
+ * Returns deleted ids, sorted. Skips the whole pass when any remaining session database is unreadable.
+ */
+export function sweepOrphanBlobs(root) {
+  const refs = referencedBlobIds(path.join(root, "sessions"));
+  if (!refs) return [];
+  const dir = path.join(root, "blobs");
+  let names;
+  try { names = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  const deleted = [];
+  for (const entry of names) {
+    if (!entry.isFile() || !entry.name.endsWith(".txt")) continue;
+    const bid = entry.name.slice(0, -".txt".length);
+    if (refs.has(bid)) continue;
+    try { fs.unlinkSync(path.join(dir, entry.name)); } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      continue;
+    }
+    deleted.push(bid);
+  }
+  return deleted.sort();
+}
+
+/** Delete every session whose newest file is older than ttlDays (ttl.py sweep); returns the deleted sids, sorted.
+ * After session cleanup, also deletes orphaned blobs under blobs/ (shared across sessions). */
 export function sweepContextStore(root, ttlDays, now = Date.now()) {
   if (!(ttlDays > 0)) return [];
   const dir = path.join(root, "sessions");
   let names;
-  try { names = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  try { names = fs.readdirSync(dir, { withFileTypes: true }); } catch (error) {
+    if (error?.code === "ENOENT") {
+      sweepOrphanBlobs(root);
+      return [];
+    }
+    return [];
+  }
   const groups = new Map();
   for (const entry of names) {
     const parsed = sessionOf(entry.name);
@@ -669,6 +746,7 @@ export function sweepContextStore(root, ttlDays, now = Date.now()) {
     }
     deleted.push(sid);
   }
+  sweepOrphanBlobs(root);
   return deleted.sort();
 }
 

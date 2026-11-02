@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CODING_AGENTS, DEFAULT_AGENT_IDS } from "./coding-agent/agents.mjs";
+import { ensureAccessConfig } from "./coding-agent/access-policy.mjs";
 import { AGENT_IDS, PROVIDER_CAPABILITIES } from "./coding-agent/capabilities.mjs";
 import { installSessionShim, removeSessionShim, removeUpstreamHooks } from "./coding-agent/install-shim.mjs";
 import { installAgentAccess } from "./coding-agent/install-access.mjs";
@@ -158,6 +159,15 @@ export async function runInstallCodingAgent(opts) {
     if (!AGENT_IDS.includes(agentId)) {
       log.warn(`Unknown agent "${agentId}" (known: ${AGENT_IDS.join(", ")})`);
     }
+  }
+  // Hooks read ~/.config/personal-memory/coding-agent.json; seed/migrate it before wiring agents.
+  const access = ensureAccessConfig(home, { dry: flags.dry || !flags.yes });
+  if (access.action === "dry-run") {
+    log.info(`dry-run: would ${access.would} hook access policy at ${access.path}`);
+  } else if (access.action === "migrated") {
+    log.info(`hook access policy migrated from ~/.hindsight/coding-agent.json → ${access.path}`);
+  } else if (access.action === "created") {
+    log.info(`hook access policy created at ${access.path} (opt-in unset: all workspaces allowed; set optInOnly to lock down)`);
   }
   const provider = resolveMemoryProvider(home, env);
   const caps = PROVIDER_CAPABILITIES[provider] || {};

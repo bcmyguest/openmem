@@ -11,6 +11,7 @@ import path from "node:path";
 import { realpathSync } from "node:fs";
 import { installNotebooklmMcp } from "./notebooklm-mcp-install.mjs";
 import { setNotebooklmAccessEnabled } from "../../../wizard/lib/notebooklm-agent-access.mjs";
+import { syncAccessPolicyFromLegacy } from "../../../cli/coding-agent/access-policy.mjs";
 import { ensureState } from "./state.mjs";
 
 /** @typedef {import("../../../wizard/lib/provider-wizard/helpers.mjs").ProviderWizardHelpers} Helpers */
@@ -195,6 +196,16 @@ export async function setupCodingAgent(ctx, h) {
   ensureState(ctx);
   await linkAgentConfig(ctx, h);
   await checkOptIn(ctx, h);
+  // Hooks read ~/.config/personal-memory/coding-agent.json; keep it in sync with the
+  // legacy Hindsight file the wizard edits (optInOnly / optInPaths / mapPathToBank).
+  const access = syncAccessPolicyFromLegacy(ctx.home, { dry: !!ctx.dry });
+  if (access.action === "dry-run") {
+    h.info(`[dry-run] would ${access.would} hook access policy at ${access.path}`);
+  } else if (access.action === "migrated" || access.action === "synced") {
+    h.ok(`hook access policy ${access.action} → ${access.path}`);
+  } else if (access.action === "created") {
+    h.ok(`hook access policy created at ${access.path}`);
+  }
   // Step 6 may have set notebooklmAccess on a real file; linkAgentConfig used to
   // symlink over it. Re-assert after linking, then register the MCP.
   await ensureNotebooklmAccess(ctx, h);

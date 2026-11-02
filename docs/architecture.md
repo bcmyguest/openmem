@@ -192,7 +192,7 @@ The indexer does not watch your editor — it watches **configured sources** on 
 | Feed cache | `feeds.out_dir` after `npx @bcmyguest/openmem feed-sync` (RSS / OpenAlex) | Generated markdown → `feed::` banks |
 | New sources under scan roots | Re-list every `relist_seconds` (default 600) | Picked up without restarting the stack |
 
-Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Full source list and examples: [index-sources.md](index-sources.md) · [sources-feeds.md](sources-feeds.md) · [sources-zotero.md](sources-zotero.md) · [sources-readwise.md](sources-readwise.md). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed.
+Configuration: `~/.config/hindsight/index.yml` (wizard writes this on first setup). Full source list and examples: [index-sources.md](index-sources.md) · [sources-feeds.md](sources-feeds.md) · [sources-zotero.md](sources-zotero.md) · [sources-readwise.md](sources-readwise.md). Filters such as `optInPaths` in `~/.hindsight/coding-agent.json` can limit which discovered sources are indexed (hook access uses `~/.config/personal-memory/coding-agent.json` — see [coding-agents.md](coding-agents.md)).
 
 Bank prefixes include `coding-agent::`, `obsidian::`, `notes::`, `papers::`, `bookmarks::`, `feed::`, and optional `notebooklm::*`. mem0 uses `user_id` / `agent_id` / `run_id`; Cognee uses **datasets** mapped from indexer banks.
 
