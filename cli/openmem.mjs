@@ -19,38 +19,49 @@ const pkg = JSON.parse(fs.readFileSync(path.join(PKG_ROOT, "package.json"), "utf
 // The only place the CLI learns the package name; the bin name is a command, not the package.
 const BIN = "openmem";
 
-const HELP = `${BIN} ${pkg.version}: set up and run a self-hosted AI memory stack (docker compose).
+/** Align a command column for help text (width fits the longest command + a space). */
+function helpRow(cmd, desc, width = 30) {
+  return `  ${cmd.padEnd(width)}${desc}`;
+}
 
-Usage (prefer npx once published: npx ${BIN} <command>):
-  ${BIN}                       print this help
-  ${BIN} setup [flags]         interactive setup; flags go to the wizard (--yes, --dry-run, ...)
-  ${BIN} configure [flags]     non-interactive setup and start (wizard --yes)
-  ${BIN} up [flags]            start the stack with the saved configuration
-  ${BIN} down [flags]          stop the stack
-  ${BIN} doctor [flags]        validate the configuration without the smoke test
-  ${BIN} wiring [--json]       report provider, API URLs, and MCP alignment
-  ${BIN} feed-sync             fetch RSS/OpenAlex into feeds.out_dir (then indexer watches it)
-  ${BIN} schedule <install|remove> [--dry-run]  manage hourly feed sync with the OS scheduler
-  ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
-  ${BIN} install-coding-agent [flags]  Hindsight plugin or MCP session path (Claude/Codex/OpenCode/Cursor)
-  ${BIN} context <on|off|status|stats> [--dry-run] [--hours N]
-                               context management (smart compaction): config, agent wiring, proxy service;
-                               stats = trims / tokens / MCP searches from the session store
-  ${BIN} switch <provider> [flags]
-                               change MEMORY_PROVIDER (stack + MCP; no data migration)
-  ${BIN} providers [--json]    list memory providers and their status
-  ${BIN} init [--force] [--dry-run] [--json]
-                               create or upgrade the stack root without running the wizard
-  ${BIN} --version | --help
+const HELP = `${BIN} ${pkg.version}
+Self-hosted AI memory for coding agents (Docker Compose).
 
-Flags starting with "-" and no subcommand go to the wizard: ${BIN} --dry-run --yes
-Run "${BIN} setup --help" for the wizard flags.
+Usage:
+  ${BIN} <command> [flags]
+  npx @bcmyguest/openmem <command> [flags]
 
-Stack root (where .env, compose files and generated config live):
-  $PM_STACK_ROOT, else \${XDG_DATA_HOME:-~/.local/share}/personal-memory/stack
-  PM_USE_CHECKOUT=1 uses this package directory itself (a git checkout does so automatically).
-Upgrades overwrite only shipped files you did not modify; modified ones are reported as conflicts.
-Docs: docs/npx-install.md`;
+Setup:
+${helpRow("setup [flags]", "Interactive wizard (--yes, --dry-run, …)")}
+${helpRow("configure [flags]", "Non-interactive setup + start (= setup --yes)")}
+${helpRow("init [--force] [--dry-run]", "Create/upgrade the stack root only")}
+
+Stack:
+${helpRow("up", "Start the saved stack")}
+${helpRow("down", "Stop the stack")}
+${helpRow("doctor", "Validate config (no smoke test)")}
+${helpRow("wiring [--json]", "Provider, API URLs, MCP alignment")}
+${helpRow("switch <provider>", "Change MEMORY_PROVIDER (no data migration)")}
+${helpRow("providers [--json]", "List shipped providers")}
+
+Agents:
+${helpRow("install-mcp [flags]", "Register memory MCP in ~/.cursor/mcp.json")}
+${helpRow("install-coding-agent [flags]", "MCP + session hooks (Claude/Codex/OpenCode/Cursor)")}
+${helpRow("context on|off|status|stats", "Smart compaction (see: openmem context --help)")}
+
+Feeds:
+${helpRow("feed-sync", "Fetch RSS/OpenAlex into the feed cache")}
+${helpRow("schedule install|remove", "Hourly feed sync via the OS scheduler")}
+
+Also:
+${helpRow("--help, -h", "Show this help")}
+${helpRow("--version, -v", "Print version")}
+
+Notes:
+  Bare \`${BIN}\` prints this help. Wizard flags alone still work: \`${BIN} --yes\`
+  Wizard flag details: \`${BIN} setup --help\`
+  Stack root: $PM_STACK_ROOT, else ~/.local/share/personal-memory/stack
+  Docs: docs/npx-install.md`;
 
 const WIZARD_TASKS = new Set(["configure", "up", "down", "doctor", "install-mcp", "install-coding-agent", "switch"]);
 

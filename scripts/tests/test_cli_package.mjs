@@ -494,9 +494,10 @@ const cv = cli(process.execPath, [path.join(ROOT, "cli/openmem.mjs"), "--version
 check("checkout: node cli/openmem.mjs --version", cv.status === 0 && cv.stdout.trim() === pkg.version, cv.stderr);
 const ch = cli(process.execPath, [path.join(ROOT, "cli/openmem.mjs")], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
 check("checkout: bare openmem prints help (does not run setup)", ch.status === 0
-  && /Usage /.test(ch.stdout) && /print this help/.test(ch.stdout) && /setup \[flags\]/.test(ch.stdout), ch.stdout + ch.stderr);
+  && /^Usage:$/m.test(ch.stdout) && /^Setup:$/m.test(ch.stdout) && /setup \[flags\]/.test(ch.stdout)
+  && /Bare `openmem` prints this help/.test(ch.stdout), ch.stdout + ch.stderr);
 const bh = cli(bin, [], cliEnv(home, { PM_STACK_ROOT: path.join(work, "help-home") }));
-check("installed bin: bare openmem prints help", bh.status === 0 && /print this help/.test(bh.stdout), bh.stdout + bh.stderr);
+check("installed bin: bare openmem prints help", bh.status === 0 && /^Setup:$/m.test(bh.stdout), bh.stdout + bh.stderr);
 const ci = cli(process.execPath, [path.join(ROOT, "cli/openmem.mjs"), "init", "--json"], cliEnv(home, { PM_USE_CHECKOUT: "1" }));
 check("checkout: init uses the checkout in place", JSON.parse(ci.stdout || "{}").report === null && fs.realpathSync(JSON.parse(ci.stdout || "{}").stackRoot) === fs.realpathSync(ROOT), ci.stdout + ci.stderr);
 
