@@ -112,7 +112,9 @@ Native compaction replaces history with an LLM summary, so exact values can be l
 - **Portable memory** — `memory_export` / `memory_import` speak **PMM**: [Portable memory](https://bcmyguest.github.io/openmem/docs/memory-portability/).
 - **Switch** — `npx @bcmyguest/openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
 
-Default Hindsight compose: `litellm`, `hindsight` (`127.0.0.1:8888`), `indexer`. mem0/Cognee stacks omit LiteLLM unless you add them separately.
+Compose runs the shared `indexer` and the services required by the selected provider. Hindsight uses `litellm` and `hindsight` (`127.0.0.1:8888`); mem0 and Cognee use their own APIs and do not include LiteLLM by default. LiteLLM can also be added for `memory_reflect` synthesis on mem0/Cognee, or to host the optional context proxy's pre-call hook. See [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for runtime paths.
+
+Contributions are welcome. Read and understand the code you change before opening a PR; start with the [contribution guide](CONTRIBUTING.md).
 
 ## Inspiration and related
 
