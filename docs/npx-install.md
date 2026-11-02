@@ -14,8 +14,8 @@ Wizard phases and flags live in the repository: [docs/setup-wizard.md](setup-wiz
 ## Install paths
 
 ```sh
-npx @bcmyguest/openmem                 # interactive setup, nothing installed globally
-npx @bcmyguest/openmem setup           # same as the bare command
+npx @bcmyguest/openmem                 # print help
+npx @bcmyguest/openmem setup           # interactive setup, nothing installed globally
 npx @bcmyguest/openmem configure --yes # non-interactive setup and start
 npx @bcmyguest/openmem up              # start stack
 npx @bcmyguest/openmem install-mcp --yes
@@ -34,7 +34,8 @@ exist only inside a checkout; prefer `npx @bcmyguest/openmem …` (or `node cli/
 
 | Command | What it does |
 | --- | --- |
-| `openmem` / `setup` | interactive setup; extra flags go to the wizard (`--yes`, `--dry-run`, `--no-smoke`, `--rebuild`) |
+| `openmem` (no args) | print help |
+| `setup` | interactive setup; extra flags go to the wizard (`--yes`, `--dry-run`, `--no-smoke`, `--rebuild`) |
 | `configure` | non-interactive setup and start (`setup --yes`) |
 | `up` / `down` | start / stop the stack with the saved configuration |
 | `doctor` | validate the configuration without the smoke test |
