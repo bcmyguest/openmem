@@ -285,6 +285,10 @@ function addUsage(u, r, layouts) {
   group.cacheCreationTokens += r.cache_creation_tokens;
 }
 
+/** Append-only MCP tool telemetry under the context root (smart_compact_search / sql / get). */
+export const TOOL_CALLS_LOG = "tool-calls.jsonl";
+const TOP_SESSIONS = 5;
+
 /**
  * Summary of the events rows written in the last `hours` across `sessions/*.db` (only files modified in that
  * window are opened): trims, estimated tokens saved, fail-opens, the newest errors, row counts per version and the
@@ -298,8 +302,10 @@ export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now =
   const sinceMs = now - hours * 3_600_000;
   const since = new Date(sinceMs).toISOString().replace(/\.\d{3}Z$/, "Z");
   const out = { hours, since, sessions: 0, trims: 0, tokensBefore: 0, tokensAfter: 0, tokensSaved: 0, dropped: 0,
-    failOpens: 0, lastErrors: [], versions: {}, latest: {}, unreadable: 0, usage: emptyUsage() };
+    failOpens: 0, lastErrors: [], versions: {}, latest: {}, unreadable: 0, usage: emptyUsage(),
+    messages: 0, inContext: 0, outOfContext: 0, withBlob: 0, topSessions: [] };
   const layouts = new Map();
+  const perSession = [];
   let names = [];
   try { names = fs.readdirSync(sessionsDir).filter((n) => n.endsWith(DB_SUFFIX)); } catch { return out; }
   const errors = [];
@@ -316,20 +322,35 @@ export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now =
       if (!rows.length) continue;
       out.sessions++;
       const sid = name.slice(0, -DB_SUFFIX.length);
+      let sessionTrims = 0;
+      let sessionDropped = 0;
       for (const r of rows) {
         out.versions[r.version] = (out.versions[r.version] || 0) + 1;
         const writer = String(r.version).split(":")[0];
         if (r.at >= (latestAt[writer] || "")) [latestAt[writer], out.latest[writer]] = [r.at, r.version];
         if (r.kind === "trim") {
           out.trims++;
+          sessionTrims++;
           out.tokensBefore += r.tokens_before ?? 0;
           out.tokensAfter += r.tokens_after ?? 0;
           out.dropped += r.dropped ?? 0;
+          sessionDropped += r.dropped ?? 0;
         } else if (r.kind === "fail_open") {
           out.failOpens++;
           errors.push({ at: r.at, session: sid, error: r.error, location: r.location, version: r.version });
         } else if (r.kind === "usage") addUsage(out.usage, r, layouts);
       }
+      let msg = { n: 0, inn: 0, out: 0, blobs: 0 };
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get()) {
+        msg = db.prepare("SELECT count(*) AS n, coalesce(sum(in_context = 1), 0) AS inn, "
+          + "coalesce(sum(in_context = 0), 0) AS out, coalesce(sum(blob_id IS NOT NULL), 0) AS blobs FROM messages").get();
+        out.messages += Number(msg.n);
+        out.inContext += Number(msg.inn);
+        out.outOfContext += Number(msg.out);
+        out.withBlob += Number(msg.blobs);
+      }
+      perSession.push({ session: sid, trims: sessionTrims, dropped: sessionDropped,
+        messages: Number(msg.n), outOfContext: Number(msg.out) });
     } catch { out.unreadable++; } finally { db?.close(); }
   }
   out.tokensSaved = out.tokensBefore - out.tokensAfter;
@@ -339,7 +360,78 @@ export function summarizeEvents(sessionsDir, { hours = EVENT_WINDOW_HOURS, now =
   u.breakpointLayouts = [...layouts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, TOP_BREAKPOINT_LAYOUTS)
     .map(([at, requests]) => ({ at, requests }));
   out.lastErrors = errors.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, LAST_ERRORS);
+  out.topSessions = perSession.sort((a, b) => b.trims - a.trims || b.dropped - a.dropped || b.outOfContext - a.outOfContext
+    || (a.session < b.session ? -1 : 1)).slice(0, TOP_SESSIONS);
   return out;
+}
+
+/** Best-effort append of one MCP tool call; never throws (stats are optional). */
+export function recordToolCall(contextDir, entry) {
+  try {
+    fs.mkdirSync(contextDir, { recursive: true, mode: 0o700 });
+    const line = `${JSON.stringify({ at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), ...entry })}\n`;
+    fs.appendFileSync(path.join(contextDir, TOOL_CALLS_LOG), line, { mode: 0o600 });
+  } catch { /* leave stats incomplete rather than fail the tool */ }
+}
+
+/**
+ * Counts of smart_compact_* MCP calls from `tool-calls.jsonl` in the last `hours`.
+ * @returns {{ searches: number, sql: number, gets: number, searchHits: number, sqlRows: number, getChars: number, unreadable: number }}
+ */
+export function summarizeToolCalls(contextDir, { hours = EVENT_WINDOW_HOURS, now = Date.now() } = {}) {
+  const out = { searches: 0, sql: 0, gets: 0, searchHits: 0, sqlRows: 0, getChars: 0, unreadable: 0 };
+  const sinceMs = now - hours * 3_600_000;
+  let text;
+  try { text = fs.readFileSync(path.join(contextDir, TOOL_CALLS_LOG), "utf8"); } catch { return out; }
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let row;
+    try { row = JSON.parse(line); } catch { out.unreadable++; continue; }
+    const at = Date.parse(row.at || "");
+    if (!Number.isFinite(at) || at < sinceMs) continue;
+    if (row.tool === "smart_compact_search") {
+      out.searches++;
+      out.searchHits += Number(row.hits) || 0;
+    } else if (row.tool === "smart_compact_sql") {
+      out.sql++;
+      out.sqlRows += Number(row.rows) || 0;
+    } else if (row.tool === "smart_compact_get") {
+      out.gets++;
+      out.getChars += Number(row.chars) || 0;
+    }
+  }
+  return out;
+}
+
+/** Blob files under `blobs/`: count and total bytes (mtime in the window when hours is set). */
+export function summarizeBlobs(blobsDir, { hours = EVENT_WINDOW_HOURS, now = Date.now() } = {}) {
+  const out = { files: 0, bytes: 0 };
+  const sinceMs = now - hours * 3_600_000;
+  let names = [];
+  try { names = fs.readdirSync(blobsDir); } catch { return out; }
+  for (const name of names) {
+    if (!name.endsWith(".txt")) continue;
+    try {
+      const st = fs.statSync(path.join(blobsDir, name));
+      if (st.mtimeMs < sinceMs) continue;
+      out.files++;
+      out.bytes += st.size;
+    } catch { /* skip */ }
+  }
+  return out;
+}
+
+/**
+ * Full context-stats payload: events (+ message inventory), MCP tool calls, and compressed blobs.
+ * `root` is `$OPENMEM_STATE_DIR/context`.
+ */
+export function summarizeContextStats(root, opts = {}) {
+  const events = summarizeEvents(path.join(root, "sessions"), opts);
+  return {
+    ...events,
+    tools: summarizeToolCalls(root, opts),
+    blobs: summarizeBlobs(path.join(root, "blobs"), opts),
+  };
 }
 
 /** "proxy:" + first 12 hex of SHA-256 over dir's *.py files (name, NUL, bytes, NUL, by name): core.code_hash. */

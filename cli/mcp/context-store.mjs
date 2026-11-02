@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { contextRoot as hookContextRoot, sanitizeSessionId as hookSanitizeSessionId } from "../coding-agent/context-store.mjs";
 import {
-  DB_SUFFIX, EVENT_WINDOW_HOURS, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, proxyCodeVersion, sqlite,
-  storeSettings, summarizeEvents, vectorCounts,
+  DB_SUFFIX, EVENT_WINDOW_HOURS, SCHEMA_VERSION, fetchEmbeddings, maybeSweepContextStore, nearest, proxyCodeVersion,
+  recordToolCall, sqlite, storeSettings, summarizeEvents, vectorCounts,
 } from "../coding-agent/session-db.mjs";
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -662,9 +662,21 @@ function contextStatusTool(args, env) {
  */
 export async function callContextStoreTool(name, args = {}, opts = {}) {
   const env = opts.env || process.env;
-  if (name === "smart_compact_search") return search(args, env, opts.cwd || process.cwd(), opts);
-  if (name === "smart_compact_get") return getBlob(args, env);
-  if (name === "smart_compact_sql") return runSql(args, env);
-  if (name === "context_status") return contextStatusTool(args, env);
-  throw new Error(`unknown tool: ${name}`);
+  let result;
+  if (name === "smart_compact_search") result = await search(args, env, opts.cwd || process.cwd(), opts);
+  else if (name === "smart_compact_get") result = getBlob(args, env);
+  else if (name === "smart_compact_sql") result = runSql(args, env);
+  else if (name === "context_status") return contextStatusTool(args, env);
+  else throw new Error(`unknown tool: ${name}`);
+  // Telemetry for `openmem context stats`; never affects the tool result.
+  if (name === "smart_compact_search") {
+    recordToolCall(contextRoot(env), { tool: name, hits: result.total_matches ?? result.results?.length ?? 0,
+      sessions: result.sessions_searched?.length ?? 0, mode: result.mode });
+  } else if (name === "smart_compact_sql") {
+    recordToolCall(contextRoot(env), { tool: name, session_id: result.session_id, rows: result.row_count ?? 0 });
+  } else if (name === "smart_compact_get") {
+    recordToolCall(contextRoot(env), { tool: name, id: result.id, found: !!result.found,
+      chars: result.found ? (result.text?.length ?? 0) : 0 });
+  }
+  return result;
 }

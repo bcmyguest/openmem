@@ -33,8 +33,9 @@ Usage (prefer npx once published: npx ${BIN} <command>):
   ${BIN} schedule <install|remove> [--dry-run]  manage hourly feed sync with the OS scheduler
   ${BIN} install-mcp [flags]   merge memory MCP servers into ~/.cursor/mcp.json
   ${BIN} install-coding-agent [flags]  Hindsight plugin or MCP session path (Claude/Codex/OpenCode/Cursor)
-  ${BIN} context <on|off|status> [--dry-run]
-                               context management (smart compaction): config, agent wiring, proxy service
+  ${BIN} context <on|off|status|stats> [--dry-run] [--hours N]
+                               context management (smart compaction): config, agent wiring, proxy service;
+                               stats = trims / tokens / MCP searches from the session store
   ${BIN} switch <provider> [flags]
                                change MEMORY_PROVIDER (stack + MCP; no data migration)
   ${BIN} providers [--json]    list memory providers and their status

@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { contextRoot } from "./coding-agent/context-store.mjs";
-import { proxyCodeVersion, summarizeEvents } from "./coding-agent/session-db.mjs";
+import { proxyCodeVersion, summarizeContextStats, summarizeEvents } from "./coding-agent/session-db.mjs";
 import { agentsPointedAtContextProxy, ensureContextProxyKey, probeContextProxy } from "./coding-agent/install-context-proxy.mjs";
 import { isMainModule } from "./is-main.mjs";
 import { resolveStackRoot } from "./stack.mjs";
@@ -48,11 +48,15 @@ Usage:
                                            the service when no proxy-routed agent is on)
   ${BIN} status [--json]                  per-agent values, proxy health, agents pointed at it, and
                                            the last 24 h of trims and fail-opens from the session store
+  ${BIN} stats [--hours N] [--json]       rtk-gain-style table: trims, tokens trimmed, cache read/write,
+                                           in/out, hit ratio, searches (default 168 h)
 
 Agents: ${CONTEXT_AGENT_KEYS.join(", ")} (default: all). claude-code, opencode1 and codex go through
 the context-proxy service (codex keeps its ChatGPT login); opencode2 trims in its own plugin (on when
 config sets neither its key nor enabled).
 Docs: docs/context-management.md`;
+
+const STATS_MAX_HOURS = 24 * 30;
 
 /** True when any agent that needs the service resolves on. */
 export function proxyServiceNeeded(agents) {
@@ -181,14 +185,110 @@ function usageLines(u) {
   return lines;
 }
 
+/** Default window for `context stats` (longer than status's 24 h — idle overnight zeros the short view). */
+export const STATS_WINDOW_HOURS = 168;
+
+/** Compact token/count display (rtk gain style): 1.1M, 321.2K, 42. */
+export function formatTok(n) {
+  const v = Number(n) || 0;
+  const sign = v < 0 ? "-" : "";
+  const a = Math.abs(v);
+  if (a >= 1_000_000) {
+    const s = (a / 1_000_000).toFixed(1).replace(/\.0$/, "");
+    return `${sign}${s}M`;
+  }
+  if (a >= 1_000) {
+    const s = (a / 1_000).toFixed(1).replace(/\.0$/, "");
+    return `${sign}${s}K`;
+  }
+  return `${sign}${Math.round(a)}`;
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function meter(ratio, width = 24) {
+  if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return `${"░".repeat(width)} n/a`;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  const filled = Math.round(clamped * width);
+  return `${"█".repeat(filled)}${"░".repeat(width - filled)} ${(clamped * 100).toFixed(1)}%`;
+}
+
+function kv(label, value) {
+  return `${label.padEnd(22)}${value}`;
+}
+
+/**
+ * rtk-gain-style table for `context stats`: the numbers that show whether smart compaction is working
+ * (trims, tokens trimmed, cache read/write, in/out, hit ratio, searches).
+ */
+export function statsLines(s) {
+  const u = s.usage || {};
+  const t = s.tools || { searches: 0, sql: 0, gets: 0, searchHits: 0, sqlRows: 0, getChars: 0 };
+  // Share of estimated prompt tokens removed when a trim fired (tokensBefore → tokensAfter).
+  const trimRatio = s.tokensBefore > 0 ? s.tokensSaved / s.tokensBefore : null;
+  const rule = "═".repeat(60);
+  const thin = "─".repeat(72);
+  const lines = [
+    `OpenMem Context (last ${s.hours} h)`,
+    rule,
+    "",
+    kv("Sessions:", String(s.sessions)),
+    kv("Requests:", formatTok(u.requests || 0)),
+    kv("Trims:", String(s.trims)),
+    kv("Tokens trimmed:", s.trims
+      ? `${formatTok(s.tokensSaved)}  (est. ${formatTok(s.tokensBefore)} → ${formatTok(s.tokensAfter)})`
+      : "0"),
+    // Of the estimated prompt at each trim, how much left the context.
+    kv("% removed at trim:", meter(trimRatio)),
+    kv("Msgs dropped:", formatTok(s.dropped)),
+    kv("Fail-opens:", String(s.failOpens)),
+    "",
+    kv("Cache read:", formatTok(u.cacheReadTokens || 0)),
+    kv("Cache write:", formatTok(u.cacheCreationTokens || 0)),
+    kv("Input (uncached):", formatTok(u.inputTokens || 0)),
+    kv("Output:", formatTok(u.outputTokens || 0)),
+    // Provider-reported: cache_read / (cache_read + cache_write + uncached input).
+    kv("% prompt from cache:", meter(u.hitRatio)),
+    "",
+    kv("Searches:", `${t.searches}  (${formatTok(t.searchHits)} hits)`),
+    kv("SQL queries:", `${t.sql}  (${formatTok(t.sqlRows)} rows)`),
+    kv("Blob gets:", `${t.gets}  (${formatTok(t.getChars)} chars)`),
+    kv("Store:", `${formatTok(s.messages)} msgs (${formatTok(s.inContext)} in ctx / ${formatTok(s.outOfContext)} trimmed), `
+      + `${formatTok(s.blobs?.files ?? 0)} blobs (${formatBytes(s.blobs?.bytes ?? 0)})`),
+  ];
+  for (const x of s.lastErrors || []) {
+    lines.push(kv("Fail-open:", `${x.at} ${x.error} at ${x.location} (${x.session})`));
+  }
+  if (s.topSessions?.length) {
+    lines.push("", "By Session", thin);
+    lines.push(`  ${"#".padStart(2)}  ${"Session".padEnd(38)}  ${"Trims".padStart(5)}  ${"Dropped".padStart(8)}  ${"Trimmed/Total".padStart(13)}`);
+    lines.push(thin);
+    s.topSessions.forEach((x, i) => {
+      const sid = x.session.length > 38 ? `${x.session.slice(0, 35)}...` : x.session;
+      const trimmedTotal = `${formatTok(x.outOfContext)}/${formatTok(x.messages)}`;
+      lines.push(`  ${String(i + 1).padStart(2)}. ${sid.padEnd(38)}  ${String(x.trims).padStart(5)}  ${formatTok(x.dropped).padStart(8)}  ${trimmedTotal.padStart(13)}`);
+    });
+    lines.push(thin);
+  }
+  if (s.unreadable) lines.push("", kv("Unreadable DBs:", String(s.unreadable)));
+  return lines;
+}
+
 function parseArgs(argv) {
-  const flags = { action: argv[0], dry: false, json: false, agents: [], help: false, unknown: [] };
+  const flags = { action: argv[0], dry: false, json: false, agents: [], hours: null, help: false, unknown: [] };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") flags.dry = true;
     else if (a === "--json") flags.json = true;
     else if (a === "--agents") flags.agents = String(argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
-    else if (a === "--help" || a === "-h") flags.help = true;
+    else if (a === "--hours") {
+      const n = Number(argv[++i]);
+      flags.hours = Number.isFinite(n) ? n : NaN;
+    } else if (a === "--help" || a === "-h") flags.help = true;
     else flags.unknown.push(a);
   }
   if (["--help", "-h", "help"].includes(flags.action)) flags.help = true;
@@ -196,10 +296,10 @@ function parseArgs(argv) {
 }
 
 /**
- * `openmem context on|off|status`. Returns the exit code.
+ * `openmem context on|off|status|stats`. Returns the exit code.
  * @param {{ argv: string[], home: string, stackRoot: string, env?: NodeJS.ProcessEnv,
  *   log?: { info: (m: string) => void, warn: (m: string) => void },
- *   spawn?: typeof spawnSync, fetch?: typeof fetch }} opts
+ *   spawn?: typeof spawnSync, fetch?: typeof fetch, now?: number }} opts
  */
 export async function runContextCommand(opts) {
   const { home, stackRoot } = opts;
@@ -212,10 +312,21 @@ export async function runContextCommand(opts) {
     return 0;
   }
   const badAgents = flags.agents.filter((a) => !CONTEXT_AGENT_KEYS.includes(a));
-  if (!["on", "off", "status"].includes(flags.action) || flags.unknown.length || badAgents.length) {
+  if (!["on", "off", "status", "stats"].includes(flags.action) || flags.unknown.length || badAgents.length) {
     if (badAgents.length) log.warn(`unknown agent: ${badAgents.join(", ")} (known: ${CONTEXT_AGENT_KEYS.join(", ")})`);
     log.warn(HELP);
     return 2;
+  }
+  if (flags.action === "stats") {
+    const hours = flags.hours === null ? STATS_WINDOW_HOURS : flags.hours;
+    if (!Number.isFinite(hours) || hours < 1 || hours > STATS_MAX_HOURS) {
+      log.warn(`--hours must be 1-${STATS_MAX_HOURS}`);
+      return 2;
+    }
+    const s = summarizeContextStats(contextRoot(home, env), { hours, ...(opts.now === undefined ? {} : { now: opts.now }) });
+    if (flags.json) log.info(JSON.stringify(s, null, 2));
+    else for (const line of statsLines(s)) log.info(line);
+    return 0;
   }
   if (flags.action === "status") {
     const s = await contextStatus({ home, stackRoot, fetch: opts.fetch, env });
