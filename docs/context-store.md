@@ -13,6 +13,7 @@ Root: `$OPENMEM_STATE_DIR/context`, default `~/.local/share/openmem/context`. Su
 | `sessions/<sid>.trim.json` | proxy | proxy | Proxy-private trim state (cut point, fingerprints, reported-usage samples for the token estimate, see [context-proxy.md](context-proxy.md#token-estimate)). Other components must not depend on its shape. |
 | `sessions/<sid>.db` (+ `-wal`, `-shm`) | proxy | MCP `smart_compact_search`, `smart_compact_sql`, shell `sqlite3` | [Session database](#session-database): every message of the session, in or out of context. The only store of record for message content. |
 | `blobs/<id>.txt` | proxy | MCP `smart_compact_get` | Full text of a compressed tool result. `id` = first 16 hex chars of SHA-256 of the UTF-8 content. |
+| `tool-calls.jsonl` | MCP `smart_compact_*` tools | `openmem context stats` | One JSON line per search / sql / get call (`at`, `tool`, hit/row/char counts). Best-effort telemetry; not part of the session rewrite contract. |
 | `.ttl-stamp` | proxy, MCP server | proxy, MCP server | Empty; its mtime records the last [retention](#retention) sweep |
 
 Earlier releases wrote `sessions/<sid>.log.jsonl` handoff logs. Nothing writes or reads them now and they are not migrated; the retention sweep deletes them with their session.
@@ -129,7 +130,7 @@ Rows that a later request no longer carries (a rewritten history) keep their las
 
 ### Events
 
-The writer appends one `events` row per trim and per fail-open it can attribute to the session, and one `usage` row per model call whose request it handled. `openmem context status` and the `context_status` MCP tool summarize them across sessions; `smart_compact_sql` reads one session's rows.
+The writer appends one `events` row per trim and per fail-open it can attribute to the session, and one `usage` row per model call whose request it handled. `openmem context status` and the `context_status` MCP tool summarize them across sessions; `smart_compact_sql` reads one session's rows. `openmem context stats` adds MCP tool counts from the append-only `tool-calls.jsonl` next to `sessions/` (one JSON line per `smart_compact_search` / `smart_compact_sql` / `smart_compact_get` call) plus message and blob inventory for those sessions.
 
 | Column | Values |
 | --- | --- |

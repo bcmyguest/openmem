@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Context management on/off: install-coding-agent honours [context_proxy] enabled without a flag,
- * the wizard step (wizard/lib/context-step.mjs), and `openmem context on|off|status`.
+ * the wizard step (wizard/lib/context-step.mjs), and `openmem context on|off|status|stats`.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -9,8 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import { runInstallCodingAgent } from "../../cli/install-coding-agent.mjs";
-import { eventLines, runContextCommand } from "../../cli/context-management.mjs";
-import { SCHEMA, openSession, proxyCodeVersion, summarizeEvents } from "../../cli/coding-agent/session-db.mjs";
+import { eventLines, formatTok, runContextCommand, statsLines } from "../../cli/context-management.mjs";
+import {
+  SCHEMA, openSession, proxyCodeVersion, recordToolCall, summarizeContextStats, summarizeEvents,
+} from "../../cli/coding-agent/session-db.mjs";
 import { chooseContextManagement, startContextProxy, stopContextProxy } from "../../wizard/lib/context-step.mjs";
 import { contextAgentsFromPmConfig, syncPmConfig, updatePmConfigContextAgents, updatePmConfigTable } from "../../wizard/lib/pm-config.mjs";
 
@@ -345,6 +347,69 @@ function install(home, flags = {}) {
   const empty = summarizeEvents(path.join(home, "none"), { now });
   check("no usage rows: no prompt cache lines, null ratio", empty.usage.requests === 0 && empty.usage.hitRatio === null
     && !eventLines({ events: empty, checkoutProxyVersion: null }).some((l) => l.startsWith("prompt cache")));
+  fs.rmSync(home, { recursive: true, force: true });
+}
+
+{
+  // context stats: events + MCP tool-calls.jsonl + blobs, with --hours and --json.
+  const home = tmpHome();
+  const root = path.join(home, ".local", "share", "openmem", "context");
+  const dir = path.join(root, "sessions");
+  const blobs = path.join(root, "blobs");
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  const a = openSession(path.join(dir, "ses_stats.db"));
+  a.addEvent("trim", "2026-10-30T10:00:00Z", "proxy:aaaaaaaaaaaa", { tokens_before: 1000, tokens_after: 400, dropped: 3 });
+  a.db.prepare("INSERT INTO messages (fingerprint, thread, role, kind, name, text, blob_id, in_context, created_at) "
+    + "VALUES (?, ?, 'user', 'text', NULL, 'hi', NULL, 1, ?)").run("fp1", "fp1", "2026-10-30T09:00:00Z");
+  a.db.prepare("INSERT INTO messages (fingerprint, thread, role, kind, name, text, blob_id, in_context, created_at) "
+    + "VALUES (?, ?, 'tool', 'tool_result', 'Bash', '[blob:0123456789abcdef]\\npreview', '0123456789abcdef', 0, ?)")
+    .run("fp2", "fp1", "2026-10-30T09:01:00Z");
+  fs.mkdirSync(blobs, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(blobs, "0123456789abcdef.txt"), "full tool output", { mode: 0o600 });
+  fs.utimesSync(path.join(blobs, "0123456789abcdef.txt"), new Date(now), new Date(now));
+  recordToolCall(root, { at: "2026-10-30T11:00:00Z", tool: "smart_compact_search", hits: 4 });
+  recordToolCall(root, { at: "2026-10-30T11:01:00Z", tool: "smart_compact_sql", rows: 2 });
+  recordToolCall(root, { at: "2026-10-28T11:00:00Z", tool: "smart_compact_search", hits: 99 });
+  // recordToolCall always stamps `at` as now; rewrite the log with fixed timestamps for the window.
+  fs.writeFileSync(path.join(root, "tool-calls.jsonl"),
+    `${JSON.stringify({ at: "2026-10-30T11:00:00Z", tool: "smart_compact_search", hits: 4 })}\n`
+    + `${JSON.stringify({ at: "2026-10-30T11:01:00Z", tool: "smart_compact_sql", rows: 2 })}\n`
+    + `${JSON.stringify({ at: "2026-10-30T11:02:00Z", tool: "smart_compact_get", chars: 16, found: true })}\n`
+    + `${JSON.stringify({ at: "2026-10-28T11:00:00Z", tool: "smart_compact_search", hits: 99 })}\n`);
+  const s = summarizeContextStats(root, { now });
+  check("stats counts trims, messages, tools and blobs", s.trims === 1 && s.tokensSaved === 600 && s.messages === 2
+    && s.inContext === 1 && s.outOfContext === 1 && s.withBlob === 1
+    && s.tools.searches === 1 && s.tools.searchHits === 4 && s.tools.sql === 1 && s.tools.gets === 1
+    && s.blobs.files === 1 && s.blobs.bytes === 16, JSON.stringify(s));
+  check("formatTok compact", formatTok(0) === "0" && formatTok(999) === "999" && formatTok(1500) === "1.5K"
+    && formatTok(1_100_000) === "1.1M" && formatTok(24_532_425) === "24.5M");
+  const lines = statsLines(s);
+  const text = lines.join("\n");
+  check("stats table header", /OpenMem Context \(last 24 h\)/.test(text) && /═{10,}/.test(text), text);
+  check("stats table shows trim + cache + search rows", /Tokens trimmed:\s+600 /.test(text)
+    && /% removed at trim:/.test(text) && /Cache read:/.test(text) && /Cache write:/.test(text)
+    && /Input \(uncached\):/.test(text) && /Output:/.test(text) && /% prompt from cache:/.test(text)
+    && /Searches:\s+1 {2}\(4 hits\)/.test(text) && /SQL queries:\s+1 {2}\(2 rows\)/.test(text)
+    && /Blob gets:\s+1 {2}\(16 chars\)/.test(text), text);
+  check("stats By Session table", /By Session/.test(text) && /Trimmed\/Total/.test(text) && /ses_stats/.test(text), text);
+
+  const logs = [];
+  const log = { info: (m) => logs.push(m), warn: (m) => logs.push(m) };
+  const env = { HOME: home, OPENMEM_STATE_DIR: path.join(home, ".local", "share", "openmem") };
+  check("stats exits 0", (await runContextCommand({ argv: ["stats", "--hours", "24"], home, stackRoot: home, env, log, now })) === 0);
+  check("stats prints the table header", logs.some((l) => /OpenMem Context \(last 24 h\)/.test(l)), logs.join("\n"));
+  logs.length = 0;
+  check("stats --hours 1 exits 0", (await runContextCommand({ argv: ["stats", "--hours", "1"], home, stackRoot: home, env, log, now })) === 0);
+  check("stats --hours 1 narrows the window", logs.some((l) => /OpenMem Context \(last 1 h\)/.test(l))
+    && logs.some((l) => /Sessions:\s+0/.test(l)), logs.join("\n"));
+  logs.length = 0;
+  check("stats default window is 168 h", (await runContextCommand({ argv: ["stats"], home, stackRoot: home, env, log, now })) === 0
+    && logs.some((l) => /OpenMem Context \(last 168 h\)/.test(l)), logs.join("\n"));
+  logs.length = 0;
+  check("stats --json exits 0", (await runContextCommand({ argv: ["stats", "--json", "--hours", "24"], home, stackRoot: home, env, log, now })) === 0);
+  const json = JSON.parse(logs[0]);
+  check("stats --json shape", json.trims === 1 && json.tools.searches === 1 && json.blobs.files === 1, logs[0]);
+  check("stats --hours 0 exits 2", (await runContextCommand({ argv: ["stats", "--hours", "0"], home, stackRoot: home, env, log, now })) === 2);
   fs.rmSync(home, { recursive: true, force: true });
 }
 
