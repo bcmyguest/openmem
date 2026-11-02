@@ -114,8 +114,6 @@ Native compaction replaces history with an LLM summary, so exact values can be l
 
 Compose runs the shared `indexer` and the services required by the selected provider. Hindsight uses `litellm` and `hindsight` (`127.0.0.1:8888`); mem0 and Cognee use their own APIs and do not include LiteLLM by default. LiteLLM can also be added for `memory_reflect` synthesis on mem0/Cognee, or to host the optional context proxy's pre-call hook. See [Architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for runtime paths.
 
-Contributions are welcome. Read and understand the code you change before opening a PR; start with the [contribution guide](CONTRIBUTING.md).
-
 ## Inspiration and related
 
 OpenMem is not affiliated with these projects; they shape the problem or the pattern.
@@ -142,3 +140,7 @@ More setup analogues: [Pluggable memory providers](https://github.com/bcmyguest/
 ## License
 
 [Apache License 2.0](LICENSE) — see `LICENSE` (Copyright 2026 B Guest).
+
+## Contributing
+
+Contributions are welcome. Read and understand the code you change before opening a PR. See the [contribution guide](CONTRIBUTING.md).
