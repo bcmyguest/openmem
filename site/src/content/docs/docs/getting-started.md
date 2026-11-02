@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "Run the wizard once (npx or git checkout), verify health, optional MCP install."
 ---
 
-Get from zero to a running stack in one wizard run. **Choose your memory provider** in the wizard (Hindsight by default; mem0 or Cognee if you prefer) — same CLI either way. Cloning the repo is optional; **`npx @bcmyguest/openmem`** is the usual path. For why OpenMem exists (interface layer, not a memory engine), see [Concepts](../concepts/).
+Get from zero to a running stack in one wizard run. **Choose your memory provider** in the wizard (Hindsight by default; mem0 or Cognee if you prefer) — same CLI either way. Cloning the repo is optional; **`npx @bcmyguest/openmem setup`** is the usual path. For why OpenMem exists (interface layer, not a memory engine), see [Concepts](../concepts/).
 
 ## Before you start
 
@@ -21,7 +21,7 @@ Default stack is [Hindsight](../hindsight/). Other providers: wizard or `npx @bc
 **From npm (recommended):**
 
 ```sh
-npx @bcmyguest/openmem
+npx @bcmyguest/openmem setup
 ```
 
 **From a git checkout** (repo directory is the stack root):
@@ -94,7 +94,7 @@ In a checkout, use `npx .` instead of `npx @bcmyguest/openmem`.
 
 | Install | Stack root (compose, `.env`) |
 | --- | --- |
-| `npx @bcmyguest/openmem` | `~/.local/share/personal-memory/stack` (override: `PM_STACK_ROOT`) |
+| `npx @bcmyguest/openmem setup` | `~/.local/share/personal-memory/stack` (override: `PM_STACK_ROOT`) |
 | Git checkout | The clone directory |
 
 Secrets and index config: `~/.config/hindsight/` (and optional `~/.config/personal-memory/config.toml`).

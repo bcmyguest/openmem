@@ -22,7 +22,7 @@ const BIN = "openmem";
 const HELP = `${BIN} ${pkg.version}: set up and run a self-hosted AI memory stack (docker compose).
 
 Usage (prefer npx once published: npx ${BIN} <command>):
-  ${BIN}                       interactive setup (same as: ${BIN} setup)
+  ${BIN}                       print this help
   ${BIN} setup [flags]         interactive setup; flags go to the wizard (--yes, --dry-run, ...)
   ${BIN} configure [flags]     non-interactive setup and start (wizard --yes)
   ${BIN} up [flags]            start the stack with the saved configuration
@@ -43,7 +43,7 @@ Usage (prefer npx once published: npx ${BIN} <command>):
                                create or upgrade the stack root without running the wizard
   ${BIN} --version | --help
 
-Flags starting with "-" after no command are passed to the wizard: ${BIN} --dry-run --yes
+Flags starting with "-" and no subcommand go to the wizard: ${BIN} --dry-run --yes
 Run "${BIN} setup --help" for the wizard flags.
 
 Stack root (where .env, compose files and generated config live):
@@ -203,7 +203,9 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
     env: process.env,
   });
   process.exit(r.status ?? 1);
-} else if (cmd === undefined || cmd === "setup" || cmd.startsWith("-")) {
+} else if (cmd === undefined) {
+  console.log(HELP);
+} else if (cmd === "setup" || cmd.startsWith("-")) {
   const args = cmd === "setup" ? argv.slice(1) : argv;
   // Wizard help does not need a stack root.
   if (args.includes("--help") || args.includes("-h")) {

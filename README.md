@@ -46,7 +46,7 @@
 
 | Step | Command |
 | --- | --- |
-| 1. Wizard | `npx @bcmyguest/openmem` |
+| 1. Wizard | `npx @bcmyguest/openmem setup` |
 | 2. Check | `npx @bcmyguest/openmem doctor` |
 | 3. Coding agents | `npx @bcmyguest/openmem install-coding-agent --yes` |
 

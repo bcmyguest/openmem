@@ -1,6 +1,6 @@
 # Architecture
 
-OpenMem connects coding agents and a shared indexer to one active [memory provider](provider-status.md). Agents use the stable `memory_*` MCP and session hooks; the indexer writes sources to the same provider. This page shows the full runtime paths and optional integrations. Setup (`npx @bcmyguest/openmem`) configures them but is outside the runtime data path. Switching providers does not migrate memories.
+OpenMem connects coding agents and a shared indexer to one active [memory provider](provider-status.md). Agents use the stable `memory_*` MCP and session hooks; the indexer writes sources to the same provider. This page shows the full runtime paths and optional integrations. Setup (`npx @bcmyguest/openmem setup`) configures them but is outside the runtime data path. Switching providers does not migrate memories.
 
 ## Overview
 
@@ -23,7 +23,7 @@ The sections below show every runtime path and optional integration.
 
 ## Runtime data flow
 
-Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx @bcmyguest/openmem`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).
+Two paths share one **active provider API** (Hindsight, mem0, or Cognee — never more than one). Setup (`npx @bcmyguest/openmem setup`) is not on this diagram; see [How openmem interfaces with providers](#how-openmem-interfaces-with-providers).
 
 ```mermaid
 flowchart TB
