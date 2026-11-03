@@ -19,3 +19,6 @@ bench-trash/
 
 # Agent worktrees
 .claude/
+
+# Local-only author rewrite map (never commit)
+.mailmap
