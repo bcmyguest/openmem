@@ -7,7 +7,8 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
-> **WARNING — context management is leaving OpenMem.** Smart compaction, the LiteLLM context proxy, and the OpenCode trim plugin in this repo are **deprecated** here and moving to **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** ([docs](https://bcmyguest.github.io/smarter-compact/), `npm install -g smarter-compact`). Use OpenMem for **memory** (providers, indexer, `memory_*` MCP). Existing OpenMem stacks can still enable the compose `context-proxy` profile; new context work belongs in Smarter Compact.
+> [!CAUTION]
+> **Context management is leaving OpenMem.** Smart compaction, the LiteLLM context proxy, and the OpenCode trim plugin in this repo are **deprecated** here and moving to **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** ([docs](https://bcmyguest.github.io/smarter-compact/), `npm install -g smarter-compact`). Use OpenMem for **memory** (providers, indexer, `memory_*` MCP). Existing OpenMem stacks can still enable the compose `context-proxy` profile; new context work belongs in Smarter Compact.
 
 **OpenMem.** Pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/) (Hindsight, mem0, Cognee) and one setup wizard for coding-agent memory — retain, recall, and index your sources.
 
