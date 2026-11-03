@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { orderedDocs } from '../lib/docs';
-import { site } from '../site.config.mjs';
+import { site } from '../site.config';
 
 export const GET: APIRoute = async () => {
   const docs = await orderedDocs();

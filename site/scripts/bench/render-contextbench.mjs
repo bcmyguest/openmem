@@ -3,11 +3,12 @@
 // benchmark block of docs/context-management.md from src/data/contextbench.json.
 // Every value is read from that file; run compute-contextbench.py first.
 //   node scripts/bench/render-contextbench.mjs
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { site } from '../../src/site.config.mjs';
 import { wallTimeSentence } from '../../src/lib/bench-text.mjs';
+import { exportChartSvgsToPng } from './export-chart-pngs.mjs';
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DATA = join(SITE, 'src', 'data', 'contextbench.json');
@@ -200,6 +201,13 @@ function qualityTakeaway(d) {
   };
   return `Largest sizes. ${part('kv', 'kv-store')} ${part('log', 'log-triage')}`;
 }
+
+/** README / landing: log-triage only (kv-store R4000 is 1.0 in every arm — not informative). */
+function logQualityTakeaway(d) {
+  const h = d.headline.log;
+  const kept = (k, name) => (h[k].score == null ? `no ${name} trial` : `${name} ${sc(h[k].score)}`);
+  return `log-triage ${h.size}: OpenMem ${sc(h.smart.score)}, ${kept('s2', 'native')}, ${kept('s1', 'keep everything')}.`;
+}
 function timeTakeaway(d) {
   const L = big(d, 'log');
   const c = (k) => mins(d.cells[k].log[L]);
@@ -238,6 +246,17 @@ const CHARTS = {
       panels: [
         { fam: 'kv', title: 'kv-store', get: (c) => c.score ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
         { fam: 'log', title: 'log-triage', get: (c) => c.score ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
+      ],
+    }),
+  'contextbench-quality-log': (d, t) =>
+    lineChart(d, t, {
+      title: 'log-triage answer quality',
+      takeaway: logQualityTakeaway(d),
+      desc: 'Mean tag-insensitive score by log size (lookup and count questions in the task). kv-store omitted: all arms score 1.0 at R4000.',
+      panels: [
+        { fam: 'log', title: 'Overall score', get: (c) => c.score ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
+        { fam: 'log', title: 'Lookup questions', get: (c) => c.lookup ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
+        { fam: 'log', title: 'Count questions', get: (c) => c.count ?? null, max: 1, ticks: [0, 0.5, 1], fmt: (v) => v.toFixed(1) },
       ],
     }),
   'contextbench-time': (d, t) =>
@@ -400,9 +419,25 @@ for (const [name, fn] of Object.entries(CHARTS)) {
   writeFileSync(join(OUT, `${name}-dark.svg`), fn(data, THEMES.dark));
   console.log(`charts: ${name}`);
 }
+await exportChartSvgsToPng();
 
-let doc = readFileSync(DOC, 'utf8');
-doc = replaceBlock(doc, 'contextbench', benchmarkMarkdown(data));
-doc = replaceBlock(doc, 'compact-bench', compactBenchMarkdown(data));
-writeFileSync(DOC, doc);
-console.log('docs: docs/context-management.md benchmark blocks');
+if (existsSync(DOC)) {
+  let doc = readFileSync(DOC, 'utf8');
+  let updated = false;
+  for (const [name, body] of [
+    ['contextbench', benchmarkMarkdown(data)],
+    ['compact-bench', compactBenchMarkdown(data)],
+  ]) {
+    const re = new RegExp(`(<!-- ${name}:start[^>]*-->\\n)[\\s\\S]*?(<!-- ${name}:end -->)`);
+    if (re.test(doc)) {
+      doc = doc.replace(re, (_m, a, b) => `${a}${body}\n${b}`);
+      updated = true;
+    } else {
+      console.warn(`docs: skip ${name} block (no markers in ${DOC})`);
+    }
+  }
+  if (updated) {
+    writeFileSync(DOC, doc);
+    console.log('docs: docs/context-management.md benchmark blocks');
+  }
+}

@@ -133,7 +133,7 @@ Design (minimal; cache-safe):
 
 Tests:
 
-- `proxy/tests/test_context_proxy.py` (87 tests; run `cd proxy && python3 -m pytest -q`, pytest from `bench/.venv/bin/pytest` if the host lacks it): trim note contains pins; pins survive a second trim; `replace` semantics; byte-identical note between two requests after one trim with a pin added in between (cache invariant).
+- `proxy/tests/test_context_proxy.py` (87 tests; run `uv run pytest proxy/tests -q` from the repo root): trim note contains pins; pins survive a second trim; `replace` semantics; byte-identical note between two requests after one trim with a pin added in between (cache invariant).
 - `proxy/tests/test_session_db.py`: schema v3 migration from v2 db.
 - `scripts/tests/test_context_store.mjs` + new `scripts/tests/test_context_store_pin.mjs` (`npm test` runs `scripts/tests/test_*.mjs`, `package.json:88`): tool schema, cap, replace, read-only tools untouched.
 - `scripts/tests/test_context_parity.mjs`: JS port renders the same note.

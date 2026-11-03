@@ -2,7 +2,7 @@
 // README and docs/. Provider support is never written by hand: it comes from
 // providers/*/manifest.json through src/generated/providers.json.
 import providersJson from '../generated/providers.json';
-import { site } from '../site.config.mjs';
+import { site } from '../site.config';
 
 export type Status = 'supported' | 'experimental' | 'planned';
 

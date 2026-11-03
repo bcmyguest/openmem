@@ -130,7 +130,7 @@ until you delete them yourself.
 - Linux: the user must be able to run `docker` without sudo. `host.docker.internal`
   is mapped through `extra_hosts` in `compose.yaml`.
 - macOS: use Docker Desktop or Colima with the compose v2 plugin and allow file sharing
-  for your home directory (the indexer bind-mounts `$HOME` read-only). 
+  for your home directory (the indexer bind-mounts `$HOME` read-only).
 - Windows is untested; use WSL2.
 
 ## Troubleshooting

@@ -16,11 +16,13 @@ Rules and gotchas for agents. Behavior and configuration live in `docs/`; read t
 | Feed sync scheduling | [docs/sources-feeds.md](docs/sources-feeds.md) |
 | mem0 through the stack LiteLLM | [docs/mem0.md](docs/mem0.md#models-through-the-stack-litellm-optional) |
 | Export / import | [docs/memory-portability.md](docs/memory-portability.md) |
+| Checkout, tests, prek, CI | [docs/development.md](docs/development.md) |
 
 In docs, “provider” names the selected memory system; `providers/<id>/` holds OpenMem's adapter.
 
 ## Gotchas
 
+- Tests and prek: [docs/development.md](docs/development.md).
 - Installed agents run a copy in `~/.local/share/personal-memory/agent-runtime`, not this checkout. Re-run `install-coding-agent --yes` after changing hook code.
 - The proxy core (`proxy/openmem_context/`) and the OpenCode 2 port (`cli/coding-agent/context-trim.mjs`) mirror each other; shared constants (`STANDING_INSTRUCTION`, `RECALL_*`) must stay identical, and a behavior change lands in both.
 - Trim fingerprints ignore `cache_control` and single-text-block wrapping, because Claude Code changes both on resent messages.

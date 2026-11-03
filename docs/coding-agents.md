@@ -1,5 +1,7 @@
 # Coding agents and MCP
 
+> **Context proxy / smart compaction:** deprecated in OpenMem — use **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** for new installs. Flags below remain for existing OpenMem stacks.
+
 Prerequisite: run the wizard (`npx @bcmyguest/openmem setup`) so a provider stack is up. The MCP server and hooks only forward to that stack. Per-agent support and evidence levels: [Compatibility matrix](compatibility.md).
 
 One entry point for session wiring on **every** provider (unified MCP + in-repo session hooks):

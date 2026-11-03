@@ -7,6 +7,11 @@ import bench from '../../data/contextbench.json';
 
 const T = bench.timing;
 const vs = bench.vs_native;
+
+type LatencyStat = { n: number; median: number; p10: number; p90: number };
+const latencyStat = (primary: LatencyStat | null | undefined, fallback: LatencyStat): LatencyStat =>
+  primary ?? fallback;
+
 const SIZES = [
   ['kv', 'R1000', 'kv-store R1000'],
   ['kv', 'R4000', 'kv-store R4000'],
@@ -15,8 +20,18 @@ const SIZES = [
   ['log', 'L6400', 'log-triage L6400'],
 ].filter(([fam, size]) => vs.cells.includes(`${fam} ${size}`));
 const LANES = [
-  { key: 'smart', label: 'OpenMem', what: 'request that carried a trim, an upper bound', stat: T.smart.smart_trim_request_latency_s },
-  { key: 's2', label: 'Native compaction', what: 'LLM summary call', stat: T.s2.native_summary_request_latency_s },
+  {
+    key: 'smart',
+    label: 'OpenMem',
+    what: 'request that carried a trim, an upper bound',
+    stat: latencyStat(T.smart.smart_trim_request_latency_s, T.smart.smart_other_request_latency_s ?? T.smart.request_latency_s),
+  },
+  {
+    key: 's2',
+    label: 'Native compaction',
+    what: 'LLM summary call',
+    stat: latencyStat(T.s2.native_summary_request_latency_s, T.s2.native_other_request_latency_s ?? T.s2.request_latency_s),
+  },
 ];
 const MS_PER_S = 250;
 const START_MS = 300;

@@ -1,0 +1,71 @@
+# Tool versions for local dev (see docs/development.md). Stack tasks stay on ./pm / openmem.
+min_version = "2024.11.1"
+
+[tools]
+node = "24"
+python = "3.12"
+uv = "0.13.6"
+pnpm = "11.28.9"
+
+[env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+
+[tasks.bootstrap]
+description = "Install Node, Python dev deps, and site pnpm lock"
+run = [
+  "npm ci",
+  "uv sync --locked --group dev",
+  "pnpm --dir site install --frozen-lockfile",
+]
+
+[tasks.test]
+description = "Node scripts/tests + wizard shell tests"
+run = "npm test"
+
+[tasks."test:unit"]
+description = "Faster CLI package subset"
+run = "npm run test:unit"
+
+[tasks."test:python"]
+description = "pytest (indexer + proxy)"
+run = "uv run --locked pytest -q"
+
+[tasks."test:indexer"]
+description = "pytest indexer/tests only"
+run = "uv run pytest indexer/tests -q"
+
+[tasks."test:proxy"]
+description = "pytest proxy/tests only (~5s)"
+run = "uv run pytest proxy/tests -q"
+
+[tasks.lint]
+description = "ESLint on root JavaScript"
+run = "npm run lint"
+
+[tasks."typecheck:site"]
+description = "Docs site: tsc 7.1 + astro check"
+run = "npm run typecheck:site"
+
+[tasks."pack:check"]
+description = "npm pack contents gate"
+run = "npm run pack:check"
+
+[tasks.prek]
+description = "Git hooks (hygiene, eslint, conventional commits)"
+run = "prek run --all-files"
+
+[tasks."setup-prek"]
+description = "Install prek hooks and run once"
+run = "./setup_prek.sh"
+
+[tasks.ci]
+description = "Local parity with GitHub Actions"
+depends = ["bootstrap"]
+run = [
+  "npm test",
+  "npm run pack:check",
+  "uv run --locked pytest -q",
+  "prek run --all-files",
+  "pnpm --dir site test",
+  "pnpm --dir site build",
+]

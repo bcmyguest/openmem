@@ -1,8 +1,10 @@
 # Concepts
 
-OpenMem is memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable memory providers (Hindsight, mem0, Cognee), one setup wizard.
+OpenMem is the memory layer for coding agents: pluggable memory providers (Hindsight, mem0, Cognee) and one setup wizard.
 
-Benchmarks: [smart compaction against Claude Code's native compaction and keep-everything](context-management.md#benchmarks).
+> **Context management (smart compaction) is deprecated in OpenMem** and moving to **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)**. OpenMem still ships a legacy context proxy for existing stacks; see [context management redirect](context-management.md).
+
+ContextBench notes: [smart compaction vs native compaction](context-management.md) (redirect) · [evidence plan](evidence-plan.md).
 
 ## What’s coding-agent memory?
 
@@ -78,7 +80,7 @@ Agents do not call Hindsight or mem0 tool names by default. They call a **stable
 | `memory_pages_list` / `memory_pages_search` / `memory_pages_read` | Curated knowledge pages (Hindsight) |
 | `memory_capture_initiative` | Track an approved feature plan (Hindsight) |
 | `memory_status` | Ingest drain state (Hindsight; mem0 always ready) |
-| `smart_compact_search` / `smart_compact_get` | Recover trimmed session context and compressed tool results (local, every provider) |
+| `smart_compact_search` / `smart_compact_get` | Recover trimmed session context (local; **deprecated in OpenMem** — prefer [Smarter Compact](https://github.com/bcmyguest/smarter-compact)) |
 
 The facade (`cli/mcp/memory-facade.mjs`) maps each call onto the active provider’s HTTP API. Native provider MCP (`install-mcp --provider-only`) remains available when you want vendor tools.
 
@@ -132,4 +134,5 @@ OpenMem is not affiliated with these projects.
 | [Architecture](architecture.md) | Runtime data paths |
 | [Provider status](provider-status.md) | Which backends ship |
 | [Compatibility](compatibility.md) | What each agent and provider supports, with evidence level |
+| [Development](development.md) | Clone, tests, prek, CI |
 | [mem0](mem0.md) · [Hindsight](hindsight.md) · [Cognee](cognee.md) | Provider operator guides |

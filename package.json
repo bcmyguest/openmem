@@ -86,13 +86,24 @@
     "feed-sync": "node cli/feed-sync.mjs",
     "switch-provider": "node cli/switch-memory-provider.mjs",
     "test": "for t in scripts/tests/test_*.mjs; do node \"$t\" || exit 1; done && bash scripts/tests/test_wizard.sh",
-    "test:indexer": "cd indexer && python3 -m pytest -q",
+    "test:python": "uv run pytest -q",
+    "test:indexer": "uv run pytest indexer/tests -q",
+    "test:proxy": "uv run pytest proxy/tests -q",
     "test:unit": "node scripts/tests/test_cli_package.mjs --unit",
-    "pack:check": "node scripts/check-pack.mjs"
+    "pack:check": "node scripts/check-pack.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "npm run typecheck:site",
+    "typecheck:site": "pnpm --dir site run typecheck"
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
     "@iarna/toml": "^2.2.5",
     "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24.19.2",
+    "eslint": "^9.39.5"
   }
 }

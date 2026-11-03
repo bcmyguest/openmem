@@ -7,7 +7,9 @@
 
 [![openmem-mcp](https://glama.ai/mcp/servers/bcmyguest/openmem/badges/card.svg)](https://glama.ai/mcp/servers/bcmyguest/openmem)
 
-**OpenMem.** Memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/) (Hindsight, mem0, Cognee), one setup wizard.
+> **WARNING — context management is leaving OpenMem.** Smart compaction, the LiteLLM context proxy, and the OpenCode trim plugin in this repo are **deprecated** here and moving to **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** ([docs](https://bcmyguest.github.io/smarter-compact/), `npm install -g smarter-compact`). Use OpenMem for **memory** (providers, indexer, `memory_*` MCP). Existing OpenMem stacks can still enable the compose `context-proxy` profile; new context work belongs in Smarter Compact.
+
+**OpenMem.** Pluggable [memory providers](https://bcmyguest.github.io/openmem/docs/provider-status/) (Hindsight, mem0, Cognee) and one setup wizard for coding-agent memory — retain, recall, and index your sources.
 
 **A. Memory**: your sources become memory any agent can query.
 
@@ -18,7 +20,7 @@
 </picture>
 </p>
 
-**B. Context management**: long sessions stay under the limit; nothing is summarized away.
+**B. Context management** *(deprecated in OpenMem — use [Smarter Compact](https://github.com/bcmyguest/smarter-compact) instead)*: long sessions stay under the limit; nothing is summarized away.
 
 <p align="center">
 <picture>
@@ -27,20 +29,20 @@
 </picture>
 </p>
 
-**Benchmarks:** In seed-matched [ContextBench](https://github.com/RulinShao/ContextBench) log tasks on Haiku 5.5, smart compaction scored 0.469 higher than keep-everything (95% bootstrap interval 0.339–0.578; eight pairs). All arms scored 1.0 on kv R4000. Costs fell at R4000, L6400, and L12800; the L1600 saving remains uncertain. Claude Code's default native arm made no compaction in these tasks. [Methods and results](docs/context-management.md#benchmarks) · [paired intervals and pending work](docs/evidence-plan.md#completed-seed-paired-comparisons). Compact-Bench real-coding results are pending.
+**Benchmarks (context — deprecated here):** In seed-matched [ContextBench](https://github.com/RulinShao/ContextBench) log tasks on Haiku 5.5, smart compaction scored 0.469 higher than keep-everything (95% bootstrap interval 0.339–0.578; eight pairs). Methods and charts still live in this repo ([redirect](docs/context-management.md) · [evidence plan](docs/evidence-plan.md#completed-seed-paired-comparisons)); ongoing product docs and install are on [Smarter Compact](https://bcmyguest.github.io/smarter-compact/context-management.html).
 
 <p align="center">
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-compact.png" alt="ContextBench scores: kv R4000 scores 1.00 in all arms; on log tasks, OpenMem scores 1.00 at L1600, 0.88 at L6400 and 1.00 at L12800, above both baselines" width="480" />
+<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/contextbench-quality-log-dark.png" />
+<img src="https://bcmyguest.github.io/openmem/media/contextbench-quality-log.png" alt="ContextBench log-triage on Haiku 5.5: OpenMem scores 1.00 at L12800 overall vs 0.35 for native and keep-everything; lookup and count question panels" width="480" />
 </picture>
 </p>
 
-**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/) 
+**Docs:** [bcmyguest.github.io/openmem/](https://bcmyguest.github.io/openmem/)
 
 **MCP:** `npx -y -p @bcmyguest/openmem openmem-mcp` (after the wizard — it needs a running provider)
 
-**Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Compatibility](https://bcmyguest.github.io/openmem/docs/compatibility/)
+**Start here:** [Concepts](https://bcmyguest.github.io/openmem/docs/concepts/) · [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/) · [Compatibility](https://bcmyguest.github.io/openmem/docs/compatibility/) · [Development](docs/development.md) (clone, tests, prek)
 
 ## Quickstart
 
@@ -50,16 +52,9 @@
 | 2. Check | `npx @bcmyguest/openmem doctor` |
 | 3. Coding agents | `npx @bcmyguest/openmem install-coding-agent --yes` |
 
-**Checkout instead of npx:**
+**From a git clone:** [Development guide](docs/development.md) (`npm install`, `npm run setup`, tests, prek).
 
-```sh
-git clone https://github.com/bcmyguest/openmem.git && cd openmem
-npm install && npm run setup
-```
-
-Other commands from a checkout: `node cli/openmem.mjs <command>`.
-
-**Needs:** Docker Compose v2, Node ≥ 24 (built-in `node:sqlite` with FTS5), and an LLM route if you use Hindsight (lemond, Ollama, OpenAI-compatible, or a Claude subscription through Meridian — set in the wizard).
+**Needs (wizard):** Docker Compose v2, Node ≥ 24, and an LLM route for Hindsight — see [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-started/).
 
 Later: `npx @bcmyguest/openmem up` / `down` / `switch <provider> --yes` / `doctor`.
 
@@ -73,7 +68,7 @@ Full guide: [Quickstart](https://bcmyguest.github.io/openmem/docs/getting-starte
 
 ## Architecture
 
-The two diagrams at the top show memory (A) and context management (B).
+The two diagrams at the top show memory (A) and context management (B; **deprecated in OpenMem**, see [Smarter Compact](https://github.com/bcmyguest/smarter-compact)).
 
 <details>
 <summary>Same diagrams as Mermaid</summary>
@@ -102,13 +97,13 @@ flowchart LR
 
 </details>
 
-Native compaction replaces history with an LLM summary, so exact values can be lost; OpenMem keeps every turn verbatim and searchable. The optional [context proxy](https://bcmyguest.github.io/openmem/docs/context-proxy/) trims long agent sessions without an LLM summary. See the [full architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for setup, optional integrations, and provider-specific behavior.
+Native compaction replaces history with an LLM summary, so exact values can be lost; smart compaction keeps every turn verbatim and searchable. **Context trimming in OpenMem is deprecated** — use [Smarter Compact](https://github.com/bcmyguest/smarter-compact) (`smarter-compact enable`). Legacy stack path: [context proxy redirect](docs/context-proxy.md). See [architecture](https://bcmyguest.github.io/openmem/docs/architecture/) for memory runtime paths and provider-specific behavior.
 
 ## Providers and portability
 
 - **Providers** — [Provider status](https://bcmyguest.github.io/openmem/docs/provider-status/) lists every provider and its support level from the manifests. Contributor details: [adding a provider](https://github.com/bcmyguest/openmem/blob/main/docs/memory-providers.md).
 - **MCP** — unified `memory_*` plus optional native/NotebookLM servers: [MCP setup](https://bcmyguest.github.io/openmem/docs/mcp-setup/).
-- **Context management** — smart compaction on/off, per-agent support, tools and config: [Context management](https://bcmyguest.github.io/openmem/docs/context-management/).
+- **Context management (deprecated in OpenMem)** — moved to [Smarter Compact](https://github.com/bcmyguest/smarter-compact); OpenMem page is a [redirect](https://bcmyguest.github.io/openmem/docs/context-management/).
 - **Portable memory** — `memory_export` / `memory_import` speak **PMM**: [Portable memory](https://bcmyguest.github.io/openmem/docs/memory-portability/).
 - **Switch** — `npx @bcmyguest/openmem switch <provider>` does not migrate data by itself; export/import (or re-index) moves content.
 
@@ -137,10 +132,26 @@ More setup analogues: [Pluggable memory providers](https://github.com/bcmyguest/
 
 > Formerly **personal-memory**. Use the `openmem` CLI and MCP server name; installers drop the old `personal-memory` MCP entry.
 
+## References
+
+Papers and preprints cited in our context-management work ([full list](docs/references.md)):
+
+| Reference | Link |
+| --- | --- |
+| MemGPT (Packer et al., 2023) | [arXiv:2310.08560](https://arxiv.org/abs/2310.08560) |
+| LoCoMo (An et al., 2024) | [arXiv:2402.17753](https://arxiv.org/abs/2402.17753) |
+| LongMemEval (Wu et al., 2024) | [arXiv:2410.10813](https://arxiv.org/abs/2410.10813) |
+| MemoryAgentBench (2025) | [arXiv:2507.05257](https://arxiv.org/abs/2507.05257) |
+| The Complexity Trap (Lindenbauer et al., 2025) | [arXiv:2508.21433](https://arxiv.org/abs/2508.21433) |
+| Context Language Models / ContextBench (Shao et al., 2025) | [arXiv:2609.37725](https://arxiv.org/abs/2609.37725) |
+| Compact-Bench (2026) | [arXiv:2610.31710](https://arxiv.org/abs/2610.31710) |
+
+Reports and blogs (Context Rot, Letta LoCoMo, Anthropic context engineering): [references.md](docs/references.md#related-reports-and-benchmarks-not-arxiv).
+
 ## License
 
 [Apache License 2.0](LICENSE) — see `LICENSE` (Copyright 2026 B Guest).
 
 ## Contributing
 
-Contributions are welcome. Read and understand the code you change before opening a PR. See the [contribution guide](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [development guide](docs/development.md) for tests and CI.

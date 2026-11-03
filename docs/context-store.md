@@ -1,5 +1,7 @@
 # Context store contract
 
+> **WARNING — Deprecated in OpenMem.** Session trim storage and `smart_compact_*` behavior for **new** setups live in **[Smarter Compact](https://bcmyguest.github.io/smarter-compact/context-store.html)**. The contract below still applies to the context proxy and plugins **in this repo** until they are removed.
+
 The context proxy, OpenMem's OpenCode 2 plugin (which trims natively instead of using the proxy), the session hooks, and the `smart_compact_*` MCP tools exchange state through local files. Below, "proxy" means whichever of the two trims a session. This page is the contract between them; change it before changing any side.
 
 ## Location

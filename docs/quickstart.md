@@ -21,16 +21,7 @@ Default stack is [Hindsight](hindsight.md). Other providers: wizard or `npx @bcm
 npx @bcmyguest/openmem setup
 ```
 
-**From a git checkout** (repo directory is the stack root):
-
-```sh
-git clone https://github.com/bcmyguest/openmem.git
-cd openmem
-npm install
-npm run setup
-```
-
-Run other commands from the checkout with `node cli/openmem.mjs <command>`.
+**From a git checkout** (repo directory is the stack root): clone, `npm install`, and `npm run setup` — see [Development](development.md). Use `node cli/openmem.mjs <command>` or `npm run openmem -- <command>` for other CLI verbs.
 
 The wizard asks for a memory provider, provider settings, what to index, then starts Docker and runs a smoke test.
 

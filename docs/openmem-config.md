@@ -11,8 +11,8 @@ declarative config is intentionally similar to **[mise](https://mise.jdx.dev/)**
 | `[tasks]` | `npx @bcmyguest/openmem up` / `down` / `doctor` / `install-mcp` / `switch` |
 | `mise install` applies config | `npx @bcmyguest/openmem configure --yes` applies config |
 
-We **do not** replace mise (or mem0/Hindsight native config). You can use both: mise installs
-Node/Docker; this file describes **how agent memory runs on this machine**.
+We **do not** replace mise (or mem0/Hindsight native config). You can use both: the checkout’s
+[`.mise.toml`](../.mise.toml) pins Node/Python/uv for **development**; this file describes **how agent memory runs on this machine**.
 
 ## Files
 

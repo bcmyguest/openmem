@@ -1,4 +1,4 @@
-import { site } from '../site.config.mjs';
+import { site } from '../site.config';
 
 /** Prefix an internal path with the configured base path (GitHub Pages sub-paths). */
 export function withBase(path: string): string {

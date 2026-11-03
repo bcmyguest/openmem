@@ -38,42 +38,63 @@ const PHASES = [
   { text: '3 · A pointer to the store marks the gap', from: 55, to: 65 },
   { text: '4 · The agent searches the store for one detail', from: 65, to: 95 },
 ];
-const appearAt = (i) => 2 + (i - 2) * 3.2; // % of the loop; rows 0 and 1 are always there
+const appearAt = (i: number) => 2 + (i - 2) * 3.2; // % of the loop; rows 0 and 1 are always there
 
-function layout(v) {
+function layout(v: 'w' | 'n') {
   const wide = v === 'w';
-  const g = wide
-    ? { W: 720, CTX_X: 24, CARD_W: 220, LOG_X: 476 }
-    : { W: 360, CTX_X: 14, CARD_W: 292, LOG_X: 14 };
-  g.rowY = (i) => TOP + i * STEP;
-  g.LOG_HEAD = wide ? 28 : g.rowY(9) + CARD_H + 30;
-  g.LOG_TOP = wide ? g.rowY(2) : g.LOG_HEAD + 30;
-  g.slotY = (k) => g.LOG_TOP + k * STEP;
-  g.CALL_Y = g.slotY(3) + 18;
-  g.CAP_Y = (wide ? g.rowY(9) + CARD_H : g.CALL_Y) + 28;
-  g.H = g.CAP_Y + 16;
-  g.limitX = g.CTX_X + g.CARD_W * LIMIT;
-  g.targetX = g.CTX_X + g.CARD_W * LIMIT * TRIM_TO;
-  const from = g.slotY(1);
-  const to = g.rowY(8);
-  g.chip = { x: g.LOG_X, y: from, cx: g.CTX_X - g.LOG_X, cy: to - from };
-  g.fetch = wide
-    ? `M ${g.LOG_X - 12} ${from + 10} C 400 ${from + 10}, 400 ${to + 10}, ${g.CTX_X + CHIP_W + 8} ${to + 10}`
-    : `M ${g.CTX_X + CHIP_W + 8} ${from + 10} C ${g.W - 18} ${from + 10}, ${g.W - 18} ${to + 10}, ${g.CTX_X + CHIP_W + 8} ${to + 10}`;
-  g.braceX = g.CTX_X + g.CARD_W + 8;
-  // older turns and the oldest in-turn step move out: arrows toward the store
-  const tip = (x, y, dir) => (dir === 'r' ? `M ${x - 10} ${y - 6} l 10 6 l -10 6 z` : `M ${x - 6} ${y - 10} l 6 10 l 6 -10 z`);
-  g.moves = wide
-    ? [g.rowY(2) + 23, g.rowY(6) + 10].map((y) => ({ d: `M ${g.braceX + 6} ${y} H ${g.LOG_X - 22}`, tip: tip(g.LOG_X - 14, y, 'r') }))
-    : [{ d: `M ${g.braceX + 12} ${g.rowY(2) + 10} V ${g.LOG_TOP - 18}`, tip: tip(g.braceX + 12, g.LOG_TOP - 8, 'd') }];
-  g.dx = (r) => (r.slot != null ? g.LOG_X - g.CTX_X : 0);
-  g.dy = (r, i) => (r.slot != null ? g.slotY(r.slot) : g.rowY(r.to)) - g.rowY(i);
-  return g;
+  const W = wide ? 720 : 360;
+  const CTX_X = wide ? 24 : 14;
+  const CARD_W = wide ? 220 : 292;
+  const LOG_X = wide ? 476 : 14;
+  const rowY = (i: number) => TOP + i * STEP;
+  const LOG_HEAD = wide ? 28 : rowY(9) + CARD_H + 30;
+  const LOG_TOP = wide ? rowY(2) : LOG_HEAD + 30;
+  const slotY = (k: number) => LOG_TOP + k * STEP;
+  const CALL_Y = slotY(3) + 18;
+  const CAP_Y = (wide ? rowY(9) + CARD_H : CALL_Y) + 28;
+  const H = CAP_Y + 16;
+  const limitX = CTX_X + CARD_W * LIMIT;
+  const targetX = CTX_X + CARD_W * LIMIT * TRIM_TO;
+  const from = slotY(1);
+  const to = rowY(8);
+  const chip = { x: LOG_X, y: from, cx: CTX_X - LOG_X, cy: to - from };
+  const fetch = wide
+    ? `M ${LOG_X - 12} ${from + 10} C 400 ${from + 10}, 400 ${to + 10}, ${CTX_X + CHIP_W + 8} ${to + 10}`
+    : `M ${CTX_X + CHIP_W + 8} ${from + 10} C ${W - 18} ${from + 10}, ${W - 18} ${to + 10}, ${CTX_X + CHIP_W + 8} ${to + 10}`;
+  const braceX = CTX_X + CARD_W + 8;
+  const tip = (x: number, y: number, dir: 'r' | 'd') =>
+    dir === 'r' ? `M ${x - 10} ${y - 6} l 10 6 l -10 6 z` : `M ${x - 6} ${y - 10} l 6 10 l 6 -10 z`;
+  const moves = wide
+    ? [rowY(2) + 23, rowY(6) + 10].map((y) => ({ d: `M ${braceX + 6} ${y} H ${LOG_X - 22}`, tip: tip(LOG_X - 14, y, 'r') }))
+    : [{ d: `M ${braceX + 12} ${rowY(2) + 10} V ${LOG_TOP - 18}`, tip: tip(braceX + 12, LOG_TOP - 8, 'd') }];
+  const dx = (r: (typeof ROWS)[number]) => (r.slot != null ? LOG_X - CTX_X : 0);
+  const dy = (r: (typeof ROWS)[number], i: number) => (r.slot != null ? slotY(r.slot) : rowY(r.to!)) - rowY(i);
+  return {
+    W,
+    CTX_X,
+    CARD_W,
+    LOG_X,
+    rowY,
+    LOG_HEAD,
+    LOG_TOP,
+    slotY,
+    CALL_Y,
+    CAP_Y,
+    H,
+    limitX,
+    targetX,
+    chip,
+    fetch,
+    braceX,
+    moves,
+    dx,
+    dy,
+  };
 }
 
 // Per-row keyframes: fade in while the context fills, then move to the store or rise into the gap.
 // Every moving piece fades out over 95-100% so the loop restarts without a jump.
-function rowCss(v) {
+function rowCss(v: 'w' | 'n') {
   const g = layout(v);
   return ROWS.map((r, i) => {
     if (i < 2) return '';
@@ -105,7 +126,7 @@ const phaseCss = PHASES.map((p, i) => `.sc-p${i} { animation: sc-p${i} ${LOOP}s 
 }`).join('\n');
 
 const css = `${rowCss('w')}\n${rowCss('n')}\n${phaseCss}`;
-const views = ['w', 'n'].map((v) => ({ v, g: layout(v) }));
+const views = (['w', 'n'] as const).map((v) => ({ v, g: layout(v) }));
 ---
 <figure class="sc not-prose" aria-labelledby="sc-caption">
   {views.map(({ v, g }) => (

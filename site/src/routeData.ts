@@ -1,5 +1,7 @@
-import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
-import { site } from './site.config.mjs';
+import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data';
+import { site } from './site.config';
+
+type HeadTag = StarlightRouteData['head'][number];
 
 // Docs head tweaks: brand the social title, and keep the 404 page out of indexes.
 export const onRequest = defineRouteMiddleware((context) => {
@@ -12,7 +14,10 @@ export const onRequest = defineRouteMiddleware((context) => {
   }
   if (route.id === '404' || context.url.pathname.endsWith('/404/') || context.url.pathname.endsWith('/404')) {
     // The 404 page has no canonical URL of its own; a canonical would point at a path that 404s.
-    route.head = route.head.filter((t) => !(t.tag === 'link' && t.attrs?.rel === 'canonical') && !(t.tag === 'meta' && t.attrs?.property === 'og:url'));
+    route.head = route.head.filter(
+      (t: HeadTag) =>
+        !(t.tag === 'link' && t.attrs?.rel === 'canonical') && !(t.tag === 'meta' && t.attrs?.property === 'og:url'),
+    );
     route.head.push({ tag: 'meta', attrs: { name: 'robots', content: 'noindex' } });
   }
 });

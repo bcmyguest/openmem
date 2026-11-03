@@ -16,7 +16,6 @@ import index_config
 import sinks
 from sinks.hindsight import DEFAULT_URL, HttpError  # noqa: F401  (HttpError stays importable from here)
 
-
 SKIP_NAMES = {"auth.json", "credentials.json", "id_rsa", "id_ed25519"}
 VAULT_SKIP_DIRS = {".obsidian", ".trash"}
 DOC_SUFFIXES = {".md", ".mdx"}
@@ -57,7 +56,12 @@ def scan_root(root: Path, depth: int, skip_dirs: frozenset[str], want_vaults: bo
 
 
 def is_git_repo(path: Path) -> bool:
-    return subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"], cwd=path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode
+        == 0
+    )
 
 
 def discover(config: index_config.Config) -> tuple[list[Path], list[Path], list[tuple[str, Path]]]:
@@ -105,7 +109,9 @@ def tracked_files(repo: Path, config: index_config.Config | None = None) -> list
         rel = Path(os.fsdecode(item))
         if any(part in config.skip_dirs for part in rel.parts) or rel.name in SKIP_NAMES:
             continue
-        if rel.name.startswith(".env") or any(word in rel.name.lower() for word in ("secret", "credential", "private_key")):
+        if rel.name.startswith(".env") or any(
+            word in rel.name.lower() for word in ("secret", "credential", "private_key")
+        ):
             continue
         path = repo / rel
         if path.is_file() and not path.is_symlink() and path.stat().st_size <= config.max_file_bytes:
@@ -152,7 +158,13 @@ def source_documents(repo: Path, config: index_config.Config | None = None) -> d
     """Return the repository's prose chunks and tree-sitter code outlines, keyed by stable document ID."""
     documents = {}
     for rel in tracked_files(repo, config):
-        kind = "doc" if rel.suffix.lower() in DOC_SUFFIXES else "code" if code_outline.language_for(rel.as_posix()) else None
+        kind = (
+            "doc"
+            if rel.suffix.lower() in DOC_SUFFIXES
+            else "code"
+            if code_outline.language_for(rel.as_posix())
+            else None
+        )
         if kind is None:
             continue
         if kind == "code":
@@ -357,7 +369,17 @@ def set_pending_flush(state: dict, state_path: Path, banks: set[str]) -> None:
     save_state(state_path, state)
 
 
-def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None) -> tuple[int, int]:
+def sync(
+    source: Path,
+    bank: str,
+    documents: dict[str, dict],
+    sink: sinks.Sink,
+    state: dict,
+    state_path: Path,
+    apply: bool,
+    limit: int | None,
+    kind: str | None,
+) -> tuple[int, int]:
     if kind:
         documents = {key: value for key, value in documents.items() if value["kind"] == kind}
     old = state.get(str(source), {})
@@ -378,7 +400,14 @@ def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, 
             set_pending_flush(state, state_path, pending_flush_banks(state) | {bank})
             flush_due = True
         for doc_id, value in changed.items():
-            sink.retain(bank, doc_id, value["content"], tags=value.get("tags"), metadata=value["metadata"], context=value["context"])
+            sink.retain(
+                bank,
+                doc_id,
+                value["content"],
+                tags=value.get("tags"),
+                metadata=value["metadata"],
+                context=value["context"],
+            )
             old[doc_id] = value["digest"]
             kinds[doc_id] = value["kind"]
             state[str(source)] = old
@@ -399,16 +428,56 @@ def sync(source: Path, bank: str, documents: dict[str, dict], sink: sinks.Sink, 
     return len(changed), len(stale)
 
 
-def sync_repo(repo: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, kind: str | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(repo, bank_id(repo, config), source_documents(repo, config), sink, state, state_path, apply, limit, kind)
+def sync_repo(
+    repo: Path,
+    sink: sinks.Sink,
+    state: dict,
+    state_path: Path,
+    apply: bool,
+    limit: int | None,
+    kind: str | None,
+    config: index_config.Config | None = None,
+) -> tuple[int, int]:
+    return sync(
+        repo, bank_id(repo, config), source_documents(repo, config), sink, state, state_path, apply, limit, kind
+    )
 
 
-def sync_vault(vault: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(vault, vault_bank(vault, config), vault_documents(vault, config), sink, state, state_path, apply, limit, None)
+def sync_vault(
+    vault: Path,
+    sink: sinks.Sink,
+    state: dict,
+    state_path: Path,
+    apply: bool,
+    limit: int | None,
+    config: index_config.Config | None = None,
+) -> tuple[int, int]:
+    return sync(
+        vault, vault_bank(vault, config), vault_documents(vault, config), sink, state, state_path, apply, limit, None
+    )
 
 
-def sync_markdown(kind: str, root: Path, sink: sinks.Sink, state: dict, state_path: Path, apply: bool, limit: int | None, config: index_config.Config | None = None) -> tuple[int, int]:
-    return sync(root, markdown_bank(kind, root, config), vault_documents(root, config, kind=kind), sink, state, state_path, apply, limit, None)
+def sync_markdown(
+    kind: str,
+    root: Path,
+    sink: sinks.Sink,
+    state: dict,
+    state_path: Path,
+    apply: bool,
+    limit: int | None,
+    config: index_config.Config | None = None,
+) -> tuple[int, int]:
+    return sync(
+        root,
+        markdown_bank(kind, root, config),
+        vault_documents(root, config, kind=kind),
+        sink,
+        state,
+        state_path,
+        apply,
+        limit,
+        None,
+    )
 
 
 def load_opt_in_paths(config: Path) -> list[Path] | None:
@@ -455,18 +524,34 @@ def resolve_url(sink_name: str, explicit: str | None) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, help="index.yml to use (default: $HINDSIGHT_INDEX_CONFIG, ~/.config/hindsight/index.yml, then config/index.yml)")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="index.yml to use (default: $HINDSIGHT_INDEX_CONFIG, ~/.config/hindsight/index.yml, then config/index.yml)",
+    )
     parser.add_argument("--repo", type=Path, action="append", help="index only these repositories (repeatable)")
     parser.add_argument("--vault", type=Path, action="append", help="index an Obsidian vault (repeatable)")
     parser.add_argument("--notes", type=Path, action="append", help="index a markdown notes folder (repeatable)")
-    parser.add_argument("--papers", type=Path, action="append", help="index a papers library folder (markdown exports; repeatable)")
+    parser.add_argument(
+        "--papers", type=Path, action="append", help="index a papers library folder (markdown exports; repeatable)"
+    )
     parser.add_argument("--bookmarks", type=Path, action="append", help="index a bookmarks export folder (repeatable)")
     parser.add_argument("--feed", type=Path, action="append", help="index feed-sync markdown cache (repeatable)")
-    parser.add_argument("--sink", default=os.environ.get("MEMORY_SINK") or sinks.DEFAULT_SINK, help="memory provider to write to (default: $MEMORY_SINK, then %(default)s); registered: " + ", ".join(sinks.registered_sinks()))
-    parser.add_argument("--url", help="provider API base URL (default: $HINDSIGHT_URL for the hindsight sink, $MEMORY_API_URL for other sinks, then the sink's own default)")
+    parser.add_argument(
+        "--sink",
+        default=os.environ.get("MEMORY_SINK") or sinks.DEFAULT_SINK,
+        help="memory provider to write to (default: $MEMORY_SINK, then %(default)s); registered: "
+        + ", ".join(sinks.registered_sinks()),
+    )
+    parser.add_argument(
+        "--url",
+        help="provider API base URL (default: $HINDSIGHT_URL for the hindsight sink, $MEMORY_API_URL for other sinks, then the sink's own default)",
+    )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--limit", type=int, help="at most N changed documents per source; disables deletion")
-    parser.add_argument("--kind", choices=("doc", "code"), help="index only documentation or code in repositories; disables deletion")
+    parser.add_argument(
+        "--kind", choices=("doc", "code"), help="index only documentation or code in repositories; disables deletion"
+    )
     parser.add_argument("--apply", action="store_true", help="write to the memory provider")
     parser.add_argument("--list", action="store_true", help="print the selected sources as 'kind<TAB>path' and exit")
     args = parser.parse_args()

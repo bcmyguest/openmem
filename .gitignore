@@ -4,6 +4,7 @@ config/machine.env
 node_modules/
 wizard/node_modules/
 __pycache__/
+.venv/
 .codegraph/
 compose.override.yaml
 # Host UID/GID for compose, written by scripts/setup.sh.
@@ -12,6 +13,9 @@ compose.override.yaml
 *.tgz
 docs/ROADMAP*.md
 .pytest_cache/
+.ruff_cache/
+
+bench-trash/
 
 # Agent worktrees
 .claude/

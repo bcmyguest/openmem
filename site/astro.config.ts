@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
-import { site as brand } from './src/site.config.mjs';
+import { site as brand } from './src/site.config';
 
 // SITE_URL / BASE_PATH let one build target either host:
 //   GitHub Pages project site (default): SITE_URL=https://bcmyguest.github.io BASE_PATH=/openmem/

@@ -4,7 +4,7 @@ OpenMem connects coding agents and a shared indexer to one active [memory provid
 
 ## Overview
 
-Two paths. **A, memory:** sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. **B, context management:** the context proxy (OpenCode 2: a native plugin) keeps each session under `trim_at_tokens` by moving older turns to a local session store that the agent searches; no model call summarizes them. OpenMem parts are tinted.
+Two paths. **A, memory:** sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. **B, context management (deprecated in OpenMem):** the context proxy (OpenCode 2: a native plugin) keeps each session under `trim_at_tokens` by moving older turns to a local session store that the agent searches; no model call summarizes them. **Path B is moving to [Smarter Compact](https://github.com/bcmyguest/smarter-compact)**; new installs should not rely on OpenMem's context proxy. OpenMem parts are tinted.
 
 <p align="center">
 <picture>

@@ -129,10 +129,10 @@ npx ${site.npm.package} switch mem0 --yes`;
         <div class="mt-8">
           <figure>
             <picture>
-              <source media="(prefers-color-scheme: dark)" srcset={withBase('media/contextbench-quality-compact-dark.png')} />
-              <img src={withBase('media/contextbench-quality-compact.png')} alt="All arms score 1.00 on kv R4000; OpenMem scores above both baselines on each log task" width="960" height="760" loading="lazy" />
+              <source media="(prefers-color-scheme: dark)" srcset={withBase('media/contextbench-quality-log-dark.png')} />
+              <img src={withBase('media/contextbench-quality-log.png')} alt="ContextBench log-triage: OpenMem above native and keep-everything at larger log sizes; overall, lookup, and count panels" width="960" height="1276" loading="lazy" />
             </picture>
-            <figcaption class="mt-2 text-xs text-muted">ContextBench, mean tag-insensitive score by task size.</figcaption>
+            <figcaption class="mt-2 text-xs text-muted">ContextBench log-triage answer quality (kv-store omitted — all arms tie at R4000).</figcaption>
           </figure>
         </div>
       </div>

@@ -1,0 +1,52 @@
+# Git hooks via prek (https://github.com/j178/prek) — same config format as pre-commit.
+# Setup: ./setup_prek.sh
+# Run:   prek run              # staged files
+#        prek run --all-files  # whole repo
+#
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+default_stages:
+  - pre-commit
+
+exclude: ^(bench-trash/|bench/results|node_modules/|wizard/node_modules/|site/node_modules/|site/dist/|\.venv/|\.pytest_cache/)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  # prepare-release.yml bumps semver from Conventional Commits since the last tag.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: 33b50eb042bee26eac0ee96ad84aa9c1b4dccdd8 # frozen: v4.5.0-pre2
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+  # Repo toolchain (not pinned SHAs — runs the checkout's npm/pnpm scripts).
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npm run lint
+        language: system
+        pass_filenames: false
+        files: \.(mjs|cjs|js)$
+        exclude: ^site/
+      - id: typecheck-site
+        name: site typecheck (tsc 7.1 + astro check)
+        entry: npm run typecheck:site
+        language: system
+        pass_filenames: false
+        files: ^site/

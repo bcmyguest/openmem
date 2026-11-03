@@ -66,13 +66,22 @@ export const PAGES = [
     description: 'What each coding agent, memory provider, and Hindsight model backend supports, with evidence level.',
   },
   {
+    slug: 'development',
+    kind: 'doc',
+    source: 'docs/development.md',
+    group: 'Reference',
+    title: 'Development',
+    description: 'Git checkout, prek hooks, npm and Python (uv/pytest) tests, docs site build, and CI parity.',
+  },
+  {
     slug: 'context-management',
     kind: 'doc',
     source: 'docs/context-management.md',
     group: 'Features',
     optional: true,
     title: 'Context management',
-    description: 'Smart compaction: benchmarks, what it trims, how to turn it on or off, per-agent support, tools, and config keys.',
+    description:
+      'Deprecated in OpenMem — moved to Smarter Compact. Redirect to standalone smart compaction install and docs.',
   },
   {
     slug: 'provider-status',
@@ -140,7 +149,7 @@ export const PAGES = [
     group: 'Reference',
     optional: true,
     title: 'Context proxy',
-    description: 'Local LiteLLM proxy that trims long agent sessions, compresses tool results, and injects recall.',
+    description: 'Deprecated in OpenMem — moved to Smarter Compact. Legacy compose profile redirect.',
   },
   {
     slug: 'context-research',
@@ -150,6 +159,15 @@ export const PAGES = [
     optional: true,
     title: 'Context research',
     description: 'Related work (MemGPT, Letta, Mainplane, Context Rot) and benchmark evidence behind the context proxy.',
+  },
+  {
+    slug: 'references',
+    kind: 'doc',
+    source: 'docs/references.md',
+    group: 'Reference',
+    optional: true,
+    title: 'References',
+    description: 'Papers and reports cited in context research and the evidence plan.',
   },
   {
     slug: 'index-sources',
