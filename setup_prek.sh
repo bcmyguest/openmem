@@ -36,7 +36,7 @@ echo "📦 Python dev deps (pytest, …)..."
 uv sync --group dev
 
 echo ""
-echo "🔧 Installing git hooks (pre-commit, commit-msg)..."
+echo "🔧 Installing git hooks (pre-commit hygiene + commit-msg Conventional Commits)..."
 prek install --prepare-hooks --hook-type pre-commit --hook-type commit-msg -f
 
 echo ""
