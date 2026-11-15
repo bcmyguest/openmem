@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * install-coding-agent: exclusive hook sets ([agents] integration), legacy /smart-compact cleanup,
- * rtk wiring via a fake rtk on PATH, and the context proxy opt-in. Disposable HOME only.
+ * rtk wiring via a fake rtk on PATH, and model routing left to other tools. Disposable HOME only.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -202,43 +202,29 @@ if (args.includes("--auto-patch")) {
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// Context proxy opt-in.
+// Model routing belongs to other tools (smarter-compact): install leaves it as found.
 {
   const home = seedHome();
-  const cfgFile = path.join(home, ".config/personal-memory/config.toml");
-  const keyFile = path.join(home, ".config/personal-memory/context-proxy.env");
-  const logs = [];
-  await install(home, { contextProxy: true }, { h: { info: (m) => logs.push(m), ok() {}, warn() {} } });
-  const key = read(keyFile).match(/^LITELLM_MASTER_KEY=([0-9a-f]{64})$/m)?.[1];
-  check("context-proxy.env has a 32-byte hex key", Boolean(key));
-  check("context-proxy.env mode 600", (fs.statSync(keyFile).mode & 0o777) === 0o600);
-  let env = json(path.join(home, ".claude/settings.json")).env;
-  check("Claude base URL defaults to port 4100", env.ANTHROPIC_BASE_URL === "http://127.0.0.1:4100");
-  check("Claude custom header carries the key", env.ANTHROPIC_CUSTOM_HEADERS === `x-litellm-api-key: Bearer ${key}`);
-  check("Claude env keeps unrelated keys", env.KEEP_ME === "1");
-  const oc = read(path.join(home, ".config/opencode/opencode.jsonc"));
-  check("OpenCode anthropic provider points at the proxy", oc.includes('"baseURL": "http://127.0.0.1:4100/v1"') && oc.includes(`"x-litellm-api-key": "Bearer ${key}"`) && oc.includes("// keep this comment"));
-  check("proxy choice persisted", TOML.parse(read(cfgFile)).context_proxy?.enabled === true);
-  check("summary says the proxy must run", logs.some((m) => /start the proxy/.test(m)));
+  const claudeFile = path.join(home, ".claude/settings.json");
+  const claude = json(claudeFile);
+  claude.env = { ...claude.env, ANTHROPIC_BASE_URL: "http://127.0.0.1:4101", ANTHROPIC_CUSTOM_HEADERS: "x-litellm-api-key: Bearer theirs" };
+  fs.writeFileSync(claudeFile, `${JSON.stringify(claude, null, 2)}\n`);
+  const ocFile = path.join(home, ".config/opencode/opencode.jsonc");
+  const oc = parseOpencode(read(ocFile));
+  oc.provider = { anthropic: { options: { baseURL: "http://127.0.0.1:4101/v1", headers: { "x-litellm-api-key": "Bearer theirs" } } } };
+  fs.writeFileSync(ocFile, `${JSON.stringify(oc, null, 2)}\n`);
+  const codexFile = path.join(home, ".codex/config.toml");
+  fs.writeFileSync(codexFile, `model_provider = "smarter-compact"\n\n[model_providers.smarter-compact]\nbase_url = "http://127.0.0.1:4101/v1"\n${fs.existsSync(codexFile) ? read(codexFile) : ""}`);
 
-  fs.writeFileSync(cfgFile, read(cfgFile).replace(/enabled = true/, "enabled = true\nport = 4200"));
   await install(home, {});
-  env = json(path.join(home, ".claude/settings.json")).env;
-  check("persisted port and key reused on reinstall", env.ANTHROPIC_BASE_URL === "http://127.0.0.1:4200" && env.ANTHROPIC_CUSTOM_HEADERS.endsWith(key));
-  const codexCfg = TOML.parse(read(path.join(home, ".codex/config.toml")));
-  check("codex points at the proxy's Codex route", codexCfg.model_provider === "openmem"
-    && codexCfg.model_providers?.openmem?.base_url === "http://127.0.0.1:4200/backend-api/codex"
-    && codexCfg.mcp_servers?.openmem !== undefined);
-
-  await install(home, { contextProxy: false });
-  const claude = json(path.join(home, ".claude/settings.json"));
-  check("disable removes exactly the two Claude keys", !("ANTHROPIC_BASE_URL" in claude.env) && !("ANTHROPIC_CUSTOM_HEADERS" in claude.env) && claude.env.KEEP_ME === "1");
-  const ocAfter = parseOpencode(read(path.join(home, ".config/opencode/opencode.jsonc")));
-  check("disable removes the OpenCode proxy options", !ocAfter.provider?.anthropic && ocAfter.theme === "dark");
-  const codexAfter = TOML.parse(read(path.join(home, ".codex/config.toml")));
-  check("disable removes the Codex proxy provider", codexAfter.model_provider === undefined && !codexAfter.model_providers?.openmem && codexAfter.mcp_servers?.openmem !== undefined);
-  check("disable persisted", TOML.parse(read(cfgFile)).context_proxy?.enabled === false && TOML.parse(read(cfgFile)).context_proxy?.port === 4200);
-  check("key file kept after disable", read(keyFile).includes(key));
+  const env = json(claudeFile).env;
+  check("Claude base URL and headers kept", env.ANTHROPIC_BASE_URL === "http://127.0.0.1:4101" && env.ANTHROPIC_CUSTOM_HEADERS === "x-litellm-api-key: Bearer theirs" && env.KEEP_ME === "1");
+  const ocAfter = parseOpencode(read(ocFile));
+  check("OpenCode anthropic provider kept", JSON.stringify(ocAfter.provider) === JSON.stringify(oc.provider));
+  const codexCfg = TOML.parse(read(codexFile));
+  check("Codex model provider kept", codexCfg.model_provider === "smarter-compact"
+    && codexCfg.model_providers?.["smarter-compact"]?.base_url === "http://127.0.0.1:4101/v1" && codexCfg.mcp_servers?.openmem !== undefined);
+  check("no proxy key file written", !fs.existsSync(path.join(home, ".config/personal-memory/context-proxy.env")));
   fs.rmSync(home, { recursive: true, force: true });
 }
 

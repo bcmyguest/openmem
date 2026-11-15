@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-/** Installer-owned config.toml tables: [agents] and [context_proxy]. */
+/** Installer-owned config.toml tables. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import TOML from "@iarna/toml";
 import {
   agentIntegrationFromPmConfig,
-  contextProxyFromPmConfig,
   syncPmConfig,
   updatePmConfigTable,
   userConfigPath,
@@ -24,8 +23,6 @@ function check(desc, ok) {
 check("integration defaults to openmem", agentIntegrationFromPmConfig({}) === "openmem");
 check("integration reads provider", agentIntegrationFromPmConfig({ agents: { integration: "provider" } }) === "provider");
 check("unknown integration falls back to openmem", agentIntegrationFromPmConfig({ agents: { integration: "other" } }) === "openmem");
-check("context proxy defaults", JSON.stringify(contextProxyFromPmConfig({})) === JSON.stringify({ enabled: false, port: 4100 }));
-check("context proxy reads table", JSON.stringify(contextProxyFromPmConfig({ context_proxy: { enabled: true, port: 4200 } })) === JSON.stringify({ enabled: true, port: 4200 }));
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "pm-toml-tables-"));
 const file = userConfigPath(home);

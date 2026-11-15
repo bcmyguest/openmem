@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * install-coding-agent OpenCode wiring by major version: a fake `opencode` on PATH reports the
- * version; v2 gets a `plugins` directory entry and no context proxy, v1 keeps the `plugin` file
- * entry. Disposable HOME only.
+ * version; v2 gets a `plugins` directory entry, v1 keeps the `plugin` file entry. Disposable HOME only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -81,23 +80,17 @@ const runtimePlugin2 = (home) => path.join(home, ".local/share/personal-memory/a
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-// OpenCode 2: `plugins` directory entry, v1 entry removed, no context proxy even when enabled.
+// OpenCode 2: `plugins` directory entry, v1 entry removed.
 {
   const home = seedHome();
   const v2 = fakeOpencode(path.join(home, "bin2"), "echo 2.2.1");
-  const logs = [];
-  await install(home, v2, { contextProxy: true }, logs);
+  await install(home, v2);
   let { text, value } = opencodeConfig(home);
   const dir = runtimePlugin2(home);
   check("v2 entry is the runtime plugin directory", JSON.stringify(value.plugins) === JSON.stringify([dir]), JSON.stringify(value.plugins));
   check("v2 plugin directory has its entry file", fs.existsSync(path.join(dir, "index.js")));
   check("v1 openmem entry removed, others kept", JSON.stringify(value.plugin) === JSON.stringify(["other-plugin"]), JSON.stringify(value.plugin));
   check("comments and unrelated keys kept", text.includes("// keep this comment") && value.theme === "dark");
-  check("OpenCode 2 is not pointed at the proxy", !value.provider?.anthropic?.options?.baseURL && !value.provider?.anthropic?.options?.headers);
-  const claude = JSON.parse(read(path.join(home, ".claude/settings.json")));
-  check("Claude Code still uses the proxy", claude.env?.ANTHROPIC_BASE_URL === "http://127.0.0.1:4100");
-  check("summary names native trimming", logs.some((m) => /opencode: .*native context trimming \(OpenCode 2; context proxy not used\)/.test(m)), logs.join("\n"));
-  check("installer says the proxy is skipped", logs.some((m) => /OpenCode 2 trims natively; not pointed at the context proxy/.test(m)));
 
   const installed = spawnSync(process.execPath, ["--input-type=module", "-e",
     `const m = await import(${JSON.stringify(path.join(dir, "index.js"))}); console.log(m.default.id, typeof m.default.setup);`],
@@ -108,13 +101,12 @@ const runtimePlugin2 = (home) => path.join(home, ".local/share/personal-memory/a
   ({ value } = opencodeConfig(home));
   check("v2 reinstall keeps one entry", value.plugins.length === 1);
 
-  // Back to OpenCode 1: the `plugin` file entry returns, the `plugins` entry goes, the proxy is wired.
+  // Back to OpenCode 1: the `plugin` file entry returns, the `plugins` entry goes.
   const v1 = fakeOpencode(path.join(home, "bin1"), "echo 1.18.32");
   await install(home, v1);
   ({ value } = opencodeConfig(home));
   check("v1 entry restored", value.plugin.length === 2 && value.plugin.includes("other-plugin") && value.plugin.some((p) => p.endsWith("cli/coding-agent/opencode-plugin.mjs")), JSON.stringify(value.plugin));
   check("v2 entry removed on v1", Array.isArray(value.plugins) && value.plugins.length === 0, JSON.stringify(value.plugins));
-  check("OpenCode 1 points at the proxy", value.provider?.anthropic?.options?.baseURL === "http://127.0.0.1:4100/v1");
 
   // Provider plugin mode removes the v2 entry too.
   await install(home, v2);
@@ -133,13 +125,12 @@ const runtimePlugin2 = (home) => path.join(home, ".local/share/personal-memory/a
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// Dry run names the version-specific entry and the proxy decision.
+// Dry run names the version-specific entry.
 {
   const home = seedHome();
   const logs = [];
-  await install(home, fakeOpencode(path.join(home, "bin2"), "echo 2.0.0"), { dry: true, contextProxy: true }, logs);
+  await install(home, fakeOpencode(path.join(home, "bin2"), "echo 2.0.0"), { dry: true }, logs);
   check("dry run names the plugins key", logs.some((m) => /register opencode 2 plugin .*opencode2-plugin.*\("plugins"\)/.test(m)), logs.join("\n"));
-  check("dry run says the proxy is skipped", logs.some((m) => /\[dry-run\] opencode: OpenCode 2 trims natively/.test(m)));
   fs.rmSync(home, { recursive: true, force: true });
 }
 

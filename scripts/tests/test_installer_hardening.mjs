@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
  * Installer hardening: TOML-aware removal of the upstream Codex entry, atomic writes that keep
- * file modes, the context-proxy secret kept mode 600 with backup/restore of foreign settings,
- * the proxy liveness warning, config.toml trim keys reaching the stack .env, rtk skipping
- * OpenCode 2, and the --hindsight-plugin rename exit. Disposable HOMEs only.
+ * file modes, the read-only warning for agents left on the removed context proxy, legacy
+ * config.toml tables surviving a wizard rewrite, rtk skipping OpenCode 2, and the --hindsight-plugin rename exit. Disposable HOMEs only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -13,14 +12,10 @@ import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import { runInstallCodingAgent } from "../../cli/install-coding-agent.mjs";
 import { upsertEnvFile, writeFileAtomic } from "../../cli/coding-agent/file-io.mjs";
-import { contextProxyBackupPath, installContextProxy, probeContextProxy } from "../../cli/coding-agent/install-context-proxy.mjs";
 import { installRtk } from "../../cli/coding-agent/install-rtk.mjs";
 import { removeUpstreamAccess } from "../../cli/coding-agent/remove-upstream-access.mjs";
 import { removeTomlPath, tomlStatements } from "../../cli/coding-agent/toml-edit.mjs";
 import {
-  contextProxyStackEnvFromPmConfig,
-  contextTrimEnvFromPmConfig,
-  contextTrimFromPmConfig,
   syncPmConfig,
   updatePmConfigTable,
   userConfigPath,
@@ -28,8 +23,6 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const UPSTREAM_ARGS = '["/home/u/.hindsight/coding-agents/dist/mcp-server.js"]';
-// The context store must land inside each disposable HOME.
-delete process.env.OPENMEM_STATE_DIR;
 
 let failed = 0;
 function check(name, cond, detail = "") {
@@ -152,114 +145,57 @@ other = { command = "x" }
   fs.rmSync(home, { recursive: true, force: true });
 }
 
-// --- S1: secret file modes, backup and restore ----------------------------------------------------
+// --- S7: agents left on the removed context proxy get a warning; nothing is edited ---------------
 {
-  const home = tmpHome("secret");
-  const settings = writeAt(home, ".claude/settings.json", `${JSON.stringify({
-    env: { ANTHROPIC_BASE_URL: "https://gateway.example", ANTHROPIC_CUSTOM_HEADERS: "x-team: blue", KEEP: "1" },
+  const run = async (home) => {
+    const { h, lines } = logger();
+    const out = await runInstallCodingAgent({
+      home,
+      repoRoot: ROOT,
+      flags: { yes: true, dry: true, help: false, agents: ["claude-code"], unknown: [], rtk: false },
+      env: { PATH: "/usr/bin:/bin", HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:18888" },
+      h,
+      spawn: () => ({ status: 0 }),
+    });
+    return { out, warning: lines.warn.join("\n") };
+  };
+
+  const home = tmpHome("legacy");
+  writeAt(home, ".config/personal-memory/config.toml", "[context_proxy]\nenabled = true\nport = 4300\n");
+  const claude = writeAt(home, ".claude/settings.json", `${JSON.stringify({
+    env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:4300", ANTHROPIC_CUSTOM_HEADERS: "x-litellm-api-key: Bearer k" },
   }, null, 2)}\n`);
-  fs.chmodSync(settings, 0o644);
   const oc = writeAt(home, ".config/opencode/opencode.json", `${JSON.stringify({
-    provider: { anthropic: { options: { baseURL: "https://gw.example/v1", headers: { "x-litellm-api-key": "Bearer theirs", "x-other": "1" } } } },
+    provider: { anthropic: { options: { baseURL: "http://127.0.0.1:4300/v1", headers: { "x-litellm-api-key": "Bearer k" } } } },
   }, null, 2)}\n`);
-  fs.chmodSync(oc, 0o644);
-
-  installContextProxy({ home, agents: ["claude-code", "opencode"], enabled: true, port: 4100 });
-  const env = JSON.parse(read(settings)).env;
-  check("Claude settings with the key are mode 600", mode(settings) === 0o600, mode(settings).toString(8));
-  check("OpenCode config with the key is mode 600", mode(oc) === 0o600, mode(oc).toString(8));
-  check("Claude keeps the user's other header lines", env.ANTHROPIC_CUSTOM_HEADERS.split("\n")[0] === "x-team: blue" && /x-litellm-api-key: Bearer [0-9a-f]{64}$/.test(env.ANTHROPIC_CUSTOM_HEADERS));
-  const backupFile = contextProxyBackupPath(home);
-  const backup = JSON.parse(read(backupFile));
-  check("backup holds the previous values, mode 600",
-    backup.claudeCode.ANTHROPIC_BASE_URL === "https://gateway.example" && backup.opencode.header === "Bearer theirs" && mode(backupFile) === 0o600);
-
-  installContextProxy({ home, agents: ["claude-code", "opencode"], enabled: true, port: 4100 });
-  check("re-enable keeps the original backup", JSON.parse(read(backupFile)).claudeCode.ANTHROPIC_BASE_URL === "https://gateway.example");
-
-  installContextProxy({ home, agents: ["claude-code", "opencode"], enabled: false, port: 4100 });
-  const restored = JSON.parse(read(settings)).env;
-  check("disable restores Claude's previous values",
-    restored.ANTHROPIC_BASE_URL === "https://gateway.example" && restored.ANTHROPIC_CUSTOM_HEADERS === "x-team: blue" && restored.KEEP === "1", JSON.stringify(restored));
-  const ocOptions = JSON.parse(read(oc)).provider.anthropic.options;
-  check("disable restores OpenCode's previous values",
-    ocOptions.baseURL === "https://gw.example/v1" && ocOptions.headers["x-litellm-api-key"] === "Bearer theirs" && ocOptions.headers["x-other"] === "1", JSON.stringify(ocOptions));
-  check("backup removed after restore", !fs.existsSync(backupFile));
-
-  // No prior values: disable removes our keys and leaves no backup.
-  const fresh = tmpHome("fresh");
-  installContextProxy({ home: fresh, agents: ["claude-code"], enabled: true, port: 4100 });
-  check("fresh enable writes no backup", !fs.existsSync(contextProxyBackupPath(fresh)));
-  installContextProxy({ home: fresh, agents: ["claude-code"], enabled: false, port: 4100 });
-  check("fresh disable removes the env block", JSON.parse(read(path.join(fresh, ".claude/settings.json"))).env === undefined);
+  const codex = writeAt(home, ".codex/config.toml", 'model_provider = "openmem"\n\n[model_providers.openmem]\nbase_url = "http://127.0.0.1:4300/v1"\n');
+  const before = [claude, oc, codex].map(read);
+  const { out, warning } = await run(home);
+  check("legacy proxy: dry-run install proceeds past the warning", out.ran === false && out.integration === "openmem");
+  check("legacy proxy: warning names each agent and file",
+    ["claude-code", "opencode", "codex"].every((a) => warning.includes(`${a}: remove`)) && [claude, oc, codex].every((f) => warning.includes(f)), warning);
+  check("legacy proxy: warning points to smarter-compact", warning.includes("smarter-compact"));
+  check("legacy proxy: settings are left untouched", [claude, oc, codex].every((f, i) => read(f) === before[i]));
   fs.rmSync(home, { recursive: true, force: true });
-  fs.rmSync(fresh, { recursive: true, force: true });
+
+  // Another tool's loopback proxy (a different port, no openmem provider) is not ours.
+  const other = tmpHome("other-proxy");
+  writeAt(other, ".claude/settings.json", `${JSON.stringify({
+    env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:8787", ANTHROPIC_CUSTOM_HEADERS: "x-litellm-api-key: Bearer k" },
+  }, null, 2)}\n`);
+  writeAt(other, ".codex/config.toml", 'model_provider = "smarter-compact"\n');
+  check("other loopback proxy: no warning", !(await run(other)).warning.includes("context proxy was removed"));
+  fs.rmSync(other, { recursive: true, force: true });
+
+  // Default port 4100 applies when config.toml has no [context_proxy] port.
+  const dflt = tmpHome("default-port");
+  writeAt(dflt, ".claude/settings.json", `${JSON.stringify({ env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:4100" } }, null, 2)}\n`);
+  check("default port 4100 is detected", (await run(dflt)).warning.includes("claude-code: remove"));
+  fs.rmSync(dflt, { recursive: true, force: true });
 }
 
-// --- S7: liveness probe and warning; P2: stack .env sync ----------------------------------------
+// --- S3: the wizard keeps legacy tables ----------------------------------------------------------
 {
-  check("probe: ok response is up", await probeContextProxy(4100, { fetch: async () => ({ ok: true }) }));
-  check("probe: refused connection is down", !(await probeContextProxy(4100, { fetch: async () => { throw new Error("ECONNREFUSED"); } })));
-
-  const home = tmpHome("probe");
-  const stackRoot = path.join(home, "stack");
-  const envFile = writeAt(home, "stack/.env", "HOST_UID=1000\nHOST_GID=1000\n");
-  writeAt(home, ".config/personal-memory/config.toml", "[context_proxy]\nenabled = true\nport = 4300\ntrim_at_tokens = 90000\n[compaction]\nmax_chars = 8000\nnative = false\n");
-  const { h, lines } = logger();
-  const urls = [];
-  const out = await runInstallCodingAgent({
-    home,
-    repoRoot: ROOT,
-    stackRoot,
-    flags: { yes: true, dry: false, help: false, agents: ["claude-code"], unknown: [], rtk: false },
-    env: { PATH: "/usr/bin:/bin", HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:18888" },
-    h,
-    spawn: () => ({ status: 0 }),
-    fetch: async (url) => { urls.push(url); throw new Error("ECONNREFUSED"); },
-  });
-  check("install still succeeds with the proxy down", out.ran === true && out.status === 0);
-  check("probe hits the configured port", urls[0] === "http://127.0.0.1:4300/health/liveliness", urls.join(","));
-  const warning = lines.warn.join("\n");
-  check("warning names the start command", warning.includes("NOT running") && warning.includes("--profile context-proxy up -d context-proxy") && warning.includes(stackRoot), warning);
-  check("warning says how to disable", warning.includes("--no-context-proxy"));
-  check("summary carries the start command", lines.info.some((m) => /start the proxy.*up -d context-proxy/.test(m)));
-  const stackEnv = read(envFile);
-  check("stack .env gets config trim keys and port",
-    stackEnv.includes("CONTEXT_TRIM_AT_TOKENS=90000\n") && stackEnv.includes("CONTEXT_COMPACTION_MAX_CHARS=8000\n") && stackEnv.includes("CONTEXT_PROXY_PORT=4300\n")
-    && !stackEnv.includes("CONTEXT_COMPRESS_OVER_TOKENS") && stackEnv.startsWith("HOST_UID=1000\n"), stackEnv);
-
-  const upLog = logger();
-  await runInstallCodingAgent({
-    home, repoRoot: ROOT, stackRoot,
-    flags: { yes: true, dry: false, help: false, agents: ["claude-code"], unknown: [], rtk: false },
-    env: { PATH: "/usr/bin:/bin", HOME: home, MEMORY_PROVIDER: "hindsight", HINDSIGHT_URL: "http://127.0.0.1:18888" },
-    h: upLog.h, spawn: () => ({ status: 0 }), fetch: async () => ({ ok: true }),
-  });
-  check("no warning when the proxy answers", !upLog.lines.warn.some((m) => m.includes("NOT running")));
-  fs.rmSync(home, { recursive: true, force: true });
-}
-
-// --- P2 readers and S3 ----------------------------------------------------------------------------
-{
-  const cfg = { context_proxy: { trim_at_tokens: 50000, compress_over_tokens: -1, port: 4200 }, compaction: { max_chars: 900, native: false } };
-  check("trim reader defaults", JSON.stringify(contextTrimFromPmConfig({})) === JSON.stringify({ trimAtTokens: 125000, compressOverTokens: 4000, compactionMaxChars: 12000, compactionNative: true, standingInstruction: true }));
-  const t = contextTrimFromPmConfig(cfg);
-  check("trim reader reads keys; invalid falls back", t.trimAtTokens === 50000 && t.compressOverTokens === 4000 && t.compactionMaxChars === 900 && t.compactionNative === false);
-  check("trim env has only set, valid keys", JSON.stringify(contextTrimEnvFromPmConfig(cfg)) === JSON.stringify({ CONTEXT_TRIM_AT_TOKENS: "50000", CONTEXT_COMPACTION_MAX_CHARS: "900" }));
-  check("stack env adds the port", contextProxyStackEnvFromPmConfig(cfg).CONTEXT_PROXY_PORT === "4200" && contextProxyStackEnvFromPmConfig({}).CONTEXT_PROXY_PORT === undefined);
-  const off = TOML.parse("[context_proxy]\nstanding_instruction = false\n");
-  check("standing_instruction = false reaches the reader and env", contextTrimFromPmConfig(off).standingInstruction === false
-    && contextTrimEnvFromPmConfig(off).CONTEXT_STANDING_INSTRUCTION === "0"
-    && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: true } }).CONTEXT_STANDING_INSTRUCTION === "1"
-    && contextTrimEnvFromPmConfig({ context_proxy: { standing_instruction: "no" } }).CONTEXT_STANDING_INSTRUCTION === undefined
-    && contextProxyStackEnvFromPmConfig(off).CONTEXT_STANDING_INSTRUCTION === "0");
-  const recallOff = TOML.parse("[compaction]\nrecall = false\n");
-  check("[compaction] recall reaches the env", contextTrimEnvFromPmConfig(recallOff).CONTEXT_COMPACTION_RECALL === "0"
-    && contextTrimEnvFromPmConfig({ compaction: { recall: true } }).CONTEXT_COMPACTION_RECALL === "1"
-    && contextTrimEnvFromPmConfig({ compaction: { recall: "no" } }).CONTEXT_COMPACTION_RECALL === undefined
-    && contextProxyStackEnvFromPmConfig(recallOff).CONTEXT_COMPACTION_RECALL === "0");
-  check("TOML integers are read",contextTrimFromPmConfig(TOML.parse("[context_proxy]\ntrim_at_tokens = 7\n")).trimAtTokens === 7);
-
   const home = tmpHome("s3");
   updatePmConfigTable(home, "compaction", { native: false, max_chars: 5000 });
   syncPmConfig({ home, project: "p", action: "configure", memoryProvider: { id: "hindsight" }, dry: false });

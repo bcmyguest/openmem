@@ -160,66 +160,6 @@ services:
         required: false
     restart: unless-stopped
 
-  # Opt-in: docker compose --profile context-proxy up -d context-proxy. LiteLLM in front of Anthropic for coding
-  # agents: compresses large tool results and trims long sessions (docs/context-proxy.md). Separate from the litellm
-  # service and outside the hindsight profile, so Hindsight's own model traffic never passes through it.
-  context-proxy:
-    profiles: ["context-proxy"]
-    # Dev build on purpose: v1.109.0-dev.1 is the only LiteLLM release with PR #41522, the ChatGPT/Codex
-    # subscription pass-through (/backend-api/codex/{endpoint}) that routes Codex here; stable releases
-    # (v1.106.6, v1.108.0-rc.1) lack it. The litellm service above stays on stable. Move to the first stable
-    # release that contains #41522, then rerun proxy/tests/image/run.py.
-    image: ghcr.io/berriai/litellm:v1.109.0-dev.1
-    command: ["--config", "/app/proxy/config.yaml", "--port", "4000"]
-    # LITELLM_MASTER_KEY (and any provider keys for extra routes). Written by install-coding-agent.
-    env_file: ${CONTEXT_PROXY_ENV_FILE:-${HOME}/.config/personal-memory/context-proxy.env}
-    # Host UID/GID from .env, written by scripts/setup.sh; the context store stays host-owned (docs/context-store.md).
-    user: "${HOST_UID:?run scripts/setup.sh}:${HOST_GID:?run scripts/setup.sh}"
-    ports:
-      - "127.0.0.1:${CONTEXT_PROXY_PORT:-4100}:4000"
-    environment:
-      HOME: /tmp
-      PYTHONDONTWRITEBYTECODE: "1"
-      OPENMEM_STATE_DIR: /state
-      HINDSIGHT_URL: ${CONTEXT_PROXY_HINDSIGHT_URL:-http://hindsight:8888}
-      CONTEXT_PROXY_ENABLED: ${CONTEXT_PROXY_ENABLED:-1}
-      # From config.toml [context_proxy] trim_at_tokens / trim_to_fraction / compress_over_tokens / standing_instruction / chars_per_token, [compaction] max_chars / recall
-      # and [context_store] ttl_days / embedding_model / embedding_timeout_s / embedding_max_chars,
-      # written into .env by scripts/setup.mjs and install-coding-agent; a shell export overrides .env.
-      # CONTEXT_TRIM_AT_TOKENS stays empty when unset, so the proxy picks the threshold by model.
-      CONTEXT_TRIM_AT_TOKENS: ${CONTEXT_TRIM_AT_TOKENS:-}
-      CONTEXT_TRIM_TO_FRACTION: ${CONTEXT_TRIM_TO_FRACTION:-0.3}
-      CONTEXT_COMPRESS_OVER_TOKENS: ${CONTEXT_COMPRESS_OVER_TOKENS:-4000}
-      CONTEXT_COMPACTION_MAX_CHARS: ${CONTEXT_COMPACTION_MAX_CHARS:-12000}
-      CONTEXT_COMPACTION_RECALL: ${CONTEXT_COMPACTION_RECALL:-1}
-      CONTEXT_STANDING_INSTRUCTION: ${CONTEXT_STANDING_INSTRUCTION:-1}
-      CONTEXT_CHARS_PER_TOKEN: ${CONTEXT_CHARS_PER_TOKEN:-2.5}
-      # Session databases (docs/context-store.md): [context_store] ttl_days and embedding_model. Vectors are off while
-      # CONTEXT_EMBEDDING_MODEL is empty; the embeddings URL is the container's view of an OpenAI-compatible
-      # /embeddings endpoint (Ollama on the host by default). CONTEXT_EMBEDDING_API_KEY, if needed, goes in the env file.
-      CONTEXT_STORE_TTL_DAYS: ${CONTEXT_STORE_TTL_DAYS:-30}
-      CONTEXT_EMBEDDING_MODEL: ${CONTEXT_EMBEDDING_MODEL:-}
-      CONTEXT_EMBEDDING_URL: ${CONTEXT_PROXY_EMBEDDING_URL:-http://host.docker.internal:11434/v1}
-      CONTEXT_EMBEDDING_TIMEOUT_S: ${CONTEXT_EMBEDDING_TIMEOUT_S:-30}
-      CONTEXT_EMBEDDING_MAX_CHARS: ${CONTEXT_EMBEDDING_MAX_CHARS:-4000}
-    volumes:
-      - ./proxy:/app/proxy:ro
-      # Create it first (mode 700, host-owned); compose would otherwise create a root-owned directory.
-      - type: bind
-        source: ${OPENMEM_STATE_DIR:-${HOME}/.local/share/openmem}/context
-        target: /state/context
-        bind:
-          create_host_path: false
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
 volumes:
   hindsight-data:
   indexer-state:

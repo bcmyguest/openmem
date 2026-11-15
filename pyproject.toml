@@ -1,8 +1,8 @@
-# Dev-only: Python tests for indexer/ and proxy/ (not published to npm).
+# Dev-only: Python tests for indexer/ (not published to npm).
 [project]
 name = "openmem-python"
 version = "0.0.0"
-description = "OpenMem indexer and context-proxy pytest suite (dev)"
+description = "OpenMem indexer pytest suite (dev)"
 requires-python = ">=3.12"
 dependencies = []
 
@@ -21,8 +21,8 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["indexer/tests", "proxy/tests"]
-pythonpath = ["indexer", "proxy"]
+testpaths = ["indexer/tests"]
+pythonpath = ["indexer"]
 python_files = ["test_*.py"]
 filterwarnings = ["ignore::DeprecationWarning"]
 addopts = ["-n", "auto"]

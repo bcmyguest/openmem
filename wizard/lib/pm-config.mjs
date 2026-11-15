@@ -4,30 +4,12 @@ import TOML from "@iarna/toml";
 import { writeFileAtomic } from "../../cli/coding-agent/file-io.mjs";
 import { DEFAULT_PROVIDER_ID } from "./providers/registry.mjs";
 
-/** Tables owned by install-coding-agent; the wizard carries them over when it rewrites the file. */
+/**
+ * Tables the wizard carries over when it rewrites the file: `[agents]` (install-coding-agent) and the
+ * context-trim tables of releases before smarter-compact, kept so a rewrite never drops user settings.
+ */
 const INSTALLER_TABLES = ["agents", "context_proxy", "compaction", "context_store"];
 const AGENT_INTEGRATIONS = ["openmem", "provider"];
-const DEFAULT_CONTEXT_PROXY_PORT = 4100;
-/** `[context_proxy.agents]` keys. opencode2 trims in its plugin; the others route through the proxy service. */
-export const CONTEXT_AGENT_KEYS = ["claude-code", "opencode1", "codex", "opencode2"];
-export const CONTEXT_PROXY_AGENT_KEYS = ["claude-code", "opencode1", "codex"];
-// Same defaults as proxy/openmem_context/settings.py and cli/coding-agent/context-trim.mjs.
-const DEFAULT_TRIM_AT_TOKENS = 125000;
-const DEFAULT_COMPRESS_OVER_TOKENS = 4000;
-const DEFAULT_COMPACTION_MAX_CHARS = 12000;
-/** Config keys that reach the proxy container (stack .env) and the OpenCode 2 plugin as env. */
-const CONTEXT_TRIM_ENV_KEYS = [
-  ["context_proxy", "trim_at_tokens", "CONTEXT_TRIM_AT_TOKENS"],
-  ["context_proxy", "compress_over_tokens", "CONTEXT_COMPRESS_OVER_TOKENS"],
-  ["compaction", "max_chars", "CONTEXT_COMPACTION_MAX_CHARS"],
-  ["context_store", "ttl_days", "CONTEXT_STORE_TTL_DAYS"],
-  ["context_store", "embedding_max_chars", "CONTEXT_EMBEDDING_MAX_CHARS"],
-];
-/** String keys of `[context_store]` and their env names (session database vectors, docs/context-store.md). */
-const CONTEXT_STORE_STRING_KEYS = [
-  ["embedding_model", "CONTEXT_EMBEDDING_MODEL"],
-  ["embedding_url", "CONTEXT_EMBEDDING_URL"],
-];
 const CONFIG_MODE = 0o600;
 const CONFIG_HEADER = "# Written by openmem — mise-like config.\n# Docs: docs/openmem-config.md\n";
 
@@ -210,148 +192,12 @@ export function updatePmConfigTable(home, table, values, opts = {}) {
 }
 
 /**
- * Write per-agent context management values into `[context_proxy.agents]` (merged with saved keys) and set
- * `[context_proxy] enabled` to whether any agent resolves on. Other `[context_proxy]` keys are kept.
- * @param {string} home
- * @param {Record<string, boolean>} values keys from CONTEXT_AGENT_KEYS
- * @param {{ dry?: boolean }} [opts]
- * @returns {{ result: "updated"|"dry-run", agents: Record<string, boolean>, enabled: boolean }}
- */
-export function updatePmConfigContextAgents(home, values, opts = {}) {
-  const file = userConfigPath(home);
-  const doc = fs.existsSync(file) ? readTomlFile(file) : {};
-  const current = contextAgentsFromPmConfig(doc).agents;
-  const agents = { ...current, ...values };
-  const enabled = CONTEXT_AGENT_KEYS.some((k) => agents[k]);
-  const result = updatePmConfigTable(home, "context_proxy", { enabled, agents }, opts);
-  return { result, agents, enabled };
-}
-
-/**
  * `[agents] integration`: "openmem" (OpenMem hooks) or "provider" (the provider's own plugin).
  * @param {Record<string, unknown>} cfg
  */
 export function agentIntegrationFromPmConfig(cfg) {
   const value = String(/** @type {Record<string, unknown>} */ (cfg.agents || {}).integration || "");
   return AGENT_INTEGRATIONS.includes(value) ? value : "openmem";
-}
-
-/** @param {Record<string, unknown>} cfg @param {string} name */
-function tableOf(cfg, name) {
-  const t = cfg?.[name];
-  return t && typeof t === "object" && !Array.isArray(t) ? /** @type {Record<string, unknown>} */ (t) : {};
-}
-
-/** A non-negative integer config value, or undefined when unset or invalid. */
-function countValue(value) {
-  if (value === null || value === undefined || typeof value === "boolean" || typeof value === "string") return undefined;
-  const n = Number(value);
-  return Number.isSafeInteger(n) && n >= 0 ? n : undefined;
-}
-
-/**
- * `[context_proxy]` wiring with defaults: disabled, port 4100.
- * @param {Record<string, unknown>} cfg
- */
-export function contextProxyFromPmConfig(cfg) {
-  const table = tableOf(cfg, "context_proxy");
-  const port = Number(table.port);
-  return {
-    enabled: table.enabled === true,
-    port: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_CONTEXT_PROXY_PORT,
-  };
-}
-
-/**
- * Per-agent context management: `[context_proxy.agents] <key> = true|false`, a missing key following
- * `[context_proxy] enabled`; with neither set, opencode2 is on (it needs no service) and the proxy-routed
- * agents are off. Keys: CONTEXT_AGENT_KEYS. `saved` lists the keys that config.toml sets.
- * @param {Record<string, unknown>} cfg
- * @returns {{ agents: Record<string, boolean>, saved: string[], enabledSaved: boolean }}
- */
-export function contextAgentsFromPmConfig(cfg) {
-  const table = tableOf(cfg, "context_proxy");
-  const overrides = tableOf(table, "agents");
-  const enabledSaved = typeof table.enabled === "boolean";
-  const agents = {};
-  const saved = [];
-  for (const key of CONTEXT_AGENT_KEYS) {
-    if (typeof overrides[key] === "boolean") {
-      agents[key] = overrides[key];
-      saved.push(key);
-    } else agents[key] = enabledSaved ? table.enabled : key === "opencode2";
-  }
-  return { agents, saved, enabledSaved };
-}
-
-/**
- * Trim settings with defaults: `[context_proxy] trim_at_tokens` (125000; unset, the proxy and plugin trim Haiku at 95000), `compress_over_tokens`
- * (4000), `standing_instruction` (true), `[compaction] max_chars` (12000), `native` (true). Env overrides are applied by
- * `contextTrimEnvFromPmConfig` + `trimSettings()`, not here.
- * @param {Record<string, unknown>} cfg
- */
-export function contextTrimFromPmConfig(cfg) {
-  const proxy = tableOf(cfg, "context_proxy");
-  const compaction = tableOf(cfg, "compaction");
-  return {
-    trimAtTokens: countValue(proxy.trim_at_tokens) ?? DEFAULT_TRIM_AT_TOKENS,
-    compressOverTokens: countValue(proxy.compress_over_tokens) ?? DEFAULT_COMPRESS_OVER_TOKENS,
-    compactionMaxChars: countValue(compaction.max_chars) ?? DEFAULT_COMPACTION_MAX_CHARS,
-    compactionNative: compaction.native !== false,
-    standingInstruction: proxy.standing_instruction !== false,
-  };
-}
-
-/**
- * Context-trim settings that config.toml sets, as the environment variables the proxy and
- * `trimSettings()` read: `[context_proxy] trim_at_tokens` → CONTEXT_TRIM_AT_TOKENS,
- * `compress_over_tokens` → CONTEXT_COMPRESS_OVER_TOKENS, `[compaction] max_chars` →
- * CONTEXT_COMPACTION_MAX_CHARS, `[context_proxy] standing_instruction` (boolean) →
- * CONTEXT_STANDING_INSTRUCTION ("1" / "0"), `[compaction] recall` (boolean) → CONTEXT_COMPACTION_RECALL
- * ("1" / "0"), `[context_proxy] chars_per_token` (positive number) →
- * CONTEXT_CHARS_PER_TOKEN, `trim_to_fraction` (0 < x < 1) → CONTEXT_TRIM_TO_FRACTION, `[context_store] ttl_days` → CONTEXT_STORE_TTL_DAYS, `embedding_model` →
- * CONTEXT_EMBEDDING_MODEL, `embedding_url` → CONTEXT_EMBEDDING_URL, `embedding_timeout_s` (positive number) →
- * CONTEXT_EMBEDDING_TIMEOUT_S, `embedding_max_chars` → CONTEXT_EMBEDDING_MAX_CHARS. Unset or invalid keys are left out, so the reader's defaults
- * apply. Real env vars override: `trimSettings({ ...contextTrimEnvFromPmConfig(cfg), ...process.env })`.
- * @param {Record<string, unknown>} cfg
- * @returns {Record<string, string>}
- */
-export function contextTrimEnvFromPmConfig(cfg) {
-  const out = {};
-  for (const [table, key, envName] of CONTEXT_TRIM_ENV_KEYS) {
-    const value = countValue(tableOf(cfg, table)[key]);
-    if (value !== undefined) out[envName] = String(value);
-  }
-  const standing = tableOf(cfg, "context_proxy").standing_instruction;
-  if (typeof standing === "boolean") out.CONTEXT_STANDING_INSTRUCTION = standing ? "1" : "0";
-  const recall = tableOf(cfg, "compaction").recall;
-  if (typeof recall === "boolean") out.CONTEXT_COMPACTION_RECALL = recall ? "1" : "0";
-  const fraction = tableOf(cfg, "context_proxy").trim_to_fraction;
-  if (typeof fraction === "number" && Number.isFinite(fraction) && fraction > 0 && fraction < 1) {
-    out.CONTEXT_TRIM_TO_FRACTION = String(fraction);
-  }
-  const ratio = tableOf(cfg, "context_proxy").chars_per_token;
-  if (typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0) out.CONTEXT_CHARS_PER_TOKEN = String(ratio);
-  const store = tableOf(cfg, "context_store");
-  const timeout = store.embedding_timeout_s;
-  if (typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0) out.CONTEXT_EMBEDDING_TIMEOUT_S = String(timeout);
-  for (const [key, envName] of CONTEXT_STORE_STRING_KEYS) {
-    if (typeof store[key] === "string") out[envName] = store[key].trim();
-  }
-  return out;
-}
-
-/**
- * Stack .env entries for the context-proxy compose service: the trim env above plus
- * CONTEXT_PROXY_PORT when `[context_proxy] port` is set, so the container binds the port
- * Claude Code is pointed at.
- * @param {Record<string, unknown>} cfg
- * @returns {Record<string, string>}
- */
-export function contextProxyStackEnvFromPmConfig(cfg) {
-  const out = contextTrimEnvFromPmConfig(cfg);
-  if (tableOf(cfg, "context_proxy").port !== undefined) out.CONTEXT_PROXY_PORT = String(contextProxyFromPmConfig(cfg).port);
-  return out;
 }
 
 /**
