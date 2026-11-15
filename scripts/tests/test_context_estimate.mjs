@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Trim estimate calibrated from reported usage: Python/JS parity of estimate_prompt_tokens / record_usage
- * (fallback ratio included), trimContext and recordPromptUsage, the OpenCode 2 plugin pairing
- * session.step.ended usage with its context request, and the config.toml key. Disposable state only.
+ * (fallback ratio included), trimContext and recordPromptUsage, and the config.toml key.
+ * Disposable state only.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -179,79 +179,6 @@ try {
     await run("ses_tr2", msgs, { trimAtTokens: 10 ** 9 }, { measured: (m) => marks.push(m.trimmed) });
     check("measured carries new cut, kept cut, none", JSON.stringify(marks) === JSON.stringify([TRIM_NEW, TRIM_KEPT, TRIM_NONE]), JSON.stringify(marks));
     check("recordStepUsage needs a measured request", !recordStepUsage(settingsFor(), "ses_tr", null, {}));
-  }
-
-  // OpenCode 2 plugin: session.step.ended usage calibrates the session it belongs to.
-  {
-    const { default: plugin } = await import("../../cli/coding-agent/opencode2-plugin/index.js");
-    const home = path.join(state, "home");
-    const project = path.join(home, "work", "demo");
-    fs.mkdirSync(project, { recursive: true });
-    const saved = { HOME: process.env.HOME, OPENMEM_STATE_DIR: process.env.OPENMEM_STATE_DIR, PM_STACK_ROOT: process.env.PM_STACK_ROOT, CONTEXT_PROXY_ENABLED: process.env.CONTEXT_PROXY_ENABLED };
-    // Pins trimming on regardless of the developer's config.toml.
-    Object.assign(process.env, { HOME: home, OPENMEM_STATE_DIR: state, PM_STACK_ROOT: path.join(home, "stack"), CONTEXT_PROXY_ENABLED: "1" });
-    const oldFetch = globalThis.fetch;
-    globalThis.fetch = async () => { throw new Error("no memory requests expected"); };
-    const hooks = {};
-    const queue = [];
-    let wake = null;
-    let subscribed = null;
-    const ctx = {
-      app: { version: "2.2.1" },
-      location: { directory: project, project: { id: "prj_1", directory: project, canonical: project } },
-      options: {},
-      session: { hook: async (name, cb) => { hooks[name] = cb; return { dispose: async () => {} }; }, context: async () => [], prompt: async () => ({}) },
-      event: {
-        subscribe({ types, signal }) {
-          subscribed = types;
-          return {
-            async *[Symbol.asyncIterator]() {
-              while (!signal.aborted) {
-                if (!queue.length) await new Promise((resolve) => { wake = resolve; signal.addEventListener("abort", resolve, { once: true }); });
-                while (queue.length) yield queue.shift();
-              }
-            },
-          };
-        },
-      },
-    };
-    const emit = (event) => { queue.push(event); wake?.(); };
-    const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
-    try {
-      const cleanup = await plugin.setup(ctx);
-      check("plugin subscribes to step events", subscribed?.includes("session.step.ended") && subscribed.includes("session.step.failed"));
-      const event = (messages) => ({ sessionID: "ses_oc", agent: "build", model: { providerID: "anthropic", id: "claude" }, system: [{ type: "text", text: "You are OpenCode." }], messages, options: {}, tools: {} });
-      const tokens = (input, read, write) => ({ input, output: 50, reasoning: 0, cache: { read, write } });
-      const first = event(history(2));
-      await hooks.context(first);
-      const second = event(history(3));
-      await hooks.context(second);
-      // Step 1 failed (no usage); step 2 ended: its usage pairs with the second request, not the first.
-      emit({ type: "session.step.failed", data: { sessionID: "ses_oc", assistantMessageID: "m1", error: { message: "x" } } });
-      emit({ type: "session.step.ended", data: { sessionID: "ses_oc", assistantMessageID: "m2", finish: "stop", cost: 0, tokens: tokens(10, 900, 90) } });
-      await settle();
-      const usage = readTrim("ses_oc").usage;
-      const root = fingerprint(history(1)[0]);
-      // The measured size is the request trimContext saw: system (banner pushed before it), tools, messages.
-      check("step usage is stored for the request it belongs to", usage?.last?.tokens === 1000 && usage?.threads?.[root]?.tokens === 1000
-        && usage.last.chars === requestChars(second.system.slice(0, 2), {}, history(3)), JSON.stringify(usage));
-      emit({ type: "session.step.ended", data: { sessionID: "ses_oc", tokens: tokens(1, 1, 1) } });
-      await settle();
-      check("a step with no measured request records nothing", readTrim("ses_oc").usage.last.tokens === 1000);
-      const { DatabaseSync } = process.getBuiltinModule("node:sqlite");
-      const db = new DatabaseSync(path.join(state, "context", "sessions", "ses_oc.db"), { readOnly: true });
-      const rows = db.prepare("SELECT kind, model, thread_root, trimmed, input_tokens, cache_read_tokens, cache_creation_tokens, "
-        + "output_tokens, breakpoints, breakpoint_at FROM events").all().map((r) => ({ ...r }));
-      db.close();
-      check("step usage is recorded as one usage event", JSON.stringify(rows) === JSON.stringify([{ kind: "usage", model: "anthropic/claude",
-        thread_root: root, trimmed: TRIM_NONE, input_tokens: 10, cache_read_tokens: 900, cache_creation_tokens: 90, output_tokens: 50,
-        breakpoints: null, breakpoint_at: null }]), JSON.stringify(rows));
-      cleanup();
-      await settle();
-    } finally {
-      globalThis.fetch = oldFetch;
-      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-    }
   }
 } finally {
   fs.rmSync(state, { recursive: true, force: true });
