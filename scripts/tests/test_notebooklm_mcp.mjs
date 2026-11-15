@@ -3,7 +3,7 @@
  * Unit tests for cli/notebooklm-mcp.mjs + providers/hindsight/lib/notebooklm-mcp-install.mjs.
  * No live Hindsight: mock fetch + temp HOME/config.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

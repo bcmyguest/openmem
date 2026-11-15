@@ -2,7 +2,7 @@ import path from "node:path";
 import { envValue } from "../../wizard/lib/paths.mjs";
 
 /** OpenAI-compatible chat URL for cross-provider reflect synthesis (optional). */
-export function resolveLlmChatUrl({ home, stackRoot, env = process.env }) {
+export function resolveLlmChatUrl({ stackRoot, env = process.env }) {
   const direct = String(env.PM_LLM_URL || env.OPENAI_API_BASE || "").trim();
   if (direct) return direct.replace(/\/+$/, "").replace(/\/v1$/, "") + (direct.includes("/v1") ? "" : "/v1");
   const fromEnv = envValue(path.join(stackRoot, ".env"), "LITELLM_URL");

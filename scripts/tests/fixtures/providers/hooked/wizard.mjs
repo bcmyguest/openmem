@@ -23,6 +23,6 @@ export function summary(ctx) {
   };
 }
 
-export async function extendValidation(ctx, h) {
+export async function extendValidation(ctx, _h) {
   (ctx.validationChecks ||= []).push("hooked validation ran");
 }

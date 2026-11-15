@@ -4,9 +4,6 @@ import js from "@eslint/js";
 export default [
   {
     ignores: [
-      "bench-trash/**",
-      "bench/results*/**",
-      "bench/replay/**",
       "node_modules/**",
       "wizard/node_modules/**",
       "site/**",
@@ -40,10 +37,19 @@ export default [
         structuredClone: "readonly",
         TextEncoder: "readonly",
         TextDecoder: "readonly",
+        FormData: "readonly",
+        Blob: "readonly",
       },
     },
     rules: {
-      "no-unused-vars": ["error", { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
+      "no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+      // Sanitizers strip control characters on purpose.
+      "no-control-regex": "off",
+      // Literal spaces mirror the YAML indentation the patterns match.
+      "no-regex-spaces": "off",
     },
   },
 ];

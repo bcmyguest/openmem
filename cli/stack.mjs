@@ -54,14 +54,6 @@ export const STACK_ASSETS = [
 ];
 
 /**
- * @param {string} p
- * @returns {string}
- */
-function toPosix(p) {
-  return p.split(path.sep).join("/");
-}
-
-/**
  * @param {string} root
  * @param {string} rel posix relative dir
  * @param {string[]} out

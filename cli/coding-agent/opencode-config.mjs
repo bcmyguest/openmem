@@ -43,7 +43,7 @@ function tokens(source) {
         if (source[i - 1] === "\\") i++;
       }
     } else if ("{}[]:,".includes(source[i])) i++;
-    else while (i < source.length && !/[\s{}\[\]:,]/.test(source[i]) && !source.startsWith("//", i) && !source.startsWith("/*", i)) i++;
+    else while (i < source.length && !/[\s{}[\]:,]/.test(source[i]) && !source.startsWith("//", i) && !source.startsWith("/*", i)) i++;
     out.push({ value: source.slice(start, i), start, end: i });
   }
   return out;

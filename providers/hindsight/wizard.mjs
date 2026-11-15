@@ -29,7 +29,7 @@ export { migrateEnv, prepareStackEnv, setupNotices } from "./lib/stack-env.mjs";
  * @param {Record<string, any>} ctx
  * @param {Helpers} h
  */
-export async function init(ctx, h) {
+export async function init(ctx, _h) {
   ensureState(ctx);
   applyConfigEnv(ctx.pmMerged || {});
   if (process.env.LEMOND_BASE) ctx.lemondBase = process.env.LEMOND_BASE;

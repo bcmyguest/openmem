@@ -4,8 +4,6 @@
  * Base URL: COGNEE_API_URL / COGNEE_URL, else http://127.0.0.1:${COGNEE_PORT|8766}.
  * Optional COGNEE_API_KEY → X-Api-Key (never written to mcp.json). Zero npm deps.
  */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isMainModule } from "./is-main.mjs";
 import { DEFAULT_PORT } from "../providers/cognee/lib/state.mjs";
 

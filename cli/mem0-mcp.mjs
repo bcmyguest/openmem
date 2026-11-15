@@ -12,7 +12,6 @@
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isMainModule } from "./is-main.mjs";
 import { readKey } from "../providers/mem0/lib/env-file.mjs";
 import { MEM0_MCP_NPM_PACKAGE } from "../providers/mem0/lib/mcp-install.mjs";

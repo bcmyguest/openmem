@@ -21,7 +21,7 @@ function check(name, cond, detail = "") {
 }
 
 function memoryFetch(calls) {
-  return async (url, init) => {
+  return async (url, _init) => {
     calls.push(String(url));
     const body = JSON.stringify({ results: [{ memory: "recalled fact" }], items: [{ text: "recalled fact" }] });
     return { ok: true, status: 200, text: async () => body };
