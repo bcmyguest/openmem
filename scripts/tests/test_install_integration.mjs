@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * install-coding-agent: exclusive hook sets ([agents] integration), /smart-compact command,
+ * install-coding-agent: exclusive hook sets ([agents] integration), legacy /smart-compact cleanup,
  * rtk wiring via a fake rtk on PATH, and the context proxy opt-in. Disposable HOME only.
  */
 import fs from "node:fs";
@@ -118,10 +118,15 @@ const count = (text, needle) => text.split(needle).length - 1;
   check("OpenCode keeps comment and unrelated plugin", oc.includes("// keep this comment") && oc.includes("other-plugin") && oc.includes('"theme": "dark"'));
   check("openmem mode does not run the upstream installer", spawned.length === 0);
   const command = path.join(home, ".claude/commands/smart-compact.md");
-  check("Claude /smart-compact command installed", fs.existsSync(command) && /trim this session's earlier context on the next request/.test(read(command)));
+  check("no /smart-compact command installed", !fs.existsSync(command));
 
+  // A /smart-compact command from an earlier release is deleted; a user's own file is kept.
+  fs.mkdirSync(path.dirname(command), { recursive: true });
+  fs.writeFileSync(command, "<!-- openmem:smart-compact -->\nold body\n");
   await install(home, {});
   check("openmem reinstall does not duplicate hooks", count(hookText(home), "coding-agent/hook-runner.mjs") === 9);
+  check("reinstall deletes the legacy /smart-compact command", !fs.existsSync(command));
+  fs.writeFileSync(command, "my own command\n");
 
   // Switch to provider: openmem hooks removed, upstream installer runs, MCP kept, choice saved.
   const calls = [];
@@ -132,7 +137,7 @@ const count = (text, needle) => text.split(needle).length - 1;
   check("provider removes openmem hooks and plugin", !after.includes("coding-agent/hook-runner.mjs") && !after.includes("coding-agent/opencode-plugin.mjs"), after);
   check("provider runs the upstream installer", calls.some((c) => c[0] === "npx" && c.includes("@vectorize-io/hindsight-coding-agents") && c.includes("install")));
   check("provider keeps the unified MCP", Boolean(json(path.join(home, ".claude.json")).mcpServers?.openmem));
-  check("provider removes the /smart-compact command", !fs.existsSync(command));
+  check("provider keeps a user's own /smart-compact command", read(command) === "my own command\n");
   check("unrelated settings survive the switch", JSON.stringify(json(path.join(home, ".claude/settings.json")).hooks.UserPromptSubmit).includes("codegraph prompt-hook"));
   const cfgFile = path.join(home, ".config/personal-memory/config.toml");
   check("provider choice persisted", TOML.parse(read(cfgFile)).agents?.integration === "provider");

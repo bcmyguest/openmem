@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { SHIM_AGENT_IDS, SHIM_HARNESSES, SHIM_MARKER } from "./hook-harnesses.mjs";
-import { SMART_COMPACT_MARKER, SMART_COMPACT_COMMAND } from "./context-store.mjs";
-import { SILENT, readJson, writeFileAtomic, writeJson } from "./file-io.mjs";
+import { SILENT, readJson, writeJson } from "./file-io.mjs";
 import { mergeOpencodeConfig, opencodeConfigPath, parseJsonc } from "./opencode-config.mjs";
 
 /** Upstream @vectorize-io/hindsight-coding-agents entries name its package or staged copy. */
@@ -10,6 +9,8 @@ const UPSTREAM_MARKER = /hindsight[-/]coding-agents/;
 const OPENMEM_PLUGIN = /openmem|personal-memory/;
 const OPENMEM_PLUGIN_FILE = "coding-agent/opencode-plugin.mjs";
 const OPENMEM_PLUGIN2_DIR = "coding-agent/opencode2-plugin";
+/** Marker in the /smart-compact command earlier releases installed; install and remove delete that file. */
+const LEGACY_SMART_COMPACT_MARKER = "openmem:smart-compact";
 /** OpenCode 1 reads `plugin` (file paths); OpenCode 2 reads `plugins` (directory paths). */
 const OPENCODE_PLUGIN_KEYS = ["plugin", "plugins"];
 
@@ -59,8 +60,19 @@ function stripHookEntries(hooks, matches) {
   return changed;
 }
 
-export function smartCompactCommandPath(home) {
-  return path.join(home, ".claude", "commands", "smart-compact.md");
+/** Command files earlier releases wrote, relative to HOME. Only Claude Code got one. */
+const LEGACY_SMART_COMPACT_FILES = [[".claude", "commands", "smart-compact.md"]];
+
+/** Delete /smart-compact files an earlier release installed; a file without the marker stays. */
+function removeLegacySmartCompact(home, h) {
+  for (const parts of LEGACY_SMART_COMPACT_FILES) {
+    const command = path.join(home, ...parts);
+    try {
+      if (!fs.readFileSync(command, "utf8").includes(LEGACY_SMART_COMPACT_MARKER)) continue;
+    } catch { continue; }
+    fs.rmSync(command);
+    h.ok(`removed legacy ${command}`);
+  }
 }
 
 const entryText = (entry) => (typeof entry === "string" ? entry : JSON.stringify(entry));
@@ -156,7 +168,6 @@ export function installSessionShim(opts) {
     const cfgPath = spec.settingsPath(home);
     if (opts.dry) {
       h.info(`[dry-run] merge ${agentId} hooks in ${cfgPath}`);
-      if (agentId === "claude-code") h.info(`[dry-run] install /smart-compact command → ${smartCompactCommandPath(home)}`);
       installed.push(agentId);
       continue;
     }
@@ -170,28 +181,19 @@ export function installSessionShim(opts) {
     }
     writeJson(cfgPath, prev);
     h.ok(`${agentId}: session hooks → ${cfgPath}`);
-    if (agentId === "claude-code") {
-      const command = smartCompactCommandPath(home);
-      writeFileAtomic(command, SMART_COMPACT_COMMAND);
-      h.ok(`claude-code: /smart-compact command → ${command}`);
-    }
     installed.push(agentId);
   }
+  if (!opts.dry) removeLegacySmartCompact(home, h);
   return { installed };
 }
 
-/** Remove OpenMem's session hooks, OpenCode plugin entry and /smart-compact command. */
+/** Remove OpenMem's session hooks, OpenCode plugin entry and a leftover /smart-compact command. */
 export function removeSessionShim({ home, agents, dry = false, h = SILENT }) {
   const out = removeHooks({
     home, agents, dry, h, label: "openmem",
     matches: (text) => text.includes(SHIM_MARKER) || text.includes(OPENMEM_PLUGIN_FILE) || text.includes(OPENMEM_PLUGIN2_DIR),
   });
-  const command = smartCompactCommandPath(home);
-  if (agents.includes("claude-code") && !dry && fs.existsSync(command)
-    && fs.readFileSync(command, "utf8").includes(SMART_COMPACT_MARKER)) {
-    fs.rmSync(command);
-    h.ok(`claude-code: removed ${command}`);
-  }
+  if (!dry) removeLegacySmartCompact(home, h);
   return out;
 }
 

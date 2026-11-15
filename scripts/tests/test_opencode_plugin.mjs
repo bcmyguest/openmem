@@ -119,20 +119,11 @@ try {
   await mapped["experimental.chat.system.transform"]({ sessionID: "other" }, { system: again });
   assert.deepEqual(again, [sessionBanner("hindsight", "mapped-bank")], "banner only, no memory, for a session without a prompt");
 
-  // S6: the session header follows `[context_proxy] enabled`, not the proxy env file.
+  // Trimming moved to smarter-compact: no session header even with a legacy [context_proxy] section.
   const cfg = path.join(home, ".config", "personal-memory");
-  fs.writeFileSync(path.join(cfg, "context-proxy.env"), "LITELLM_MASTER_KEY=sk-test\n");
-  const headersFor = async () => {
-    const p = await PersonalMemoryPlugin({ client, directory: "/tmp/test-project" });
-    const output = { headers: {} };
-    await p["chat.headers"]({ sessionID: "ses_h" }, output);
-    return output.headers;
-  };
-  assert.deepEqual(await headersFor(), {}, "env file alone sends no header");
   fs.writeFileSync(path.join(cfg, "config.toml"), "[context_proxy]\nenabled = true\n");
-  assert.deepEqual(await headersFor(), { "x-openmem-session-id": "ses_h" });
-  fs.writeFileSync(path.join(cfg, "config.toml"), "[context_proxy]\nenabled = false\n");
-  assert.deepEqual(await headersFor(), {}, "disabled proxy sends no header although the env file remains");
+  const proxied = await PersonalMemoryPlugin({ client, directory: "/tmp/test-project" });
+  assert.equal(proxied["chat.headers"], undefined, "plugin installs no chat.headers hook");
   console.log("all OpenCode plugin lifecycle tests passed");
 } finally {
   globalThis.fetch = oldFetch;

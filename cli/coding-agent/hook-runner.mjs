@@ -10,7 +10,6 @@ import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
 import { accessAllowed, autoRegisterLocation, readAccessConfig } from "./access-policy.mjs";
 import { providerSupports } from "./capabilities.mjs";
-import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { SHIM_HARNESSES } from "./hook-harnesses.mjs";
 import { hookRecallBlock, sessionRecall, sessionRetain } from "./session-facade.mjs";
 import { resolveMcpContext } from "../mcp/context.mjs";
@@ -199,11 +198,6 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
   const spec = SHIM_HARNESSES[harnessId];
   if (!spec) throw new Error(`unknown harness ${harnessId}`);
   const parsed = spec.parse[phase](ev);
-  const smartCompact = phase === "prompt" && isSmartCompactPrompt(parsed.prompt);
-  if (smartCompact) {
-    // Context trimming is independent of memory access; the flag never fails the hook.
-    try { writeForceFlag({ home, env, sessionId: parsed.sessionId }); } catch { /* best effort */ }
-  }
   if (phase === "sessionStart") autoRegisterLocation(parsed.cwd, { home, env });
   const config = readAccessConfig(home);
   const access = config ? resolveAccess(parsed.cwd, config, home) : { allowed: false };
@@ -221,9 +215,6 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
   let context = "";
 
   if (phase === "sessionStart") {
-    try {
-      registerSession({ home, env, sessionId: parsed.sessionId, agent: harnessId, cwd: parsed.cwd, bank });
-    } catch { /* Registration is optional for the proxy; never fail SessionStart. */ }
     const recalled = await sessionRecall(
       ctx,
       { query: "What should I know about this project and recent decisions?", bank, limit: 8,
@@ -235,7 +226,7 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
     context = block ? `${banner}\n\n${block}` : banner;
   } else if (phase === "prompt") {
     const q = String(parsed.prompt || "").trim();
-    if (q && !smartCompact) {
+    if (q) {
       context = hookRecallBlock(await sessionRecall(ctx, { query: q, bank, limit: 8 }, fetchFn));
     }
   } else if (phase === "stop") {

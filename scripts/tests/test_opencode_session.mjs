@@ -33,27 +33,13 @@ async function withHome(fn) {
 
 try {
   await withHome(async (home) => {
-    const plugin = await PersonalMemoryPlugin({ client, directory: home });
-    await plugin.event({ event: { type: "session.created", properties: { info: { id: "ses_abc/1" } } } });
-    const file = path.join(home, ".local/share/openmem/context/sessions/ses_abc_1.json");
-    const reg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
-    check("session.created writes a registration", reg?.session_id === "ses_abc_1" && reg.agent === "opencode" && reg.cwd === home, JSON.stringify(reg));
-    check("registration names a bank", typeof reg?.bank === "string" && reg.bank.length > 0);
-    check("registration is mode 600", fs.existsSync(file) && (fs.statSync(file).mode & 0o777) === 0o600);
-    const out = { headers: {} };
-    await plugin["chat.headers"]({ sessionID: "ses_abc" }, out);
-    check("no session header without the context proxy", !("x-openmem-session-id" in out.headers));
-  });
-
-  await withHome(async (home) => {
+    // Trimming moved to smarter-compact: a legacy [context_proxy] section changes nothing.
     fs.mkdirSync(path.join(home, ".config/personal-memory"), { recursive: true });
-    fs.writeFileSync(path.join(home, ".config/personal-memory/context-proxy.env"), "LITELLM_MASTER_KEY=x\n", { mode: 0o600 });
-    // S6: `[context_proxy] enabled` decides, not the env file (which disabling keeps).
     fs.writeFileSync(path.join(home, ".config/personal-memory/config.toml"), "[context_proxy]\nenabled = true\n", { mode: 0o600 });
     const plugin = await PersonalMemoryPlugin({ client, directory: home });
-    const out = { headers: {} };
-    await plugin["chat.headers"]({ sessionID: "ses_abc" }, out);
-    check("session header sent when the context proxy is configured", out.headers["x-openmem-session-id"] === "ses_abc");
+    await plugin.event({ event: { type: "session.created", properties: { info: { id: "ses_abc/1" } } } });
+    check("session.created writes no registration", !fs.existsSync(path.join(home, ".local/share/openmem")));
+    check("plugin installs no chat.headers hook", !("chat.headers" in plugin));
   });
 } finally {
   globalThis.fetch = oldFetch;
