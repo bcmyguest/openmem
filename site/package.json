@@ -8,7 +8,7 @@
     "sync": "node scripts/sync.mjs",
     "theme": "node scripts/gen-theme.mjs",
     "dev": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro dev",
-    "build": "tsc -b && node scripts/sync.mjs && node scripts/gen-theme.mjs && astro build && node scripts/check-privacy.mjs dist && node scripts/check-links.mjs dist",
+    "build": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro sync && tsc -b && astro build && node scripts/check-privacy.mjs dist && node scripts/check-links.mjs dist",
     "render-diagrams": "node scripts/render-diagrams.mjs",
     "render-overview": "node scripts/render-overview-diagrams.mjs",
     "media": "node scripts/render-overview-diagrams.mjs && node scripts/render-media.mjs",
@@ -16,7 +16,7 @@
     "check:sources": "node scripts/check-privacy.mjs --sources-report",
     "check:links": "node scripts/check-links.mjs dist",
     "test": "node --test \"scripts/**/*.test.mjs\"",
-    "typecheck": "tsc -b && astro check",
+    "typecheck": "node scripts/sync.mjs && node scripts/gen-theme.mjs && astro sync && tsc -b && astro check",
     "preview": "astro preview"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
     "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^24.19.2",
     "@typescript/native": "npm:typescript@7.1.0-beta",
     "satori": "^0.57.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

@@ -30,6 +30,9 @@ importers:
       '@resvg/resvg-js':
         specifier: ^2.6.2
         version: 2.6.2
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
       '@typescript/native':
         specifier: npm:typescript@7.1.0-beta
         version: typescript@7.1.0-beta
