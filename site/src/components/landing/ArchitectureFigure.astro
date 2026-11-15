@@ -1,25 +1,22 @@
 ---
-// Hero figure: two overview diagrams, A (memory) and B (context management), drawn by
-// overview-diagrams.mjs with the site's colour tokens. Wide layouts from lg up; below that the
-// narrow layouts sit side by side (md) or stacked (phone). Docs use the same source as static SVGs.
+// Hero figure: the memory overview diagram, drawn by overview-diagrams.mjs with the site's colour
+// tokens. Wide layout from lg up; the narrow layout below that. Docs use the same source as static SVGs.
 import { withBase } from '../../lib/url';
-import { CSS_PALETTE, contextDiagram, memoryDiagram } from './overview-diagrams.mjs';
+import { CSS_PALETTE, memoryDiagram } from './overview-diagrams.mjs';
 
-const wide = [memoryDiagram(CSS_PALETTE, 'wide', 'hero-mem-w'), contextDiagram(CSS_PALETTE, 'wide', 'hero-ctx-w')];
-const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagram(CSS_PALETTE, 'narrow', 'hero-ctx-n')];
+const wide = memoryDiagram(CSS_PALETTE, 'wide', 'hero-mem-w');
+const narrow = memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n');
 ---
 <figure class="ov not-prose" aria-labelledby="ov-caption">
   <div class="ov-wide">
-    {wide.map((svg) => <div class="ov-card" set:html={svg} />)}
+    <div class="ov-card" set:html={wide} />
   </div>
   <div class="ov-narrow">
-    {narrow.map((svg) => <div class="ov-card" set:html={svg} />)}
+    <div class="ov-card" set:html={narrow} />
   </div>
   <figcaption id="ov-caption" class="mt-3 text-sm leading-relaxed text-muted">
-    OpenMem parts are tinted. A: the indexer feeds one provider; agents read and write it through OpenMem's <code>memory_*</code> tools and session hooks.
-    B: past the limit the context proxy moves older turns to a local store instead of asking a model for a summary.{' '}
+    OpenMem parts are tinted. The indexer feeds one provider; agents read and write it through OpenMem's <code>memory_*</code> tools and session hooks.{' '}
     <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/architecture/')}>Full architecture</a> ·
-    <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> ·
     <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/provider-status/')}>Provider status</a>
   </figcaption>
 </figure>
@@ -28,18 +25,12 @@ const narrow = [memoryDiagram(CSS_PALETTE, 'narrow', 'hero-mem-n'), contextDiagr
   .ov-wide {
     display: none;
   }
-  /* Grid tracks are minmax(0, 1fr): an SVG's intrinsic width (1080 or 360) must never widen a track. */
+  /* Grid tracks are minmax(0, 1fr): the SVG's intrinsic width (1080 or 360) must never widen a track. */
   .ov-narrow {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
     justify-items: center;
-  }
-  @media (min-width: 48rem) {
-    .ov-narrow {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      align-items: start;
-    }
   }
   @media (min-width: 64rem) {
     .ov-wide {

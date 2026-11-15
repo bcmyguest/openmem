@@ -41,7 +41,7 @@
   --pm-figure-w: 30rem; /* charts are drawn 480 px wide */
 }
 .sl-markdown-content .pm-figure--animation {
-  --pm-figure-w: 45rem; /* smart-compaction GIF, 720 px viewBox */
+  --pm-figure-w: 45rem; /* GIFs, shown 720 px wide */
 }
 .sl-markdown-content .pm-figure--pair {
   display: grid;

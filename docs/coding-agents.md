@@ -1,6 +1,6 @@
 # Coding agents and MCP
 
-> **Context proxy / smart compaction:** deprecated in OpenMem — use **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** for new installs. Flags below remain for existing OpenMem stacks.
+> **Context management:** OpenMem 0.10 removed its context proxy and trim plugin. Use **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)** for trimming long sessions.
 
 Prerequisite: run the wizard (`npx @bcmyguest/openmem setup`) so a provider stack is up. The MCP server and hooks only forward to that stack. Per-agent support and evidence levels: [Compatibility matrix](compatibility.md).
 
@@ -9,7 +9,7 @@ One entry point for session wiring on **every** provider (unified MCP + in-repo 
 ```sh
 npx @bcmyguest/openmem install-coding-agent --yes
 # --provider-plugin / --no-provider-plugin: upstream Hindsight hooks instead of openmem's (saved in config)
-# --no-rtk: skip rtk wiring;  --context-proxy / --no-context-proxy: local context proxy (saved in config)
+# --no-rtk: skip rtk wiring
 # same flags: --dry-run, --agents claude-code,codex,opencode,cursor-cli,hermes,gemini-cli,amp,cline
 ```
 
@@ -18,17 +18,14 @@ Persisted choices live in `~/.config/personal-memory/config.toml`:
 | Table | Key | Default | Flag |
 | --- | --- | --- | --- |
 | `[agents]` | `integration` = `openmem` \| `provider` | `openmem` | `--provider-plugin`, `--no-provider-plugin` |
-| `[context_proxy]` | `enabled` | `false` | `--context-proxy`, `--no-context-proxy` |
-| `[context_proxy]` | `port` | `4100` | edit the file |
-| `[compaction]` | `native` | `true` | edit the file; OpenCode 2 only (see below) |
 
 The two hook sets are exclusive; see [hook parity](coding-agent-hooks.md#install-per-agent).
 
 **rtk.** When [`rtk`](https://github.com/rtk-ai/rtk) is on `PATH`, the installer runs rtk's own setup per selected agent: `rtk init -g --auto-patch` (Claude Code), `rtk init -g --codex`, `rtk init -g --agent cursor`, `rtk init -g --opencode`. rtk adds PreToolUse-style command rewriting and keeps other hooks; OpenMem's reinstall keeps rtk's entries. `rtk init` is idempotent. `--no-rtk` skips it.
 
-**Context proxy.** `--context-proxy` creates `~/.config/personal-memory/context-proxy.env` (mode 600) with `LITELLM_MASTER_KEY` once and reuses it. Claude Code gets `env.ANTHROPIC_BASE_URL = http://127.0.0.1:<port>` and `env.ANTHROPIC_CUSTOM_HEADERS = x-litellm-api-key: Bearer <key>` in `~/.claude/settings.json`; OpenCode gets `provider.anthropic.options.baseURL = http://127.0.0.1:<port>/v1` and the same header ([OpenCode providers](https://opencode.ai/docs/providers/#base-url)). Claude Code then fails until the proxy runs. The proxy trims long sessions and compresses tool results; typing `/smart-compact` makes the prompt hook flag the next request for a trim. See [Context proxy](context-proxy.md). `--no-context-proxy` removes those keys when they still point at the loopback proxy; the key file stays. Codex stays hook-only. OpenCode 2 is never pointed at the proxy, even with `--context-proxy`; see below.
+**Settings from openmem 0.9 and earlier.** The installer never edits `ANTHROPIC_BASE_URL`, OpenCode provider settings or Codex `model_provider`; [Smarter Compact](https://github.com/bcmyguest/smarter-compact) may own them. When one still points at openmem's removed proxy (the `[context_proxy] port`, else 4100, or Codex `model_provider = "openmem"`), the installer prints the setting and the manual fix (`cli/coding-agent/legacy-context-proxy.mjs`).
 
-**OpenCode 1 or 2.** The installer runs `opencode --version`; output naming major 2 or later (OpenCode 2.2.1 prints `opencode v2.2.1`) selects OpenCode 2, and any failure or other output selects OpenCode 1. OpenCode 1 gets the file entry `cli/coding-agent/opencode-plugin.mjs` under `"plugin"`. OpenCode 2 gets the runtime directory `cli/coding-agent/opencode2-plugin` under `"plugins"` ([OpenCode 2 plugin config](https://opencode.ai/v2/docs/plugins/); configured local paths must be directories). Each install removes OpenMem's entry of the other shape, so only one OpenMem plugin loads. On OpenCode 2 the plugin trims context itself in its `context` hook, with the proxy's rules, thresholds (`CONTEXT_TRIM_AT_TOKENS`, `CONTEXT_COMPRESS_OVER_TOKENS`, `CONTEXT_COMPACTION_MAX_CHARS`, read from the environment OpenCode runs in), standing system-prompt instruction (`CONTEXT_STANDING_INSTRUCTION`) and [context store](context-store.md) files: every message goes into the session database `sessions/<sid>.db` through `node:sqlite` (Node ≥ 24). The installer therefore removes any earlier `provider.anthropic` proxy settings and says so in its summary. When OpenCode 2 compacts a session itself, the plugin's `compaction` hook marks every stored message out of context and supplies the `smart_compact_search` pointer plus bounded recall as the summary, so no model call is made. `[compaction] native = false` returns compaction to OpenCode's own summary.
+**OpenCode 1 or 2.** The installer runs `opencode --version`; output naming major 2 or later (OpenCode 2.2.1 prints `opencode v2.2.1`) selects OpenCode 2, and any failure or other output selects OpenCode 1. OpenCode 1 gets the file entry `cli/coding-agent/opencode-plugin.mjs` under `"plugin"`. OpenCode 2 gets the runtime directory `cli/coding-agent/opencode2-plugin` under `"plugins"` ([OpenCode 2 plugin config](https://opencode.ai/v2/docs/plugins/); configured local paths must be directories). Each install removes OpenMem's entry of the other shape, so only one OpenMem plugin loads.
 
 This stages a persistent runtime under `~/.local/share/personal-memory/agent-runtime`, registers the unified MCP globally in Claude Code, Codex, Cursor Agent, and OpenCode, and installs their session hooks. It also copies the [openmem skill](../.agents/skills/openmem/SKILL.md) into each agent's global skill directory. The runtime path stays valid after an `npx` cache cleanup. Re-run the command after upgrading this package to refresh the runtime and skill. See [hook parity](coding-agent-hooks.md).
 

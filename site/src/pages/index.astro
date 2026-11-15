@@ -1,40 +1,18 @@
 ---
 import Landing from '../layouts/Landing.astro';
 import ArchitectureFigure from '../components/landing/ArchitectureFigure.astro';
-import SmartCompactionFigure from '../components/landing/SmartCompactionFigure.astro';
 import Button from '../components/ui/Button.astro';
 import Card from '../components/ui/Card.astro';
 import Badge from '../components/ui/Badge.astro';
 import CodeBlock from '../components/ui/CodeBlock.astro';
 import { features, next, providers, security, site, STATUS_LABEL, steps, works } from '../lib/content';
 import { withBase } from '../lib/url';
-import bench from '../data/contextbench.json';
-import { wallTimeSentence } from '../lib/bench-text.mjs';
 
 const supportedNames = providers.filter((p) => p.status === 'supported').map((p) => p.label).join(', ');
 const experimentalNames = providers.filter((p) => p.status === 'experimental').map((p) => p.label).join(', ');
 const title = `${site.name}: ${site.tagline}`;
 const description =
-  'Memory and context management for coding agents: smart compaction that keeps every turn searchable, and memory_* tools over Hindsight, mem0, or Cognee.';
-
-// Benchmark tiles, read from contextbench.json (site/scripts/bench/compute-contextbench.py):
-// Cell means across the four published task sizes; the default native arm recorded no compactions.
-const BENCH_URL = 'https://github.com/RulinShao/ContextBench';
-const vs = bench.vs_native;
-const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
-const tiles = [
-  { label: 'Answer quality', value: vs.score.smart?.toFixed(2), unit: 'score', note: `default native ${vs.score.s2?.toFixed(2)}` },
-  { label: 'Cost per trial', value: `$${vs.usd.smart?.toFixed(2)}`, unit: 'list price', note: `default native $${vs.usd.s2?.toFixed(2)}` },
-  {
-    label: 'Peak prompt',
-    value: `${Math.round(bench.headline.smart_peak_prompt_max_all / 1000)}k`,
-    unit: 'tokens',
-    note: 'largest OpenMem request in this comparison',
-  },
-  { label: 'Prompt-cache hits', value: pct(vs.cache_hit.smart), unit: 'of prompt tokens', note: `default native ${pct(vs.cache_hit.s2)}` },
-];
-const seedCounts = Object.values(bench.cells).flatMap((fams) => Object.values(fams).flatMap((sizes) => Object.values(sizes).map((c) => c.n))).filter((n) => n > 0);
-const seedRange = `${Math.min(...seedCounts)} to ${Math.max(...seedCounts)} seeds per cell`;
+  'Memory for coding agents: one memory_* MCP surface, setup wizard, indexer, and recall/retain hooks over Hindsight, mem0, or Cognee.';
 
 const sourceCommands = `git clone ${site.sourceInstall.clone}
 cd ${site.sourceInstall.directory}
@@ -67,11 +45,12 @@ npx ${site.npm.package} switch mem0 --yes`;
   <main id="main">
     <section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 lg:pt-14" aria-labelledby="hero-h">
       <div class="max-w-3xl">
-        <Badge variant="outline">Smart compaction · pluggable memory</Badge>
+        <Badge variant="outline">Pluggable memory for coding agents</Badge>
         <h1 id="hero-h" class="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">{site.tagline}</h1>
         <p class="mt-5 text-lg leading-relaxed text-muted">
-          Smart compaction keeps long sessions under the limit with every turn kept and searchable. One <code>memory_*</code> surface, wizard, and indexer over pluggable providers. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
+          One <code>memory_*</code> surface, wizard, and indexer over pluggable providers, with recall and retain hooks for Claude Code, Codex, and OpenCode. {supportedNames ? `Supported: ${supportedNames}.` : 'No provider is supported yet.'}{experimentalNames ? ` Experimental: ${experimentalNames}.` : ''}
         </p>
+        <p class="mt-3 text-sm text-muted">Context management and smart compaction now live in <a class="font-semibold text-source underline underline-offset-4" href="https://github.com/bcmyguest/smarter-compact">Smarter Compact</a>.</p>
         <div class="mt-8 flex flex-wrap gap-3">
           <Button href={withBase('docs/concepts/')} size="lg">Concepts</Button>
           <Button href="#install" variant="outline" size="lg">Install</Button>
@@ -98,43 +77,6 @@ npx ${site.npm.package} switch mem0 --yes`;
             </Card>
           ))}
         </ul>
-      </div>
-    </section>
-
-    <section class="py-16" aria-labelledby="compact-h">
-      <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <div class="grid items-center gap-8 lg:grid-cols-12 lg:gap-10">
-          <div class="lg:col-span-5">
-            <p class="text-sm font-semibold uppercase tracking-wider text-source">Context management</p>
-            <h2 id="compact-h" class="mt-2 text-3xl font-bold tracking-tight">Smart compaction</h2>
-            <p class="mt-3 text-muted">Long sessions keep going without a slow LLM summary. Older turns move to a local store; a pointer and bounded recall take their place; the agent searches the store when it needs a detail back.</p>
-            <p class="mt-4 text-sm"><a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/')}>Context management</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-proxy/')}>Context proxy</a> · <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/compatibility/')}>Which agents support it</a></p>
-          </div>
-          <div class="min-w-0 lg:col-span-7">
-            <SmartCompactionFigure />
-          </div>
-        </div>
-
-        <ul class="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Benchmark: OpenMem against default native compaction">
-          {tiles.map((t) => (
-            <li class="min-w-0 rounded-xl border border-line bg-panel p-4">
-              <p class="text-xs font-semibold uppercase tracking-wider text-muted">{t.label}</p>
-              <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5"><span class="text-2xl font-bold tracking-tight text-source sm:text-3xl">{t.value}</span><span class="text-xs text-muted">{t.unit}</span></p>
-              <p class="mt-1 text-xs leading-relaxed text-muted">{t.note}</p>
-            </li>
-          ))}
-        </ul>
-        <p class="mt-3 text-xs leading-relaxed text-muted">Seed-matched <a class="font-semibold text-source underline underline-offset-4" href={BENCH_URL}>ContextBench</a> synthetic tasks: mean of the {vs.cells.length} published task-size means, Claude Haiku 5.5, {seedRange}. Claude Code's default native arm recorded zero compeds. {wallTimeSentence(vs)} <a class="font-semibold text-source underline underline-offset-4" href={withBase('docs/context-management/#benchmarks')}>Benchmarks and caveats</a></p>
-
-        <div class="mt-8">
-          <figure>
-            <picture>
-              <source media="(prefers-color-scheme: dark)" srcset={withBase('media/contextbench-quality-log-dark.png')} />
-              <img src={withBase('media/contextbench-quality-log.png')} alt="ContextBench log-triage: OpenMem above native and keep-everything at larger log sizes; overall, lookup, and count panels" width="960" height="1276" loading="lazy" />
-            </picture>
-            <figcaption class="mt-2 text-xs text-muted">ContextBench log-triage answer quality (kv-store omitted — all arms tie at R4000).</figcaption>
-          </figure>
-        </div>
       </div>
     </section>
 

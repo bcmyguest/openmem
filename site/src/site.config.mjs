@@ -7,9 +7,9 @@
 
 export const site = {
   name: 'OpenMem',
-  tagline: 'Memory and context management for coding agents.',
+  tagline: 'Pluggable memory for coding agents.',
   description:
-    'OpenMem is memory and context management for coding agents: smart compaction that keeps every turn searchable, pluggable memory providers (Hindsight, mem0, Cognee), one setup wizard.',
+    'OpenMem is memory for coding agents: one memory_* MCP surface over pluggable providers (Hindsight, mem0, Cognee), recall and retain hooks, one setup wizard.',
   repoUrl: 'https://github.com/bcmyguest/openmem',
   /** Branch that source links in the docs point at. */
   branch: 'main',

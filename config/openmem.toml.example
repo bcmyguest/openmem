@@ -47,58 +47,6 @@ host = "http://127.0.0.1:11434"
 [agents]
 integration = "openmem"
 
-# Local LiteLLM context proxy (`install-coding-agent --context-proxy`). When enabled,
-# Claude Code's ANTHROPIC_BASE_URL points at http://127.0.0.1:<port>.
-# trim_at_tokens / compress_over_tokens (and [compaction] max_chars) reach the proxy
-# container through the stack .env (written by ./setup and install-coding-agent) and the
-# OpenCode 2 plugin; the env vars CONTEXT_TRIM_AT_TOKENS, CONTEXT_COMPRESS_OVER_TOKENS,
-# CONTEXT_TRIM_TO_FRACTION, CONTEXT_STANDING_INSTRUCTION, CONTEXT_CHARS_PER_TOKEN and CONTEXT_COMPACTION_MAX_CHARS
-# override them.
-[context_proxy]
-# enabled = false           # master switch; agents without a key below follow it (unset: opencode2 on, others off)
-port = 4100
-trim_at_tokens = 120000     # trim a session once its request exceeds this many tokens
-trim_to_fraction = 0.3      # a trim keeps older in-turn exchanges while the request is under this fraction of trim_at_tokens (0 < x < 1)
-compress_over_tokens = 4000 # compress tool results larger than this
-standing_instruction = true # constant system-prompt note telling the agent to search trimmed turns
-chars_per_token = 2.5       # token estimate before a session reports usage; reported usage calibrates it after
-
-# Session databases (sessions/<sid>.db, docs/context-store.md): every message of a trimmed session.
-# ttl_days: delete sessions idle longer than this, checked at proxy / MCP start at most once a day (0 = keep).
-# embedding_model: OpenAI-compatible embedding model for hybrid smart_compact_search; empty = vectors off.
-# The stack ships no embedding route; e.g. `ollama pull nomic-embed-text` and set it here.
-# embedding_url: that endpoint as this host sees it (the proxy container uses CONTEXT_PROXY_EMBEDDING_URL).
-# embedding_timeout_s: seconds per row of a background embeddings call (a batch of n rows gets n times this).
-#   Batches start at 4 rows, double while calls finish well inside the timeout and halve on a failure.
-# embedding_max_chars: characters of each row's head that are embedded; the vector covers only that part.
-#   4000 fits nomic-embed-text's 2048-token context; raise it only for a model with a longer one.
-[context_store]
-ttl_days = 30
-embedding_model = ""
-embedding_url = "http://127.0.0.1:11434/v1"
-embedding_timeout_s = 30
-embedding_max_chars = 4000
-
-# Optional per-agent overrides (written by the wizard and `openmem context on|off --agents`).
-# claude-code and opencode1 go through the context-proxy service, which install-coding-agent starts
-# when one of them is on and stops when none is. opencode2 trims in its own plugin (no service;
-# CONTEXT_PROXY_ENABLED overrides it); with neither its key nor `enabled` set it is on.
-# codex is accepted but not routed yet.
-# [context_proxy.agents]
-# claude-code = true
-# opencode1 = true
-# codex = false
-# opencode2 = true
-
-# native (OpenCode 2 only): when OpenCode compacts a session, OpenMem's plugin supplies the
-# smart_compact_search pointer + recall as the summary instead of a model call.
-# false leaves compaction to OpenCode.
-# max_chars: cap on the recall text placed after a trim or compaction pointer.
-[compaction]
-native = true
-max_chars = 12000
-# recall = true             # provider recall in the trim pointer, framed as untrusted data (env CONTEXT_COMPACTION_RECALL)
-
 # Optional indexer defaults (wizard may still prompt interactively)
 # [[index.roots]]
 # path = "~"

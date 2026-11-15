@@ -4,19 +4,13 @@ OpenMem connects coding agents and a shared indexer to one active [memory provid
 
 ## Overview
 
-Two paths. **A, memory:** sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. **B, context management (deprecated in OpenMem):** the context proxy (OpenCode 2: a native plugin) keeps each session under `trim_at_tokens` by moving older turns to a local session store that the agent searches; no model call summarizes them. **Path B is moving to [Smarter Compact](https://github.com/bcmyguest/smarter-compact)**; new installs should not rely on OpenMem's context proxy. OpenMem parts are tinted.
+Sources go through the indexer into one active provider, which agents reach through the `memory_*` MCP and session hooks. OpenMem parts are tinted. Context management (trimming long sessions) lives in [Smarter Compact](https://github.com/bcmyguest/smarter-compact).
 
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-memory-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/overview-memory.png" alt="A, memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks" width="360" />
+<img src="https://bcmyguest.github.io/openmem/media/overview-memory.png" alt="Memory: sources, OpenMem indexer, one active provider, OpenMem MCP, coding agents with session hooks" width="360" />
 </picture>
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="https://bcmyguest.github.io/openmem/media/overview-context-dark.png" />
-<img src="https://bcmyguest.github.io/openmem/media/overview-context.png" alt="B, context management: coding agent, context proxy, model API, session store read back over MCP; OpenCode 2 uses a native plugin" width="360" />
-</picture>
-<br />
-<sub>A, memory · B, context management</sub>
 </p>
 
 The sections below show every runtime path and optional integration.
@@ -217,9 +211,6 @@ There is **no** cross-vendor standard for agent memory APIs. MCP standardizes to
 | `memory_pages_list` / `memory_pages_search` / `memory_pages_read` | List, search, and read curated knowledge pages (Hindsight; others return `supported: false`) |
 | `memory_capture_initiative` | Record an approved feature plan as a tracked initiative page plus marker memory (Hindsight) |
 | `memory_status` | Async ingest drain state and operation status (Hindsight; mem0 always ready) |
-| `smart_compact_search` | Search a session's SQLite store of every message (FTS5 BM25 `query`, merged with embeddings when present, or a `pattern` regex), filtered by `role` and `in_context`, with `context` neighbouring rows (local files, every provider) — [Context store](context-store.md) |
-| `smart_compact_sql` | One read-only SELECT against a session database, for counts and aggregates (2 s, 200 rows) |
-| `smart_compact_get` | Return the full text of a compressed tool result by blob id, paged at 100k chars (local files, every provider) |
 
 **Session hooks** (all providers) call the unified MCP via `cli/coding-agent/hook-runner.mjs`. Optional [`@vectorize-io/hindsight-coding-agents`](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) replaces them on Hindsight stacks: `--provider-plugin` sets `[agents] integration = "provider"`, removes OpenMem's hooks and keeps the unified MCP; `--no-provider-plugin` switches back. `--hindsight-plugin` was renamed to `--provider-plugin`. See [Coding-agent hooks](coding-agent-hooks.md).
 

@@ -1,6 +1,6 @@
 # Development
 
-Guide for working in the OpenMem git repository: checkout, git hooks, and test suites. End users usually install with [npx](getting-started.md); this page is for contributors and anyone running from a clone.
+Guide for working in the OpenMem git repository: checkout, git hooks, and test suites. End users usually install with [npx](npx-install.md); this page is for contributors and anyone running from a clone.
 
 ## Checkout
 
@@ -32,7 +32,7 @@ Other CLI entry points: `npm run openmem -- <command>`, `node cli/openmem.mjs <c
 
 | Tool | Version | Used for |
 | --- | --- | --- |
-| Node.js | ≥ 24 | CLI, wizard, `npm test`, session store in tests (`node:sqlite`) |
+| Node.js | ≥ 24 | CLI, wizard, `npm test` |
 | [uv](https://docs.astral.sh/uv/) | current | Python dev deps and pytest (`pyproject.toml`, `uv.lock`) |
 | Docker Compose v2 | v2.24+ for some pytest | Optional locally; compose profile tests skip when unavailable |
 | pnpm | (see `site/package.json`) | Docs site under `site/` |
@@ -134,4 +134,3 @@ These stay in `docs/` for contributors and are not all synced to the public docs
 
 - [Pluggable memory providers](memory-providers.md) — adding a provider
 - [Coding agents](coding-agents.md), [wizard hooks](coding-agent-hooks.md)
-- [Evidence plan](evidence-plan.md) — ContextBench and replay methodology

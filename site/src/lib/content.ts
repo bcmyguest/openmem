@@ -37,8 +37,8 @@ const names = (list: Provider[]) => list.map((p) => p.label).join(', ');
 
 export const features = [
   {
-    title: 'Context management',
-    body: 'Smart compaction keeps long Claude Code, Codex and OpenCode sessions under a token limit without an LLM summary. Every turn stays in a local SQLite store that the agent searches with `smart_compact_search` and `smart_compact_sql`.',
+    title: 'Coding-agent hooks',
+    body: 'Claude Code, Codex and OpenCode recall memory at session start and on prompts, and retain transcripts after each turn. Each Git repository registers itself on session start with its own `coding-agent::<repo>` bank; `autoRegister` and `optOutPaths` control it.',
   },
   {
     title: 'Pluggable providers',

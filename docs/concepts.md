@@ -2,9 +2,7 @@
 
 OpenMem is the memory layer for coding agents: pluggable memory providers (Hindsight, mem0, Cognee) and one setup wizard.
 
-> **Context management (smart compaction) is deprecated in OpenMem** and moving to **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)**. OpenMem still ships a legacy context proxy for existing stacks; see [context management redirect](context-management.md).
-
-ContextBench notes: [smart compaction vs native compaction](context-management.md) (redirect) · [evidence plan](evidence-plan.md).
+> **Context management** (trimming long sessions) lives in **[Smarter Compact](https://github.com/bcmyguest/smarter-compact)**; OpenMem 0.10 removed its own.
 
 ## What’s coding-agent memory?
 
@@ -80,7 +78,6 @@ Agents do not call Hindsight or mem0 tool names by default. They call a **stable
 | `memory_pages_list` / `memory_pages_search` / `memory_pages_read` | Curated knowledge pages (Hindsight) |
 | `memory_capture_initiative` | Track an approved feature plan (Hindsight) |
 | `memory_status` | Ingest drain state (Hindsight; mem0 always ready) |
-| `smart_compact_search` / `smart_compact_get` | Recover trimmed session context (local; **deprecated in OpenMem** — prefer [Smarter Compact](https://github.com/bcmyguest/smarter-compact)) |
 
 The facade (`cli/mcp/memory-facade.mjs`) maps each call onto the active provider’s HTTP API. Native provider MCP (`install-mcp --provider-only`) remains available when you want vendor tools.
 
@@ -118,9 +115,8 @@ OpenMem is not affiliated with these projects.
 | [mise](https://mise.jdx.dev/) / [asdf](https://asdf-vm.com/) | One CLI over many backends with declarative config |
 | [Hindsight](https://github.com/vectorize-io/hindsight) · [mem0](https://github.com/mem0ai/mem0) · [Cognee](https://github.com/topoteretes/cognee) | Memory providers |
 | [Hindsight coding agents](https://www.npmjs.com/package/@vectorize-io/hindsight-coding-agents) | Reference for knowledge pages, initiatives and ingest status; replaced by OpenMem hooks in `openmem` mode |
-| [LiteLLM](https://github.com/BerriAI/litellm) | Model proxy for Hindsight; hosts the [context proxy](context-proxy.md) |
-| [Mainplane](https://github.com/mainplane-ai/mainplane) | Smart compaction model: fresh context plus a pointer to the saved transcript, retrieved on demand |
-| [rtk](https://github.com/rtk-ai/rtk) | Shell-output compaction (`rtk init` when installed); its proxy's pointer-and-retrieve compression of large tool results inspired the context proxy's |
+| [LiteLLM](https://github.com/BerriAI/litellm) | Model proxy for Hindsight |
+| [rtk](https://github.com/rtk-ai/rtk) | Shell-output compaction (`rtk init` when installed) |
 | [Meridian](https://github.com/rynfar/meridian) | Claude subscription as an Anthropic-compatible API; optional Hindsight model backend ([guide](meridian-litellm.md)) |
 | [OpenCode](https://opencode.ai/) · [Claude Code hooks](https://code.claude.com/docs/en/hooks) · [Codex hooks](https://developers.openai.com/codex/hooks) | Agent APIs OpenMem translates between ([compatibility](compatibility.md)) |
 
