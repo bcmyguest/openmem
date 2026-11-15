@@ -256,10 +256,9 @@ const PLAIN_IMG = /<img src="([^"]+)" alt="([^"]*)"[^>]*?\/?>/g;
 const CENTERED = /<p align="center">\n([\s\S]*?)\n<\/p>/g;
 const CAPTION = /<sub>([\s\S]*?)<\/sub>/;
 
-/** Figure class from what it shows: benchmark chart, wide overview, animation, side-by-side pair. */
+/** Figure class from what it shows: wide overview, animation, side-by-side pair. */
 function figureKind(src, count) {
   if (count > 1) return 'pair';
-  if (/\/media\/contextbench-/.test(src)) return 'chart';
   if (/-wide\.png$/.test(src)) return 'wide';
   if (/\.gif$/.test(src)) return 'animation';
   return 'plain';

@@ -84,17 +84,17 @@ test('pictureToDuo: a centered paragraph becomes a figure with a kind class and 
   const md = [
     '<p align="center">',
     '<picture>',
-    '<source media="(prefers-color-scheme: dark)" srcset="https://h.io/om/media/contextbench-x-dark.png" />',
-    '<img src="https://h.io/om/media/contextbench-x.png" alt="Chart" width="480" />',
+    '<source media="(prefers-color-scheme: dark)" srcset="https://h.io/om/media/diagram-x-dark.png" />',
+    '<img src="https://h.io/om/media/diagram-x.png" alt="Diagram" width="480" />',
     '</picture>',
     '<br />',
-    '<sub>Score by size.</sub>',
+    '<sub>Flow by stage.</sub>',
     '</p>',
   ].join('\n');
   const out = pictureToDuo(md, { siteRoot: 'https://h.io/om/', basePath: '/om/' });
-  assert.match(out, /^<figure class="pm-figure pm-figure--chart">/);
-  assert.match(out, /<img class="pm-diagram-light" src="\/om\/media\/contextbench-x\.png" alt="Chart" \/>/);
-  assert.match(out, /<figcaption>Score by size\.<\/figcaption>\n<\/figure>$/);
+  assert.match(out, /^<figure class="pm-figure pm-figure--plain">/);
+  assert.match(out, /<img class="pm-diagram-light" src="\/om\/media\/diagram-x\.png" alt="Diagram" \/>/);
+  assert.match(out, /<figcaption>Flow by stage\.<\/figcaption>\n<\/figure>$/);
   assert.doesNotMatch(out, /<p align|<picture>|<sub>|<br/);
 });
 
