@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "../bank-from-cwd.mjs";
-import { accessAllowed, readAccessConfig } from "../access-policy.mjs";
+import { accessAllowed, autoRegisterLocation, readAccessConfig } from "../access-policy.mjs";
 import { SMART_COMPACT_BODY, isSmartCompactPrompt, registerSession, writeForceFlag } from "../context-store.mjs";
 import {
   addStandingInstruction, compactionSummary, fingerprint, isTurnStart, logFailOpen, promptTokensFromOpenCode, recordPromptUsage,
@@ -74,6 +74,7 @@ async function setup(ctx) {
   const stack = resolveStackRoot({ pkgRoot: ROOT, home, env });
   const memory = resolveMcpContext({ home, stackRoot: stack.root, repoRoot: ROOT, env });
   const projectDir = ctx.location?.directory;
+  autoRegisterLocation(projectDir, { home, env });
   const accessConfig = readAccessConfig(home);
   const allowed = accessAllowed(projectDir, accessConfig);
   const bank = allowed ? bankFromCwd(projectDir, { home, mapPathToBank: accessConfig.mapPathToBank }) : undefined;

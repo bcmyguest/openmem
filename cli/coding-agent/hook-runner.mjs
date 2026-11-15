@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
-import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
+import { accessAllowed, autoRegisterLocation, readAccessConfig } from "./access-policy.mjs";
 import { providerSupports } from "./capabilities.mjs";
 import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { SHIM_HARNESSES } from "./hook-harnesses.mjs";
@@ -204,6 +204,7 @@ export async function runHook(harnessId, phase, { home, env, repoRoot, ev, fetch
     // Context trimming is independent of memory access; the flag never fails the hook.
     try { writeForceFlag({ home, env, sessionId: parsed.sessionId }); } catch { /* best effort */ }
   }
+  if (phase === "sessionStart") autoRegisterLocation(parsed.cwd, { home, env });
   const config = readAccessConfig(home);
   const access = config ? resolveAccess(parsed.cwd, config, home) : { allowed: false };
   if (!access.allowed) return spec.emit[phase](undefined);

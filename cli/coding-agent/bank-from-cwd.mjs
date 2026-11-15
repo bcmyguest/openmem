@@ -20,17 +20,22 @@ function validGitEntry(root) {
   } catch { return false; }
 }
 
-function projectRoot(cwd) {
+/** Nearest ancestor of `cwd` (inclusive) holding a valid `.git` entry; null outside git. */
+export function gitProjectRoot(cwd) {
   try {
-    if (!fs.statSync(cwd).isDirectory()) return cwd;
-  } catch { return cwd; }
+    if (!fs.statSync(cwd).isDirectory()) return null;
+  } catch { return null; }
   let candidate = cwd;
   while (true) {
     if (validGitEntry(candidate)) return candidate;
     const parent = path.dirname(candidate);
-    if (parent === candidate) return cwd;
+    if (parent === candidate) return null;
     candidate = parent;
   }
+}
+
+function projectRoot(cwd) {
+  return gitProjectRoot(cwd) ?? cwd;
 }
 
 function projectName(root) {

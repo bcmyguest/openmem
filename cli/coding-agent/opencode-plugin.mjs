@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bankFromCwd } from "./bank-from-cwd.mjs";
-import { accessAllowed, readAccessConfig } from "./access-policy.mjs";
+import { accessAllowed, autoRegisterLocation, readAccessConfig } from "./access-policy.mjs";
 import { isSmartCompactPrompt, registerSession, writeForceFlag } from "./context-store.mjs";
 import { sessionBanner } from "./hook-runner.mjs";
 import { hookRecallBlock, sessionRecall, sessionReflectOrSearch, sessionRetain } from "./session-facade.mjs";
@@ -41,6 +41,7 @@ export const PersonalMemoryPlugin = async ({ client, directory, worktree }) => {
   const stack = resolveStackRoot({ pkgRoot: ROOT, home, env });
   const ctx = resolveMcpContext({ home, stackRoot: stack.root, repoRoot: ROOT, env });
   const projectDir = worktree && path.parse(worktree).root !== worktree ? worktree : directory;
+  autoRegisterLocation(projectDir, { home, env });
   const accessConfig = readAccessConfig(home);
   const allowed = accessAllowed(projectDir, accessConfig);
   // `/smart-compact` sets the context proxy's trim flag whether or not memory is allowed.

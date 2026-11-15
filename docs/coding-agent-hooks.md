@@ -79,3 +79,28 @@ repository root, and linked worktrees share the common repository identity. The 
 config owns current access and mapping policy; the legacy mapping remains supported for
 compatibility. Indexer `optInPaths` filtering stays on the Hindsight file — see
 [coding-agents.md](coding-agents.md).
+
+### Auto-registration (opt-out)
+
+On session start (the Claude Code and Codex `sessionStart` hook, and the OpenCode plugins
+when they load), openmem registers the Git repository holding the workspace. It adds the
+repository root to `optInPaths` when `optInOnly` is `true`, and pins the root to its bank
+in `mapPathToBank`; the bank is the one the resolution order above yields, normally
+`coding-agent::<repo>`, so each repository gets its own bank. A `mapPathToBank` prefix
+that already covers the root is kept.
+
+Registration skips:
+
+- `autoRegister: false` — turns the feature off.
+- `optOutPaths` — absolute prefixes never registered.
+- `disabled: true`, a malformed config, a workspace outside Git, and a repository at or
+  above `$HOME`.
+
+```json
+{
+  "optInOnly": true,
+  "optInPaths": ["/srv/code/alpha"],
+  "mapPathToBank": { "/srv/code/alpha": "coding-agent::alpha" },
+  "optOutPaths": ["/srv/clients"]
+}
+```

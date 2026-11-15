@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { bankFromCwd, gitProjectRoot } from "./bank-from-cwd.mjs";
 import { writeFileAtomic } from "./file-io.mjs";
 
 /** Canonical hook / bank-mapping policy (docs/coding-agent-hooks.md). */
@@ -10,10 +11,21 @@ export const accessConfigPath = (home) => path.join(home, ".config", "personal-m
 export const legacyAccessConfigPath = (home) => path.join(home, ".hindsight", "coding-agent.json");
 
 /** Fields hooks and bank resolution read; copied from the legacy file when ensuring. */
-export const ACCESS_POLICY_KEYS = ["disabled", "optInOnly", "optInPaths", "mapPathToBank"];
+export const ACCESS_POLICY_KEYS = ["disabled", "optInOnly", "optInPaths", "mapPathToBank", "autoRegister", "optOutPaths"];
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+const isAbsolutePathList = (value) => Array.isArray(value)
+  && value.every((p) => typeof p === "string" && p.trim() && path.isAbsolute(p));
+
+/** True when `dir` is one of `prefixes` or below one. */
+function underAny(dir, prefixes) {
+  return (prefixes || []).some((configured) => {
+    const prefix = path.resolve(configured);
+    return dir === prefix || dir.startsWith(`${prefix}${path.sep}`);
+  });
 }
 
 /** Validate shape; null means unreadable / malformed (deny). */
@@ -21,8 +33,9 @@ function validateAccessConfig(config) {
   if (!isPlainObject(config)) return null;
   if ("disabled" in config && typeof config.disabled !== "boolean") return null;
   if ("optInOnly" in config && typeof config.optInOnly !== "boolean") return null;
-  if ("optInPaths" in config && (!Array.isArray(config.optInPaths)
-    || config.optInPaths.some((p) => typeof p !== "string" || !p.trim() || !path.isAbsolute(p)))) return null;
+  if ("autoRegister" in config && typeof config.autoRegister !== "boolean") return null;
+  if ("optInPaths" in config && !isAbsolutePathList(config.optInPaths)) return null;
+  if ("optOutPaths" in config && !isAbsolutePathList(config.optOutPaths)) return null;
   if ("mapPathToBank" in config && (!isPlainObject(config.mapPathToBank)
     || Object.entries(config.mapPathToBank).some(([prefix, bank]) => !prefix.trim() || !path.isAbsolute(prefix)
       || typeof bank !== "string" || !bank.trim()))) return null;
@@ -117,11 +130,47 @@ export function syncAccessPolicyFromLegacy(home, { dry = false } = {}) {
 export function accessAllowed(cwd, config) {
   if (!config || typeof cwd !== "string" || !cwd.trim() || !path.isAbsolute(cwd) || config.disabled === true) return false;
   if (config.optInOnly !== true) return true;
-  const dir = path.resolve(cwd);
-  return (config.optInPaths || []).some((configured) => {
-    const allowed = path.resolve(configured);
-    return dir === allowed || dir.startsWith(`${allowed}${path.sep}`);
-  });
+  return underAny(path.resolve(cwd), config.optInPaths);
+}
+
+/**
+ * Opt the git repository holding `cwd` in to memory hooks and pin it to its own bank, unless
+ * `autoRegister: false`, the repo sits under `optOutPaths`, hooks are disabled, or the repo is or
+ * contains `$HOME`. A bank mapping that already covers the repo is kept. Never throws.
+ * @param {string} cwd
+ * @param {{ home: string, env?: NodeJS.ProcessEnv, banks?: Record<string, string>, dry?: boolean }} opts
+ * @returns {{ action: "registered"|"covered"|"skipped"|"dry-run", reason?: string, path?: string, bank?: string }}
+ */
+export function autoRegisterLocation(cwd, { home, env = process.env, banks, dry = false }) {
+  try {
+    if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return { action: "skipped", reason: "no-cwd" };
+    const file = accessConfigPath(home);
+    const raw = readJsonObject(file);
+    const config = raw === undefined ? {} : validateAccessConfig(raw);
+    if (!config) return { action: "skipped", reason: "invalid-config" };
+    if (config.disabled === true) return { action: "skipped", reason: "disabled" };
+    if (config.autoRegister === false) return { action: "skipped", reason: "opted-out" };
+    const root = gitProjectRoot(path.resolve(cwd));
+    if (!root) return { action: "skipped", reason: "not-git" };
+    const homeDir = path.resolve(home);
+    if (underAny(homeDir, [root])) return { action: "skipped", reason: "home", path: root };
+    if (underAny(root, config.optOutPaths)) return { action: "skipped", reason: "opted-out", path: root };
+
+    const optInPaths = [...(config.optInPaths || [])];
+    const mapPathToBank = { ...(config.mapPathToBank || {}) };
+    const needsPath = config.optInOnly === true && !underAny(root, optInPaths);
+    const mapped = Object.keys(mapPathToBank).some((prefix) => underAny(root, [prefix]));
+    if (!needsPath && mapped) return { action: "covered", path: root };
+    const bank = bankFromCwd(root, { home, env, banks, mapPathToBank });
+    if (needsPath) optInPaths.push(root);
+    if (!mapped) mapPathToBank[root] = bank;
+    const next = { ...config, ...(config.optInOnly === true ? { optInPaths } : {}), mapPathToBank };
+    if (dry) return { action: "dry-run", path: root, bank };
+    writeAccessConfig(file, next);
+    return { action: "registered", path: root, bank };
+  } catch (error) {
+    return { action: "skipped", reason: `error: ${error?.message || error}` };
+  }
 }
 
 export function currentHome() {
